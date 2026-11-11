@@ -6,6 +6,7 @@ extends Node3D
 const PropLib = preload("res://scripts/prop_library.gd")
 const Player = preload("res://scripts/player.gd")
 const BotDemon = preload("res://scripts/bot_demon.gd")
+const Sfx = preload("res://scripts/sfx.gd")
 
 const HIDE_TIME := 30.0
 const HUNT_TIME := 180.0
@@ -32,7 +33,10 @@ var hint_label: Label
 var controls_label: Label
 var center_label: Label
 var blind_rect: ColorRect
+var crosshair: Label
 var _toast_time := 0.0
+var _hitmarker_time := 0.0
+var _sounds := {}             # name -> AudioStreamPlayer
 
 
 func _ready() -> void:
@@ -41,9 +45,13 @@ func _ready() -> void:
 	_build_environment()
 	_build_map()
 	_build_hud()
+	_build_sounds()
 	player = Player.new()
 	player.role = role
 	add_child(player)
+	player.threw.connect(func(): _play("throw"))
+	player.form_changed.connect(func(): _play("possess"))
+	player.hit_confirmed.connect(_on_hit_confirmed)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	start_round()
 
@@ -64,8 +72,7 @@ func _setup_input() -> void:
 	_add_key("move_left", KEY_A)
 	_add_key("move_right", KEY_D)
 	_add_key("jump", KEY_SPACE)
-	_add_key("possess", KEY_E)
-	_add_key("unpossess", KEY_Q)
+	_add_key("toggle_view", KEY_T)
 	_add_key("switch_role", KEY_TAB)
 	_add_key("restart", KEY_R)
 	_add_key("skip_hiding", KEY_ENTER)
@@ -218,10 +225,10 @@ func start_round() -> void:
 	time_left = HIDE_TIME
 	blind_rect.visible = role == "angel"
 	if role == "angel":
-		controls_label.text = "WASD move   Space jump   Left click throw holy light\nTab switch to demon   R restart   Esc free mouse"
+		controls_label.text = "WASD move   Space jump   Left click throw holy light   T first/third person\nTab switch to demon   R restart   Esc free mouse"
 		_toast("The demons are hiding...\n(Enter to skip the wait while testing)", HIDE_TIME)
 	else:
-		controls_label.text = "WASD move   Space jump   E possess the prop you're aiming at   Q back to demon form\nTab switch to angel   R restart   Esc free mouse"
+		controls_label.text = "WASD move   Space jump   Click a prop to possess it   Hold click to return to demon form   T first/third person\nTab switch to angel   R restart   Esc free mouse"
 		_toast("Demon sandbox: practice possessing props.\nNo angel AI yet - that comes with multiplayer.", 5.0)
 
 
@@ -242,6 +249,7 @@ func _end_round(message: String) -> void:
 
 
 func _on_bot_caught(_bot) -> void:
+	_play("caught")
 	bots_left -= 1
 	if bots_left <= 0 and state == State.HUNTING:
 		_end_round("All demons caught! Angels win!")
@@ -296,7 +304,7 @@ func _build_hud() -> void:
 	center_label.position.y -= 120
 	hud.add_child(center_label)
 
-	var crosshair := _make_label(28)
+	crosshair = _make_label(28)
 	crosshair.text = "+"
 	crosshair.set_anchors_preset(Control.PRESET_CENTER)
 	crosshair.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -319,6 +327,30 @@ func _build_hud() -> void:
 	hud.add_child(controls_label)
 
 
+func _build_sounds() -> void:
+	var streams := {
+		"throw": Sfx.throw_sound(),
+		"hit": Sfx.hit_sound(),
+		"caught": Sfx.caught_sound(),
+		"possess": Sfx.possess_sound(),
+	}
+	for sound_name in streams:
+		var asp := AudioStreamPlayer.new()
+		asp.stream = streams[sound_name]
+		add_child(asp)
+		_sounds[sound_name] = asp
+
+
+func _play(sound_name: String) -> void:
+	_sounds[sound_name].play()
+
+
+# Our throw hit a demon: ding, and flash a red X on the crosshair.
+func _on_hit_confirmed() -> void:
+	_play("hit")
+	_hitmarker_time = 0.3
+
+
 func _toast(text: String, seconds: float) -> void:
 	center_label.text = text
 	_toast_time = seconds
@@ -336,7 +368,20 @@ func _update_hud(delta: float) -> void:
 	if role == "angel":
 		text += "   |   Demons left: %d" % bots_left
 	status_label.text = text
-	if role == "demon" and player.look_target_type != "":
-		hint_label.text = "E: possess %s" % PropLib.label(player.look_target_type)
+	_hitmarker_time -= delta
+	if _hitmarker_time > 0.0:
+		crosshair.text = "X"
+		crosshair.add_theme_color_override("font_color", Color(1.0, 0.2, 0.15))
+		crosshair.add_theme_font_size_override("font_size", 40)
+	else:
+		crosshair.text = "+"
+		crosshair.remove_theme_color_override("font_color")
+		crosshair.add_theme_font_size_override("font_size", 28)
+
+	if player.hold_fraction > 0.0:
+		var filled := int(round(player.hold_fraction * 10))
+		hint_label.text = "Returning to demon form  " + "|".repeat(filled) + ".".repeat(10 - filled)
+	elif role == "demon" and player.look_target_type != "":
+		hint_label.text = "Click: possess %s" % PropLib.label(player.look_target_type)
 	else:
 		hint_label.text = ""

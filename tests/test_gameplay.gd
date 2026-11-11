@@ -62,6 +62,8 @@ func _run() -> void:
 	check(main.state == main.State.HUNTING, "hunting starts after the hiding period")
 	check(not player.frozen, "angel can move once hunting starts")
 
+	var hits := [0]
+	player.hit_confirmed.connect(func(): hits[0] += 1)
 	for bot in get_nodes_in_group("demon").duplicate():
 		var lined_up: bool = await aim_at(player, bot, 0.3)
 		check(lined_up, "found a clear shot at a %s demon" % bot.prop_type)
@@ -75,6 +77,14 @@ func _run() -> void:
 	check(main.bots_left == 0, "no demons left")
 	check(main.state == main.State.ENDED, "round ends when every demon is caught")
 	check(main.center_label.text.begins_with("All demons caught"), "win message shown")
+	check(hits[0] == 12, "every catching hit confirmed back to the angel (got %d)" % hits[0])
+
+	# ---- View toggle ----
+	check(player.spring.spring_length == 0.0, "angel starts in first person")
+	player.toggle_view()
+	check(player.spring.spring_length > 0.0 and player.visual_root.visible, "T switches angel to third person")
+	player.toggle_view()
+	check(player.spring.spring_length == 0.0, "T switches back to first person")
 
 	# ---- Demon sandbox ----
 	main.role = "demon"
@@ -95,11 +105,19 @@ func _run() -> void:
 			"demon possessed a %s" % prop.get_meta("prop_type"))
 	await frames(30)
 	check(player.is_on_floor(), "possessed demon lands on the floor")
-	# (Headless mode can't capture the mouse, so call what Q does directly.)
-	player.unpossess()
+	# Holding the click returns to demon form. (Headless can't capture the mouse,
+	# so start the hold the way a click on a possessed demon does.)
+	player._holding = true
+	player._hold_time = 0.0
+	await frames(15)
+	check(player.possessed_type != "" and player.hold_fraction > 0.0, "short hold keeps the prop, shows progress")
+	await frames(40)
+	check(player.possessed_type == "", "holding click returns to demon form")
+	check(player.hold_fraction == 0.0, "hold progress resets")
 	await frames(30)
-	check(player.possessed_type == "", "Q returns to demon form")
 	check(player.is_on_floor(), "demon form lands on the floor")
+	player.toggle_view()
+	check(player.spring.spring_length == 0.0 and not player.visual_root.visible, "T switches demon to first person")
 
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "FAILED", failures])
 	quit(1 if failures else 0)

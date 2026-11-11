@@ -5,7 +5,7 @@ extends Node3D
 const Effects = preload("res://scripts/effects.gd")
 
 const DAMAGE := 25
-const GRAVITY := 6.0
+const GRAVITY := 4.0
 const LIFETIME := 3.0
 const COLOR := Color(1.0, 0.9, 0.4)
 
@@ -49,7 +49,9 @@ func _physics_process(delta: float) -> void:
 	if collider and collider.has_method("take_hit"):
 		collider.take_hit(DAMAGE)
 		hit_demon = true
+		if is_instance_valid(shooter) and shooter.has_method("confirm_hit"):
+			shooter.confirm_hit()
 	# A demon hit gets a red puff; anything else gets a harmless golden one.
 	var puff_color := Color(0.9, 0.15, 0.1, 0.8) if hit_demon else Color(1.0, 0.95, 0.6, 0.7)
-	Effects.puff(get_parent(), hit["position"], puff_color, 0.6)
+	Effects.puff(get_parent(), hit["position"], puff_color, 1.0 if hit_demon else 0.6)
 	queue_free()

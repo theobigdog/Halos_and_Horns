@@ -22,9 +22,9 @@ One small test map, single player, placeholder shapes for everything.
 | Key | Angel | Demon |
 | --- | --- | --- |
 | WASD / Space | Move / jump | Move / jump |
-| Left click | Throw holy light | |
-| E | | Possess the prop under the crosshair |
-| Q | | Back to demon form |
+| Left click | Throw holy light (hold to keep throwing) | Possess the prop under the crosshair |
+| Hold left click | | Back to demon form |
+| T | First/third person | First/third person |
 | Tab | Switch to demon | Switch to angel |
 | Enter | Skip the hiding wait (testing) | |
 | R | Restart round | Restart round |
