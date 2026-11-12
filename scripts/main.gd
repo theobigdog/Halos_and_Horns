@@ -73,6 +73,8 @@ func _setup_input() -> void:
 	_add_key("move_left", KEY_A)
 	_add_key("move_right", KEY_D)
 	_add_key("jump", KEY_SPACE)
+	_add_key("run", KEY_SHIFT)
+	_add_key("sneak", KEY_CTRL)
 	_add_key("toggle_view", KEY_T)
 	_add_key("cycle_blessing", KEY_B)
 	_add_key("switch_role", KEY_TAB)
@@ -158,7 +160,7 @@ func _build_map() -> void:
 	_add_block(Vector3(18, 1.5, 14), Vector3(4, 3, 10), Color(0.6, 0.5, 0.45))
 	# A raised platform with a ramp up to it
 	_add_block(Vector3(-6, 1, 12), Vector3(8, 2, 4), Color(0.6, 0.6, 0.55))
-	_add_block(Vector3(-6, 0.9, 7.3), Vector3(2.5, 0.4, 5.9), Color(0.5, 0.45, 0.4), Vector3(-0.35, 0, 0))
+	_add_block(Vector3(-6, 0.8, 7.3), Vector3(2.5, 0.4, 5.9), Color(0.5, 0.45, 0.4), Vector3(-0.35, 0, 0))   # top edge flush with the platform
 
 
 func _random_spot() -> Vector3:
@@ -227,10 +229,10 @@ func start_round() -> void:
 	time_left = HIDE_TIME
 	blind_rect.visible = role == "angel"
 	if role == "angel":
-		controls_label.text = "WASD move   Space jump   Left click throw   B change blessing (testing)   T first/third person\nTab switch to demon   R restart   Esc free mouse"
+		controls_label.text = "WASD move   Shift run   Ctrl sneak (won't fall off edges)   Space jump\nLeft click throw   B change blessing (testing)   T first/third person   Tab switch to demon   R restart   Esc free mouse"
 		_toast("The demons are hiding...\n(Enter to skip the wait while testing)", HIDE_TIME)
 	else:
-		controls_label.text = "WASD move   Space jump   Click a prop to possess it   Hold click to return to demon form   T first/third person\nTab switch to angel   R restart   Esc free mouse"
+		controls_label.text = "WASD move   Shift run   Ctrl sneak (won't fall off edges)   Space jump\nClick a prop to possess it   Hold click to return to demon form   T first/third person   Tab switch to angel   R restart   Esc free mouse"
 		_toast("Demon sandbox: practice possessing props.\nNo angel AI yet - that comes with multiplayer.", 5.0)
 
 
@@ -330,6 +332,7 @@ func _build_hud() -> void:
 
 
 func _build_sounds() -> void:
+	Sfx.setup_bus()
 	var streams := {
 		"hit": Sfx.hit_sound(),
 		"caught": Sfx.caught_sound(),
@@ -341,12 +344,18 @@ func _build_sounds() -> void:
 		var asp := AudioStreamPlayer.new()
 		asp.max_polyphony = 4   # overlapping plays layer instead of cutting off
 		asp.stream = streams[sound_name]
+		asp.bus = Sfx.BUS
+		if sound_name.begins_with("throw_"):
+			asp.volume_db = -4.0   # throws happen constantly: keep them in the background
 		add_child(asp)
 		_sounds[sound_name] = asp
 
 
 func _play(sound_name: String) -> void:
-	_sounds[sound_name].play()
+	var asp: AudioStreamPlayer = _sounds[sound_name]
+	# A little random pitch each time so repeated sounds don't feel robotic.
+	asp.pitch_scale = randf_range(0.94, 1.06)
+	asp.play()
 
 
 # Our throw hit a demon: ding, and flash a red X on the crosshair.

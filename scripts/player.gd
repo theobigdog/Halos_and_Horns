@@ -24,6 +24,9 @@ const BODY_HEIGHT := 1.7         # angel height
 const DEMON_SCALE := 0.6          # demons are little gremlins: 60% of angel size
 const SHOULDER_OFFSET := 0.7      # third-person camera sits over the right shoulder
 const OUTLINE_COLOR := Color(1.0, 0.35, 0.1)
+const RUN_MULTIPLIER := 1.6       # Left Shift
+const SNEAK_MULTIPLIER := 0.45    # Left Ctrl
+const LEDGE_DROP := 0.5           # sneaking won't step down more than this
 
 var role := "demon"           # "angel" or "demon"
 var frozen := false           # true while angels wait out the hiding period
@@ -32,6 +35,9 @@ var look_target_type := ""    # prop type the demon is aiming at (for the HUD hi
 var first_person := {"angel": true, "demon": false}
 var hold_fraction := 0.0      # 0-1 progress of hold-to-return (for the HUD)
 var blessing := "holy_light"  # which blessed projectile an angel throws
+var running := false
+var sneaking := false
+var test_input := {}          # automated tests only: {"dir": Vector2, "sneak": bool, "run": bool}
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _shoot_cooldown := 0.0
@@ -213,16 +219,31 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= gravity * delta
 	var controls_active := not frozen and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	var input_dir := Vector2.ZERO
-	if controls_active:
+	sneaking = false
+	running = false
+	if not test_input.is_empty():
+		# Automated tests drive movement here (headless mode can't capture the mouse).
+		input_dir = test_input.get("dir", Vector2.ZERO)
+		sneaking = test_input.get("sneak", false)
+		running = test_input.get("run", false) and not sneaking
+	elif controls_active:
 		input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
+		sneaking = Input.is_action_pressed("sneak")
+		running = Input.is_action_pressed("run") and not sneaking   # sneak wins if both held
 		if Input.is_action_just_pressed("jump") and is_on_floor():
 			velocity.y = JUMP_VELOCITY
 	var direction := global_transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)
 	direction.y = 0.0
 	direction = direction.normalized()
 	var speed := ANGEL_SPEED if role == "angel" else DEMON_SPEED
+	if running:
+		speed *= RUN_MULTIPLIER
+	elif sneaking:
+		speed *= SNEAK_MULTIPLIER
 	velocity.x = direction.x * speed
 	velocity.z = direction.z * speed
+	if sneaking and is_on_floor():
+		_guard_ledges(delta)
 	move_and_slide()
 
 	if role == "angel":
@@ -244,6 +265,32 @@ func _physics_process(delta: float) -> void:
 		hovered = target["collider"]
 	_set_hover(hovered)
 	look_target_type = hovered.get_meta("prop_type") if hovered else ""
+
+
+# Minecraft-style sneaking: cancel any sideways movement that would carry us off
+# a ledge. X and Z are checked separately, so you can still slide along an edge.
+func _guard_ledges(delta: float) -> void:
+	var step := Vector3(velocity.x, 0.0, velocity.z) * delta
+	if step.length_squared() == 0.0:
+		return
+	if not _has_ground_at(global_position + Vector3(step.x, 0.0, 0.0)):
+		velocity.x = 0.0
+	if not _has_ground_at(global_position + Vector3(0.0, 0.0, step.z)):
+		velocity.z = 0.0
+	# Moving diagonally straight at a corner: both single-axis checks can pass
+	# while the combined move still steps off, so check that too.
+	if velocity.x != 0.0 and velocity.z != 0.0 \
+			and not _has_ground_at(global_position + Vector3(velocity.x, 0.0, velocity.z) * delta):
+		velocity.x = 0.0
+		velocity.z = 0.0
+
+
+# Is there floor under this spot within a small step down? (Ramps count; drops don't.)
+func _has_ground_at(spot: Vector3) -> bool:
+	var query := PhysicsRayQueryParameters3D.create(
+			spot + Vector3.UP * 0.3, spot + Vector3.DOWN * LEDGE_DROP)
+	query.exclude = [get_rid()]
+	return not get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
 # Outline the prop under the crosshair so you know exactly what you'll become.

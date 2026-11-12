@@ -1,7 +1,10 @@
 # A practice demon for testing the angel side. It possesses a random prop,
-# stands still, and occasionally fidgets (a tiny hop) - a hint, like a real
-# player who can't sit still.
+# stands still, and fidgets (a little hop) every few seconds so testers can
+# find it fast. Real demons will be real players - this is test-only.
 extends StaticBody3D
+
+const HOP_EVERY_MIN := 2.0   # seconds between hops (testing: frequent on purpose)
+const HOP_EVERY_MAX := 4.0
 
 signal caught(bot)
 
@@ -31,7 +34,7 @@ func setup(type_name: String) -> void:
 
 
 func _reset_fidget() -> void:
-	_fidget_timer = _rng.randf_range(8.0, 16.0)
+	_fidget_timer = _rng.randf_range(HOP_EVERY_MIN, HOP_EVERY_MAX)
 
 
 func _process(delta: float) -> void:
@@ -39,8 +42,8 @@ func _process(delta: float) -> void:
 	if _fidget_timer <= 0.0:
 		_reset_fidget()
 		var tw := create_tween()
-		tw.tween_property(visual, "position:y", 0.15, 0.1)
-		tw.tween_property(visual, "position:y", 0.0, 0.12)
+		tw.tween_property(visual, "position:y", 0.3, 0.12)
+		tw.tween_property(visual, "position:y", 0.0, 0.15)
 
 
 func take_hit(damage: int) -> void:

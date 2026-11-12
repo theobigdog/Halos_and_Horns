@@ -150,5 +150,52 @@ func _run() -> void:
 	player.toggle_view()
 	check(player.spring.spring_length == 0.0 and not player.visual_root.visible, "T switches demon to first person")
 
+	# ---- Run / sneak ----
+	# The raised platform's top is at y=2, spanning x -10..-2, z 10..14.
+	# Its east edge (x=-2) is a sheer 2 m drop; its north side has the ramp.
+	player.rotation = Vector3.ZERO   # facing -Z, so input x=+1 walks toward +X
+	var speeds := {}
+	for mode in ["walk", "run", "sneak"]:
+		player.global_position = Vector3(-6, 2.05, 12)
+		player.velocity = Vector3.ZERO
+		await frames(5)
+		player.test_input = {"dir": Vector2(1, 0), "run": mode == "run", "sneak": mode == "sneak"}
+		await frames(2)
+		speeds[mode] = Vector2(player.velocity.x, player.velocity.z).length()
+		player.test_input = {}
+	check(speeds["run"] > speeds["walk"] and speeds["walk"] > speeds["sneak"] and speeds["sneak"] > 0.5,
+			"run > walk > sneak (%.1f / %.1f / %.1f m/s)" % [speeds["run"], speeds["walk"], speeds["sneak"]])
+
+	player.global_position = Vector3(-4, 2.05, 12)
+	player.velocity = Vector3.ZERO
+	await frames(5)
+	player.test_input = {"dir": Vector2(1, 0), "sneak": true}
+	await frames(180)
+	check(player.global_position.y > 1.9 and player.is_on_floor(),
+			"sneaking toward a ledge stops at the edge (y %.2f)" % player.global_position.y)
+	check(player.global_position.x > -2.5, "sneaking still reaches the edge (x %.2f)" % player.global_position.x)
+	var z_before: float = player.global_position.z
+	player.test_input = {"dir": Vector2(1, -1), "sneak": true}
+	await frames(20)
+	check(player.global_position.z < z_before - 0.3 and player.global_position.y > 1.9,
+			"sneaking diagonally slides along the edge instead of stopping dead")
+	player.test_input = {"dir": Vector2(1, 0)}
+	await frames(60)
+	check(player.global_position.y < 1.0, "letting go of sneak walks right off (y %.2f)" % player.global_position.y)
+
+	player.global_position = Vector3(-6, 2.05, 11)
+	player.velocity = Vector3.ZERO
+	await frames(5)
+	player.test_input = {"dir": Vector2(0, -1), "sneak": true}
+	await frames(150)
+	check(player.global_position.y < 0.6, "sneaking can still walk down a ramp (y %.2f)" % player.global_position.y)
+	player.global_position = Vector3(-6, 0.05, 3.5)
+	player.velocity = Vector3.ZERO
+	await frames(5)
+	player.test_input = {"dir": Vector2(0, 1)}
+	await frames(85)   # long enough to reach the top, not long enough to walk off the far side
+	check(player.global_position.y > 1.9, "small demon walks up the ramp onto the platform (y %.2f)" % player.global_position.y)
+	player.test_input = {}
+
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "FAILED", failures])
 	quit(1 if failures else 0)
