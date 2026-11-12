@@ -86,12 +86,35 @@ func _run() -> void:
 	player.toggle_view()
 	check(player.spring.spring_length == 0.0, "T switches back to first person")
 
+	# ---- Blessings ----
+	var first_kind: String = player.blessing
+	player.cycle_blessing()
+	check(player.blessing != first_kind, "B cycles to another blessing (%s)" % player.blessing)
+	var thrown := [""]
+	player.threw.connect(func(kind): thrown[0] = kind)
+	player._shoot()
+	await frames(1)
+	check(thrown[0] == player.blessing, "throw reports its blessing kind for the sound")
+
 	# ---- Demon sandbox ----
 	main.role = "demon"
 	main.start_round()
 	await frames(3)
 	check(player.role == "demon", "switched to the demon side")
 	check(get_nodes_in_group("demon").is_empty(), "no bot demons in the sandbox")
+	var cap: CapsuleShape3D = player.shape_node.shape
+	check(cap.height < 1.2, "demon is small (%.2f m tall)" % cap.height)
+	# The playtest bug: our own demon covered the crosshair. Cast the crosshair
+	# ray WITHOUT ignoring ourselves, looking straight ahead and slightly down.
+	for pitch in [0.0, -0.3, -0.6]:
+		player.pivot.rotation.x = pitch
+		await frames(2)
+		var cam: Camera3D = player.camera
+		var q := PhysicsRayQueryParameters3D.create(cam.global_position,
+				cam.global_position - cam.global_transform.basis.z * 6.0)
+		var self_hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(q)
+		check(self_hit.is_empty() or self_hit["collider"] != player,
+				"own demon doesn't block the crosshair (pitch %.1f)" % pitch)
 	var prop: Node3D = get_nodes_in_group("prop")[0]
 	var lined: bool = false
 	for p in get_nodes_in_group("prop"):
@@ -100,6 +123,14 @@ func _run() -> void:
 		if lined:
 			break
 	check(lined, "lined up on a prop")
+	await frames(2)
+	var outlined := false
+	for c in prop.get_children():
+		if c is Node3D:
+			for m in c.get_children():
+				if m is MeshInstance3D and m.material_overlay != null:
+					outlined = true
+	check(outlined, "hovered prop is outlined")
 	var ok: bool = player.try_possess()
 	check(ok and player.possessed_type == prop.get_meta("prop_type"),
 			"demon possessed a %s" % prop.get_meta("prop_type"))

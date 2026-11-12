@@ -7,8 +7,7 @@ const Effects = preload("res://scripts/effects.gd")
 const DAMAGE := 25
 const GRAVITY := 4.0
 const LIFETIME := 3.0
-const COLOR := Color(1.0, 0.9, 0.4)
-
+var color := Color(1.0, 0.9, 0.4)   # set by the thrower from its blessing type
 var velocity := Vector3.ZERO
 var shooter: CollisionObject3D
 var _life := LIFETIME
@@ -21,9 +20,9 @@ func _ready() -> void:
 	s.height = 0.24
 	mi.mesh = s
 	var m := StandardMaterial3D.new()
-	m.albedo_color = COLOR
+	m.albedo_color = color
 	m.emission_enabled = true
-	m.emission = COLOR
+	m.emission = color
 	m.emission_energy_multiplier = 2.0
 	mi.material_override = m
 	add_child(mi)

@@ -3,12 +3,13 @@
 extends CharacterBody3D
 
 signal hit_confirmed   # one of our throws hit a demon
-signal threw           # we threw holy light
+signal threw(kind)     # we threw a blessed projectile of this kind
 signal form_changed    # we possessed a prop or returned to demon form
 
 const PropLib = preload("res://scripts/prop_library.gd")
 const Projectile = preload("res://scripts/projectile.gd")
 const Effects = preload("res://scripts/effects.gd")
+const Blessings = preload("res://scripts/blessings.gd")
 
 const ANGEL_SPEED := 6.0
 const DEMON_SPEED := 6.5
@@ -19,7 +20,10 @@ const PROJECTILE_SPEED := 40.0
 const POSSESS_REACH := 6.0        # how far past the camera a demon can possess
 const THIRD_PERSON_DISTANCE := 3.5
 const HOLD_TO_RETURN := 0.6       # seconds to hold left click to leave a prop
-const BODY_HEIGHT := 1.7
+const BODY_HEIGHT := 1.7         # angel height
+const DEMON_SCALE := 0.6          # demons are little gremlins: 60% of angel size
+const SHOULDER_OFFSET := 0.7      # third-person camera sits over the right shoulder
+const OUTLINE_COLOR := Color(1.0, 0.35, 0.1)
 
 var role := "demon"           # "angel" or "demon"
 var frozen := false           # true while angels wait out the hiding period
@@ -27,12 +31,15 @@ var possessed_type := ""      # prop type the demon is currently possessing
 var look_target_type := ""    # prop type the demon is aiming at (for the HUD hint)
 var first_person := {"angel": true, "demon": false}
 var hold_fraction := 0.0      # 0-1 progress of hold-to-return (for the HUD)
+var blessing := "holy_light"  # which blessed projectile an angel throws
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _shoot_cooldown := 0.0
 var _holding := false
 var _hold_time := 0.0
 var _form_height := BODY_HEIGHT
+var _hover_prop: Node3D       # prop currently outlined under the crosshair
+var _outline_mat: StandardMaterial3D
 
 var shape_node: CollisionShape3D
 var visual_root: Node3D
@@ -64,6 +71,7 @@ func set_role(new_role: String) -> void:
 	look_target_type = ""
 	_holding = false
 	hold_fraction = 0.0
+	_set_hover(null)
 	pivot.rotation = Vector3.ZERO
 	_apply_form()
 
@@ -77,11 +85,12 @@ func _apply_form() -> void:
 		_form_height = PropLib.height(possessed_type)
 	else:
 		visual_root.add_child(_make_body_visual())
+		var body_scale := _body_scale()
 		var capsule := CapsuleShape3D.new()
-		capsule.radius = 0.35
-		capsule.height = BODY_HEIGHT
+		capsule.radius = 0.35 * body_scale
+		capsule.height = BODY_HEIGHT * body_scale
 		shape_node.shape = capsule
-		_form_height = BODY_HEIGHT
+		_form_height = BODY_HEIGHT * body_scale
 	shape_node.position.y = _form_height / 2.0
 	_apply_camera()
 
@@ -89,13 +98,20 @@ func _apply_form() -> void:
 func _apply_camera() -> void:
 	if first_person[role]:
 		# Eyes at the top of the body, or just above the possessed prop.
-		pivot.position.y = 1.55 if possessed_type == "" else _form_height + 0.15
+		pivot.position.y = _form_height * 0.9 if possessed_type == "" else _form_height + 0.15
+		spring.position.x = 0.0
 		spring.spring_length = 0.0
 		visual_root.visible = false
 	else:
-		pivot.position.y = maxf(_form_height * 0.8, 0.6) + 0.3
+		# Over the shoulder and above the head, so our own body never covers the crosshair.
+		pivot.position.y = maxf(_form_height, 0.6) + 0.35
+		spring.position.x = SHOULDER_OFFSET
 		spring.spring_length = THIRD_PERSON_DISTANCE
 		visual_root.visible = true
+
+
+func _body_scale() -> float:
+	return 1.0 if role == "angel" else DEMON_SCALE
 
 
 func toggle_view() -> void:
@@ -149,6 +165,7 @@ func _make_body_visual() -> Node3D:
 			eye.material_override = yellow
 			eye.position = Vector3(0.12 * side, 1.45, -0.31)   # -Z is forward
 			root.add_child(eye)
+		root.scale = Vector3.ONE * DEMON_SCALE
 	return root
 
 
@@ -166,6 +183,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event.is_action_pressed("toggle_view"):
 		toggle_view()
+		return
+	if event.is_action_pressed("cycle_blessing") and role == "angel":
+		cycle_blessing()
 		return
 	if frozen:
 		return
@@ -219,9 +239,36 @@ func _physics_process(delta: float) -> void:
 			hold_fraction = 0.0
 			unpossess()
 	var target := _aim_ray(spring.spring_length + POSSESS_REACH)
-	look_target_type = ""
+	var hovered: Node3D = null
 	if not target.is_empty() and target["collider"].is_in_group("prop"):
-		look_target_type = target["collider"].get_meta("prop_type")
+		hovered = target["collider"]
+	_set_hover(hovered)
+	look_target_type = hovered.get_meta("prop_type") if hovered else ""
+
+
+# Outline the prop under the crosshair so you know exactly what you'll become.
+func _set_hover(prop: Node3D) -> void:
+	if prop == _hover_prop and is_instance_valid(prop):
+		return
+	if is_instance_valid(_hover_prop):
+		_apply_outline(_hover_prop, null)
+	_hover_prop = prop
+	if prop:
+		if _outline_mat == null:
+			_outline_mat = StandardMaterial3D.new()
+			_outline_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			_outline_mat.cull_mode = BaseMaterial3D.CULL_FRONT   # only the "shell" shows
+			_outline_mat.grow = true
+			_outline_mat.grow_amount = 0.04
+			_outline_mat.albedo_color = OUTLINE_COLOR
+		_apply_outline(prop, _outline_mat)
+
+
+func _apply_outline(node: Node, material: Material) -> void:
+	for child in node.get_children():
+		if child is MeshInstance3D:
+			child.material_overlay = material
+		_apply_outline(child, material)
 
 
 # Ray straight out of the camera (the crosshair), ignoring ourselves.
@@ -259,6 +306,7 @@ func confirm_hit() -> void:
 
 func _shoot() -> void:
 	var p := Projectile.new()
+	p.color = Blessings.color(blessing)   # before add_child: its glow is built on entering the world
 	get_parent().add_child(p)
 	var forward := -camera.global_transform.basis.z
 	# In third person, start the throw at the angel's hand height, not back at the camera.
@@ -274,4 +322,9 @@ func _shoot() -> void:
 	p.velocity = direction * PROJECTILE_SPEED + Vector3.UP * 0.6
 	p.shooter = self
 	_shoot_cooldown = SHOOT_COOLDOWN
-	threw.emit()
+	threw.emit(blessing)
+
+
+func cycle_blessing() -> void:
+	var kinds := Blessings.names()
+	blessing = kinds[(kinds.find(blessing) + 1) % kinds.size()]

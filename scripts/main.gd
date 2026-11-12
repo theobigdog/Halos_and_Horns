@@ -7,6 +7,7 @@ const PropLib = preload("res://scripts/prop_library.gd")
 const Player = preload("res://scripts/player.gd")
 const BotDemon = preload("res://scripts/bot_demon.gd")
 const Sfx = preload("res://scripts/sfx.gd")
+const Blessings = preload("res://scripts/blessings.gd")
 
 const HIDE_TIME := 30.0
 const HUNT_TIME := 180.0
@@ -49,7 +50,7 @@ func _ready() -> void:
 	player = Player.new()
 	player.role = role
 	add_child(player)
-	player.threw.connect(func(): _play("throw"))
+	player.threw.connect(func(kind): _play("throw_" + kind))
 	player.form_changed.connect(func(): _play("possess"))
 	player.hit_confirmed.connect(_on_hit_confirmed)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -73,6 +74,7 @@ func _setup_input() -> void:
 	_add_key("move_right", KEY_D)
 	_add_key("jump", KEY_SPACE)
 	_add_key("toggle_view", KEY_T)
+	_add_key("cycle_blessing", KEY_B)
 	_add_key("switch_role", KEY_TAB)
 	_add_key("restart", KEY_R)
 	_add_key("skip_hiding", KEY_ENTER)
@@ -225,7 +227,7 @@ func start_round() -> void:
 	time_left = HIDE_TIME
 	blind_rect.visible = role == "angel"
 	if role == "angel":
-		controls_label.text = "WASD move   Space jump   Left click throw holy light   T first/third person\nTab switch to demon   R restart   Esc free mouse"
+		controls_label.text = "WASD move   Space jump   Left click throw   B change blessing (testing)   T first/third person\nTab switch to demon   R restart   Esc free mouse"
 		_toast("The demons are hiding...\n(Enter to skip the wait while testing)", HIDE_TIME)
 	else:
 		controls_label.text = "WASD move   Space jump   Click a prop to possess it   Hold click to return to demon form   T first/third person\nTab switch to angel   R restart   Esc free mouse"
@@ -329,13 +331,15 @@ func _build_hud() -> void:
 
 func _build_sounds() -> void:
 	var streams := {
-		"throw": Sfx.throw_sound(),
 		"hit": Sfx.hit_sound(),
 		"caught": Sfx.caught_sound(),
 		"possess": Sfx.possess_sound(),
 	}
+	for kind in Blessings.names():
+		streams["throw_" + kind] = Sfx.throw_sound(kind)
 	for sound_name in streams:
 		var asp := AudioStreamPlayer.new()
+		asp.max_polyphony = 4   # overlapping plays layer instead of cutting off
 		asp.stream = streams[sound_name]
 		add_child(asp)
 		_sounds[sound_name] = asp
@@ -366,7 +370,7 @@ func _update_hud(delta: float) -> void:
 	var side := "ANGEL" if role == "angel" else "DEMON"
 	var text := "%s   |   %s  %s" % [side, phase, clock if state != State.ENDED else ""]
 	if role == "angel":
-		text += "   |   Demons left: %d" % bots_left
+		text += "   |   Demons left: %d   |   %s" % [bots_left, Blessings.label(player.blessing)]
 	status_label.text = text
 	_hitmarker_time -= delta
 	if _hitmarker_time > 0.0:

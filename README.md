@@ -22,7 +22,8 @@ One small test map, single player, placeholder shapes for everything.
 | Key | Angel | Demon |
 | --- | --- | --- |
 | WASD / Space | Move / jump | Move / jump |
-| Left click | Throw holy light (hold to keep throwing) | Possess the prop under the crosshair |
+| Left click | Throw a blessing (hold to keep throwing) | Possess the outlined prop under the crosshair |
+| B | Change blessing type (testing) | |
 | Hold left click | | Back to demon form |
 | T | First/third person | First/third person |
 | Tab | Switch to demon | Switch to angel |
