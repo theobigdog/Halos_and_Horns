@@ -8,6 +8,7 @@ const Player = preload("res://scripts/player.gd")
 const BotDemon = preload("res://scripts/bot_demon.gd")
 const Sfx = preload("res://scripts/sfx.gd")
 const Blessings = preload("res://scripts/blessings.gd")
+const Taunts = preload("res://scripts/taunts.gd")
 
 const HIDE_TIME := 30.0
 const HUNT_TIME := 180.0
@@ -38,6 +39,23 @@ var crosshair: Label
 var _toast_time := 0.0
 var _hitmarker_time := 0.0
 var _sounds := {}             # name -> AudioStreamPlayer
+var bar_fills := {}           # HUD stamina bars: name -> [fill ColorRect, Label]
+var taunt_label: Label
+var hud_layer: CanvasLayer
+var _taunt_label_time := 0.0
+var tuning_panel: PanelContainer
+var _tuning_rows := {}        # tuning key -> [HSlider, Label]
+
+# F1 tuning panel: [key, label, min, max, step]
+const TUNING_SLIDERS := [
+	["ground_accel", "Acceleration", 5.0, 120.0, 1.0],
+	["ground_decel", "Stopping (lower = more slide)", 5.0, 120.0, 1.0],
+	["air_accel", "Air control", 0.0, 40.0, 1.0],
+	["gravity_scale", "Gravity", 0.5, 3.0, 0.05],
+	["fall_multiplier", "Extra fall speed", 1.0, 3.0, 0.05],
+	["jump_velocity", "Jump strength", 3.0, 9.0, 0.1],
+	["head_bob", "Head bob (0 = off)", 0.0, 2.0, 0.05],
+]
 
 
 func _ready() -> void:
@@ -53,6 +71,8 @@ func _ready() -> void:
 	player.threw.connect(func(kind): _play("throw_" + kind))
 	player.form_changed.connect(func(): _play("possess"))
 	player.hit_confirmed.connect(_on_hit_confirmed)
+	player.taunted.connect(_on_taunted)
+	_build_tuning_panel()
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	start_round()
 
@@ -80,6 +100,9 @@ func _setup_input() -> void:
 	_add_key("switch_role", KEY_TAB)
 	_add_key("restart", KEY_R)
 	_add_key("skip_hiding", KEY_ENTER)
+	_add_key("taunt_random", KEY_1)
+	_add_key("taunt_signature", KEY_2)
+	_add_key("toggle_tuning", KEY_F1)
 	if not InputMap.has_action("shoot"):
 		InputMap.add_action("shoot")
 		var click := InputEventMouseButton.new()
@@ -97,6 +120,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		start_round()
 	elif event.is_action_pressed("skip_hiding") and state == State.HIDING:
 		time_left = 0.0
+	elif event.is_action_pressed("toggle_tuning"):
+		tuning_panel.visible = not tuning_panel.visible
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if tuning_panel.visible else Input.MOUSE_MODE_CAPTURED
 
 
 # ---------- world ----------
@@ -229,10 +255,10 @@ func start_round() -> void:
 	time_left = HIDE_TIME
 	blind_rect.visible = role == "angel"
 	if role == "angel":
-		controls_label.text = "WASD move   Shift run   Ctrl sneak (won't fall off edges)   Space jump\nLeft click throw   B change blessing (testing)   T first/third person   Tab switch to demon   R restart   Esc free mouse"
+		controls_label.text = "WASD move   Shift run   Ctrl sneak   Space jump   1 / 2 taunt\nLeft click throw   B change blessing (testing)   T first/third person   Tab switch to demon   R restart   F1 movement tuning   Esc free mouse"
 		_toast("The demons are hiding...\n(Enter to skip the wait while testing)", HIDE_TIME)
 	else:
-		controls_label.text = "WASD move   Shift run   Ctrl sneak (won't fall off edges)   Space jump\nClick a prop to possess it   Hold click to return to demon form   T first/third person   Tab switch to angel   R restart   Esc free mouse"
+		controls_label.text = "WASD move   Shift run   Ctrl sneak   Space jump   1 / 2 taunt\nClick a prop to possess it   Hold click to return to demon form   T first/third person   Tab switch to angel   R restart   F1 movement tuning   Esc free mouse"
 		_toast("Demon sandbox: practice possessing props.\nNo angel AI yet - that comes with multiplayer.", 5.0)
 
 
@@ -285,6 +311,7 @@ func _make_label(size: int) -> Label:
 
 func _build_hud() -> void:
 	var hud := CanvasLayer.new()
+	hud_layer = hud
 	add_child(hud)
 
 	blind_rect = ColorRect.new()
@@ -330,6 +357,105 @@ func _build_hud() -> void:
 	controls_label.position += Vector2(16, -16)
 	hud.add_child(controls_label)
 
+	# Stamina bars, bottom center
+	var bars := VBoxContainer.new()
+	bars.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	bars.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bars.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bars.position.y -= 70
+	bars.add_theme_constant_override("separation", 6)
+	bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(bars)
+	_make_bar(bars, "sprint", Color(0.4, 0.85, 0.45))
+	_make_bar(bars, "power", Color(1.0, 0.85, 0.3))
+
+	taunt_label = _make_label(22)
+	taunt_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	taunt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	taunt_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	taunt_label.position.y -= 150
+	hud.add_child(taunt_label)
+
+
+const BAR_WIDTH := 260.0
+
+
+func _make_bar(parent: Control, bar_name: String, color: Color) -> void:
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var lbl := _make_label(16)
+	lbl.custom_minimum_size.x = 70
+	row.add_child(lbl)
+	var back := ColorRect.new()
+	back.color = Color(0, 0, 0, 0.45)
+	back.custom_minimum_size = Vector2(BAR_WIDTH, 14)
+	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER   # don't stretch to the label's height
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(back)
+	var fill := ColorRect.new()
+	fill.color = color
+	fill.size = Vector2(BAR_WIDTH, 14)
+	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	back.add_child(fill)
+	parent.add_child(row)
+	bar_fills[bar_name] = [fill, lbl]
+
+
+func _set_bar(bar_name: String, text: String, fraction: float, color := Color.TRANSPARENT) -> void:
+	var fill: ColorRect = bar_fills[bar_name][0]
+	fill.size.x = BAR_WIDTH * clampf(fraction, 0.0, 1.0)
+	if color != Color.TRANSPARENT:
+		fill.color = color
+	bar_fills[bar_name][1].text = text
+
+
+func _build_tuning_panel() -> void:
+	tuning_panel = PanelContainer.new()
+	tuning_panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	tuning_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	tuning_panel.position += Vector2(-16, 60)
+	tuning_panel.visible = false
+	hud_layer.add_child(tuning_panel)
+	var box := VBoxContainer.new()
+	box.custom_minimum_size.x = 340
+	tuning_panel.add_child(box)
+	var title := Label.new()
+	title.text = "Movement tuning (F1 to close)\nApplies to both teams for now"
+	box.add_child(title)
+	for row in TUNING_SLIDERS:
+		var key: String = row[0]
+		var lbl := Label.new()
+		box.add_child(lbl)
+		var slider := HSlider.new()
+		slider.min_value = row[2]
+		slider.max_value = row[3]
+		slider.step = row[4]
+		slider.value = player.tuning[key]
+		slider.value_changed.connect(func(v): _on_tuning_changed(key, v))
+		box.add_child(slider)
+		_tuning_rows[key] = [slider, lbl, row[1]]
+		_on_tuning_changed(key, slider.value)
+	var reset := Button.new()
+	reset.text = "Reset to defaults"
+	reset.pressed.connect(_reset_tuning)
+	box.add_child(reset)
+
+
+var _tuning_defaults := {}
+
+
+func _on_tuning_changed(key: String, value: float) -> void:
+	if not _tuning_defaults.has(key):
+		_tuning_defaults[key] = player.tuning[key]
+	player.tuning[key] = value
+	var row: Array = _tuning_rows[key]
+	row[1].text = "%s: %s" % [row[2], str(snappedf(value, 0.01))]
+
+
+func _reset_tuning() -> void:
+	for key in _tuning_defaults:
+		_tuning_rows[key][0].value = _tuning_defaults[key]
+
 
 func _build_sounds() -> void:
 	Sfx.setup_bus()
@@ -364,6 +490,11 @@ func _on_hit_confirmed() -> void:
 	_hitmarker_time = 0.3
 
 
+func _on_taunted(taunt_name: String) -> void:
+	taunt_label.text = "\"%s\"" % Taunts.label(taunt_name)
+	_taunt_label_time = 1.5
+
+
 func _toast(text: String, seconds: float) -> void:
 	center_label.text = text
 	_toast_time = seconds
@@ -390,6 +521,19 @@ func _update_hud(delta: float) -> void:
 		crosshair.text = "+"
 		crosshair.remove_theme_color_override("font_color")
 		crosshair.add_theme_font_size_override("font_size", 28)
+
+	_taunt_label_time -= delta
+	if _taunt_label_time <= 0.0:
+		taunt_label.text = ""
+
+	var sprint_color := Color(0.85, 0.35, 0.3) if player._sprint_exhausted else Color(0.4, 0.85, 0.45)
+	_set_bar("sprint", "Sprint", player.sprint_stamina / player.SPRINT_MAX, sprint_color)
+	if role == "angel":
+		var low := player.throw_stamina < player.THROW_COST
+		_set_bar("power", "Blessing", player.throw_stamina / player.THROW_STAMINA_MAX,
+				Color(0.6, 0.5, 0.25) if low else Color(1.0, 0.85, 0.3))
+	else:
+		_set_bar("power", "Hatred", player.hatred / player.HATRED_MAX, Color(0.8, 0.12, 0.12))
 
 	if player.hold_fraction > 0.0:
 		var filled := int(round(player.hold_fraction * 10))

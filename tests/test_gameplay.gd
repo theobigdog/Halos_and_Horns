@@ -150,17 +150,34 @@ func _run() -> void:
 	player.toggle_view()
 	check(player.spring.spring_length == 0.0 and not player.visual_root.visible, "T switches demon to first person")
 
-	# ---- Run / sneak ----
+	# ---- Movement: momentum, run, sneak ----
 	# The raised platform's top is at y=2, spanning x -10..-2, z 10..14.
 	# Its east edge (x=-2) is a sheer 2 m drop; its north side has the ramp.
 	player.rotation = Vector3.ZERO   # facing -Z, so input x=+1 walks toward +X
+	player.global_position = Vector3(-8, 2.05, 12)
+	player.velocity = Vector3.ZERO
+	await frames(5)
+	player.test_input = {"dir": Vector2(1, 0)}
+	await frames(2)
+	var early: float = Vector2(player.velocity.x, player.velocity.z).length()
+	await frames(20)
+	var settled: float = Vector2(player.velocity.x, player.velocity.z).length()
+	check(early < settled * 0.6 and settled > 6.0,
+			"speeds up instead of snapping to full speed (%.1f then %.1f m/s)" % [early, settled])
+	player.test_input = {}
+	await frames(2)
+	var stopping: float = Vector2(player.velocity.x, player.velocity.z).length()
+	check(stopping > 0.5 and stopping < settled, "slows down instead of stopping dead (%.1f m/s)" % stopping)
+	await frames(30)
+
 	var speeds := {}
 	for mode in ["walk", "run", "sneak"]:
-		player.global_position = Vector3(-6, 2.05, 12)
+		player.global_position = Vector3(-9, 2.05, 12)
 		player.velocity = Vector3.ZERO
+		player.sprint_stamina = player.SPRINT_MAX
 		await frames(5)
 		player.test_input = {"dir": Vector2(1, 0), "run": mode == "run", "sneak": mode == "sneak"}
-		await frames(2)
+		await frames(25)
 		speeds[mode] = Vector2(player.velocity.x, player.velocity.z).length()
 		player.test_input = {}
 	check(speeds["run"] > speeds["walk"] and speeds["walk"] > speeds["sneak"] and speeds["sneak"] > 0.5,
@@ -170,25 +187,10 @@ func _run() -> void:
 	player.velocity = Vector3.ZERO
 	await frames(5)
 	player.test_input = {"dir": Vector2(1, 0), "sneak": true}
-	await frames(180)
-	check(player.global_position.y > 1.9 and player.is_on_floor(),
-			"sneaking toward a ledge stops at the edge (y %.2f)" % player.global_position.y)
-	check(player.global_position.x > -2.5, "sneaking still reaches the edge (x %.2f)" % player.global_position.x)
-	var z_before: float = player.global_position.z
-	player.test_input = {"dir": Vector2(1, -1), "sneak": true}
-	await frames(20)
-	check(player.global_position.z < z_before - 0.3 and player.global_position.y > 1.9,
-			"sneaking diagonally slides along the edge instead of stopping dead")
-	player.test_input = {"dir": Vector2(1, 0)}
-	await frames(60)
-	check(player.global_position.y < 1.0, "letting go of sneak walks right off (y %.2f)" % player.global_position.y)
+	await frames(120)
+	check(player.global_position.y < 1.0, "sneaking no longer stops you at ledges (y %.2f)" % player.global_position.y)
+	player.test_input = {}
 
-	player.global_position = Vector3(-6, 2.05, 11)
-	player.velocity = Vector3.ZERO
-	await frames(5)
-	player.test_input = {"dir": Vector2(0, -1), "sneak": true}
-	await frames(150)
-	check(player.global_position.y < 0.6, "sneaking can still walk down a ramp (y %.2f)" % player.global_position.y)
 	player.global_position = Vector3(-6, 0.05, 3.5)
 	player.velocity = Vector3.ZERO
 	await frames(5)
@@ -197,5 +199,113 @@ func _run() -> void:
 	check(player.global_position.y > 1.9, "small demon walks up the ramp onto the platform (y %.2f)" % player.global_position.y)
 	player.test_input = {}
 
+	# ---- Jumping ----
+	player.global_position = Vector3(0, 0.05, 20)
+	player.velocity = Vector3.ZERO
+	await frames(10)
+	var ground_y: float = player.global_position.y
+	player.test_input = {"jump": true}
+	await frames(1)
+	player.test_input = {}
+	var peak := ground_y
+	var t_up := 0
+	var t_total := 0
+	while t_total < 200:
+		await frames(1)
+		t_total += 1
+		if player.global_position.y > peak:
+			peak = player.global_position.y
+			t_up = t_total
+		if t_total > 3 and player.is_on_floor():
+			break
+	var height: float = peak - ground_y
+	check(height > 0.8 and height < 1.6, "jump height is reasonable (%.2f m)" % height)
+	check(t_total - t_up < t_up, "falls faster than it rises: not floaty (%d frames up, %d down)" % [t_up, t_total - t_up])
+
+	# ---- Sprint stamina ----
+	player.global_position = Vector3(-20, 0.05, 20)
+	player.velocity = Vector3.ZERO
+	player.rotation = Vector3.ZERO
+	player.sprint_stamina = player.SPRINT_MAX
+	await frames(5)
+	player.test_input = {"dir": Vector2(1, 0), "run": true}
+	await frames(30)
+	check(player.running and player.sprint_stamina < player.SPRINT_MAX, "running drains sprint stamina")
+	player.sprint_stamina = 1.0
+	await frames(10)
+	check(not player.running and player._sprint_exhausted, "can't run once sprint stamina is empty")
+	player.test_input = {}
+	await frames(120)
+	check(player.sprint_stamina > 10.0, "sprint stamina refills after resting (%.0f)" % player.sprint_stamina)
+
+	# ---- Hatred ----
+	var hatred_before: float = player.hatred
+	await frames(60)
+	check(player.hatred > hatred_before, "demon Hatred fills over time")
+
+	# ---- Taunts ----
+	var sig: String = player.Taunts.signature("demon")
+	var last := ""
+	var never_sig := true
+	var never_repeat := true
+	for i in 300:
+		var pick: String = player.Taunts.pick_random("demon", last)
+		if pick == sig:
+			never_sig = false
+		if pick == last:
+			never_repeat = false
+		last = pick
+	check(never_sig, "random taunt (1) never picks the signature taunt")
+	check(never_repeat, "random taunt never repeats twice in a row")
+	var heard := [""]
+	player.taunted.connect(func(n): heard[0] = n)
+	player._taunt_cooldown = 0.0
+	check(player.taunt(true) and heard[0] == sig, "taunt 2 plays the signature taunt")
+	check(not player.taunt(false), "taunts have a short cooldown")
+	player._taunt_cooldown = 0.0
+	check(player.taunt(false) and heard[0] != sig, "taunt 1 plays a random one (%s)" % heard[0])
+	check(player.voice.stream != null, "taunt has a sound")
+
+	# ---- Angel: throw stamina + head bob ----
+	main.role = "angel"
+	main.start_round()
+	main.time_left = 0.0
+	await frames(3)
+	# Hold the button for 4 seconds (try every frame), count throws per second.
+	var per_second := [0, 0, 0, 0]
+	for i in 240:
+		if player.try_throw():
+			per_second[i / 60] += 1
+		await frames(1)
+	check(per_second[0] >= 8, "throws rapidly from full stamina (%d in the 1st second)" % per_second[0])
+	check(per_second[3] < per_second[0] and per_second[3] >= 3,
+			"stamina slows spam to a steady rate (%d/s at first, %d/s after 3 s)" % [per_second[0], per_second[3]])
+	await frames(240)
+	check(player.throw_stamina >= player.THROW_STAMINA_MAX - 1.0,
+			"blessing stamina refills (%.0f)" % player.throw_stamina)
+	player.throw_regen_multiplier = 5.0   # the future quick-regen power-up
+	player.throw_stamina = 0.0
+	var boosted := 0
+	for i in 60:
+		if player.try_throw():
+			boosted += 1
+		await frames(1)
+	check(boosted >= 8, "quick-regen power-up allows near-nonstop throwing (%d in 1 s from empty)" % boosted)
+	player.throw_regen_multiplier = 1.0
+
+	player.global_position = Vector3(0, 0.05, 20)
+	player.rotation = Vector3.ZERO
+	player.velocity = Vector3.ZERO
+	await frames(5)
+	player.test_input = {"dir": Vector2(1, 0)}
+	var bob_min := 9.0
+	var bob_max := -9.0
+	for i in 60:
+		await frames(1)
+		bob_min = minf(bob_min, player.spring.position.y)
+		bob_max = maxf(bob_max, player.spring.position.y)
+	player.test_input = {}
+	check(bob_max - bob_min > 0.02 and bob_max - bob_min < 0.2,
+			"first-person head bob while walking (%.3f m)" % (bob_max - bob_min))
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "FAILED", failures])
 	quit(1 if failures else 0)

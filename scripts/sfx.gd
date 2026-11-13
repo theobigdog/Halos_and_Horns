@@ -101,3 +101,48 @@ static func caught_sound() -> AudioStreamWAV:
 static func possess_sound() -> AudioStreamWAV:
 	# low, smooth demonic "whumm"
 	return tone([[98.0, 0.7], [147.0, 0.3]], 0.5, 0.22, 0.04, 12.0, 0.35, 0.75)
+
+
+# ---------- Placeholder voices for taunts ----------
+# syllables: [[pitch_start_Hz, pitch_end_Hz, seconds, loudness, gap_after_seconds], ...]
+# Pitches are the voice's fundamental; harmonics on top make it sound vocal.
+# rasp = gravelly growl (demons), breath = airy noise, vibrato = pitch wobble depth.
+static func voice(syllables: Array, volume := 0.25, rasp := 0.0, breath := 0.05,
+		vibrato := 0.02) -> AudioStreamWAV:
+	var total := 0.0
+	for s in syllables:
+		total += s[2] + s[4]
+	total += 0.05
+	var n := int(RATE * total)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var harmonics := [1.0, 0.6, 0.45, 0.3, 0.2, 0.12]
+	var phase := 0.0
+	var noise := 0.0
+	var i0 := 0
+	for s in syllables:
+		var len_n := int(RATE * s[2])
+		for j in len_n:
+			var u := float(j) / len_n
+			var t := float(j) / RATE
+			# soft start and end per syllable
+			var env: float = minf(t / 0.015, 1.0) * minf((s[2] - t) / 0.04, 1.0) * s[3]
+			var f: float = lerpf(s[0], s[1], u) * (1.0 + vibrato * sin(TAU * 5.5 * t))
+			phase += TAU * f / RATE
+			var v := 0.0
+			for k in harmonics.size():
+				v += sin(phase * (k + 1)) * harmonics[k]
+			v /= 2.0
+			if rasp > 0.0:   # flutter the loudness ~35 times a second: gravelly
+				v *= 1.0 - rasp * (0.5 + 0.5 * sin(TAU * 35.0 * t + randf() * 0.6))
+			noise = lerpf(noise, randf_range(-1.0, 1.0), 0.15)
+			v += noise * breath * 3.0
+			var idx := i0 + j
+			if idx < n:
+				data.encode_s16(idx * 2, int(clampf(v * env * volume, -1.0, 1.0) * 32767.0))
+		i0 += len_n + int(RATE * s[4])
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = RATE
+	wav.data = data
+	return wav

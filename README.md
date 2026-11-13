@@ -22,15 +22,18 @@ One small test map, single player, placeholder shapes for everything.
 | Key | Angel | Demon |
 | --- | --- | --- |
 | WASD / Space | Move / jump | Move / jump |
-| Shift | Run | Run |
-| Ctrl | Sneak (won't walk off edges) | Sneak (won't walk off edges) |
-| Left click | Throw a blessing (hold to keep throwing) | Possess the outlined prop under the crosshair |
+| Shift | Run (uses sprint stamina) | Run (uses sprint stamina) |
+| Ctrl | Sneak | Sneak |
+| 1 | Random taunt | Random taunt |
+| 2 | Signature taunt | Signature taunt |
+| Left click | Throw a blessing (hold to keep throwing; uses blessing stamina) | Possess the outlined prop under the crosshair |
 | B | Change blessing type (testing) | |
 | Hold left click | | Back to demon form |
 | T | First/third person | First/third person |
 | Tab | Switch to demon | Switch to angel |
 | Enter | Skip the hiding wait (testing) | |
 | R | Restart round | Restart round |
+| F1 | Movement tuning panel | Movement tuning panel |
 | Esc | Free the mouse (click to grab it again) | |
 
 ## Automated test
