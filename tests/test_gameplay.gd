@@ -50,6 +50,8 @@ func aim_at(player: CharacterBody3D, target: Node3D, aim_height: float) -> bool:
 
 func _run() -> void:
 	await frames(5)
+	main.start_practice()   # the game opens on the main menu
+	await frames(5)
 	var player = main.player
 
 	# ---- Angel round ----

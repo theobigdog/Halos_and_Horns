@@ -6,6 +6,8 @@ signal hit_confirmed   # one of our throws hit a demon
 signal threw(kind)     # we threw a blessed projectile of this kind
 signal form_changed    # we possessed a prop or returned to demon form
 signal taunted(taunt_name)
+signal launched(origin, velocity, kind)   # a throw left our hand (multiplayer forwards it)
+signal hit_taken(damage)                  # a counted hit on us as a demon (host decides)
 
 const PropLib = preload("res://scripts/prop_library.gd")
 const Projectile = preload("res://scripts/projectile.gd")
@@ -13,6 +15,7 @@ const Effects = preload("res://scripts/effects.gd")
 const Blessings = preload("res://scripts/blessings.gd")
 const Taunts = preload("res://scripts/taunts.gd")
 const Sfx = preload("res://scripts/sfx.gd")
+const Bodies = preload("res://scripts/bodies.gd")
 
 const ANGEL_SPEED := 6.0
 const DEMON_SPEED := 6.5
@@ -21,8 +24,7 @@ const PROJECTILE_SPEED := 40.0
 const POSSESS_REACH := 6.0        # how far past the camera a demon can possess
 const THIRD_PERSON_DISTANCE := 3.5
 const HOLD_TO_RETURN := 0.6       # seconds to hold left click to leave a prop
-const BODY_HEIGHT := 1.7          # angel height
-const DEMON_SCALE := 0.6          # demons are little gremlins: 60% of angel size
+const BODY_HEIGHT := Bodies.BODY_HEIGHT
 const SHOULDER_OFFSET := 0.7      # third-person camera sits over the right shoulder
 const OUTLINE_COLOR := Color(1.0, 0.35, 0.1)
 const RUN_MULTIPLIER := 1.6       # Shift
@@ -73,6 +75,8 @@ var throw_regen_multiplier := 1.0   # the future "quick regen" power-up raises t
 var sprint_stamina := SPRINT_MAX
 var hatred := 0.0
 var last_taunt := ""
+var input_enabled := true      # false while a menu is open
+var net_mode := ""            # "" offline/practice, "server" = host, "client" = joined someone
 var test_input := {}          # automated tests only: {"dir": Vector2, "sneak", "run", "jump": bool}
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
@@ -147,13 +151,9 @@ func _apply_form() -> void:
 		shape_node.shape = PropLib.make_shape(possessed_type)
 		_form_height = PropLib.height(possessed_type)
 	else:
-		visual_root.add_child(_make_body_visual())
-		var body_scale := _body_scale()
-		var capsule := CapsuleShape3D.new()
-		capsule.radius = 0.35 * body_scale
-		capsule.height = BODY_HEIGHT * body_scale
-		shape_node.shape = capsule
-		_form_height = BODY_HEIGHT * body_scale
+		visual_root.add_child(Bodies.make(role))
+		shape_node.shape = Bodies.make_shape(role)
+		_form_height = Bodies.height_for(role)
 	shape_node.position.y = _form_height / 2.0
 	_apply_camera()
 
@@ -173,66 +173,14 @@ func _apply_camera() -> void:
 		visual_root.visible = true
 
 
-func _body_scale() -> float:
-	return 1.0 if role == "angel" else DEMON_SCALE
-
-
 func toggle_view() -> void:
 	first_person[role] = not first_person[role]
 	_apply_camera()
 
 
-func _make_body_visual() -> Node3D:
-	var root := Node3D.new()
-	var body := MeshInstance3D.new()
-	var capsule := CapsuleMesh.new()
-	capsule.radius = 0.35
-	capsule.height = BODY_HEIGHT
-	body.mesh = capsule
-	body.position.y = BODY_HEIGHT / 2.0
-	root.add_child(body)
-	if role == "angel":
-		body.material_override = PropLib.mat(Color(0.95, 0.95, 1.0))
-		var halo := MeshInstance3D.new()
-		var torus := TorusMesh.new()
-		torus.inner_radius = 0.18
-		torus.outer_radius = 0.25
-		halo.mesh = torus
-		var gold := PropLib.mat(Color(1.0, 0.85, 0.3))
-		gold.emission_enabled = true
-		gold.emission = Color(1.0, 0.85, 0.3)
-		halo.material_override = gold
-		halo.position.y = 1.95
-		root.add_child(halo)
-	else:
-		body.material_override = PropLib.mat(Color(0.75, 0.12, 0.12))
-		for side in [-1.0, 1.0]:
-			var horn := MeshInstance3D.new()
-			var cone := CylinderMesh.new()
-			cone.top_radius = 0.0
-			cone.bottom_radius = 0.08
-			cone.height = 0.3
-			horn.mesh = cone
-			horn.material_override = PropLib.mat(Color(0.15, 0.1, 0.1))
-			horn.position = Vector3(0.17 * side, 1.75, 0.0)
-			horn.rotation.z = -0.35 * side
-			root.add_child(horn)
-			var eye := MeshInstance3D.new()
-			var sphere := SphereMesh.new()
-			sphere.radius = 0.06
-			sphere.height = 0.12
-			eye.mesh = sphere
-			var yellow := PropLib.mat(Color(1.0, 0.9, 0.1))
-			yellow.emission_enabled = true
-			yellow.emission = Color(1.0, 0.9, 0.1)
-			eye.material_override = yellow
-			eye.position = Vector3(0.12 * side, 1.45, -0.31)   # -Z is forward
-			root.add_child(eye)
-		root.scale = Vector3.ONE * DEMON_SCALE
-	return root
-
-
 func _unhandled_input(event: InputEvent) -> void:
+	if not input_enabled:
+		return
 	if event is InputEventMouseButton and event.pressed \
 			and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -286,7 +234,7 @@ func _physics_process(delta: float) -> void:
 		velocity.y -= g * delta
 		_fall_speed = maxf(_fall_speed, -velocity.y)
 
-	var controls_active := not frozen and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
+	var controls_active := input_enabled and not frozen and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	var input_dir := Vector2.ZERO
 	var want_run := false
 	var want_jump := false
@@ -436,11 +384,15 @@ func try_possess() -> bool:
 	var hit := _aim_ray(spring.spring_length + POSSESS_REACH)
 	if hit.is_empty() or not hit["collider"].is_in_group("prop"):
 		return false
-	possessed_type = hit["collider"].get_meta("prop_type")
+	force_possess(hit["collider"].get_meta("prop_type"))
+	return true
+
+
+func force_possess(type_name: String) -> void:
+	possessed_type = type_name
 	_apply_form()
 	Effects.puff(get_parent(), global_position + Vector3.UP * 0.5, Color(0.8, 0.1, 0.1, 0.8))
 	form_changed.emit()
-	return true
 
 
 func unpossess() -> void:
@@ -454,6 +406,15 @@ func unpossess() -> void:
 
 func confirm_hit() -> void:
 	hit_confirmed.emit()
+
+
+# Called by a projectile that hit us. Only the host's projectiles are real, so this
+# only ever runs on the host. Returns whether the hit counted (only demons get hurt).
+func take_hit(damage: int) -> bool:
+	if role != "demon" or net_mode == "":
+		return false
+	hit_taken.emit(damage)
+	return true
 
 
 # 1 = a random taunt (never the signature), 2 = your signature taunt.
@@ -484,6 +445,7 @@ func try_throw() -> bool:
 func _shoot() -> void:
 	var p := Projectile.new()
 	p.color = Blessings.color(blessing)   # before add_child: its glow is built on entering the world
+	p.visual_only = net_mode == "client"  # joined players only show throws; the host decides hits
 	get_parent().add_child(p)
 	var forward := -camera.global_transform.basis.z
 	# In third person, start the throw at the angel's hand height, not back at the camera.
@@ -500,6 +462,7 @@ func _shoot() -> void:
 	p.shooter = self
 	_throw_cooldown = THROW_COOLDOWN
 	threw.emit(blessing)
+	launched.emit(start, p.velocity, blessing)
 
 
 func cycle_blessing() -> void:

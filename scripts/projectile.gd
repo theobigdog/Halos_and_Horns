@@ -1,5 +1,7 @@
-# An angel's thrown ball of holy light. Arcs slightly with gravity.
+# An angel's thrown blessing. Arcs slightly with gravity.
 # Uses a ray each physics frame so fast shots can't pass through thin props.
+# Online, only the host's copy can hurt anyone (the server decides every hit);
+# everyone else's copy is visual_only, so a hacked client can't fake hits.
 extends Node3D
 
 const Effects = preload("res://scripts/effects.gd")
@@ -10,6 +12,7 @@ const LIFETIME := 3.0
 var color := Color(1.0, 0.9, 0.4)   # set by the thrower from its blessing type
 var velocity := Vector3.ZERO
 var shooter: CollisionObject3D
+var visual_only := false
 var _life := LIFETIME
 
 
@@ -45,8 +48,8 @@ func _physics_process(delta: float) -> void:
 		return
 	var collider: Object = hit["collider"]
 	var hit_demon := false
-	if collider and collider.has_method("take_hit"):
-		collider.take_hit(DAMAGE)
+	# take_hit returns true only if the hit counted (a demon, not a fellow angel).
+	if not visual_only and collider and collider.has_method("take_hit") and collider.take_hit(DAMAGE):
 		hit_demon = true
 		if is_instance_valid(shooter) and shooter.has_method("confirm_hit"):
 			shooter.confirm_hit()

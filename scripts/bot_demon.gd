@@ -66,9 +66,9 @@ func _process(delta: float) -> void:
 		tw.tween_property(visual, "position:y", 0.0, 0.15)
 
 
-func take_hit(damage: int) -> void:
+func take_hit(damage: int) -> bool:
 	if health <= 0:
-		return
+		return false
 	health -= damage
 	# Squash so the angel gets feedback that this one is a demon.
 	var tw := create_tween()
@@ -78,3 +78,4 @@ func take_hit(damage: int) -> void:
 		Effects.puff(get_parent(), global_position + Vector3.UP * 0.5, Color(0.8, 0.1, 0.1, 0.9), 1.6)
 		caught.emit(self)
 		queue_free()
+	return true

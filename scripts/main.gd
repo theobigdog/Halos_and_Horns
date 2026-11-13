@@ -1,6 +1,7 @@
-# Phase 1 prototype: one small test map, single player.
-#   Angel side: 30s hiding period, then find and catch 3 bot demons in 3 minutes.
-#   Demon side: a sandbox to practice possessing props (no angel AI yet).
+# Halos & Horns: menu, the test map, the HUD, practice mode, and the screens
+# around online play (online rules themselves live in net_game.gd).
+#   Practice: single player. Angel side hunts 3 test demons; demon side is a sandbox.
+#   Online: one player hosts, friends join by address. Mobification rules.
 extends Node3D
 
 const PropLib = preload("res://scripts/prop_library.gd")
@@ -9,7 +10,11 @@ const BotDemon = preload("res://scripts/bot_demon.gd")
 const Sfx = preload("res://scripts/sfx.gd")
 const Blessings = preload("res://scripts/blessings.gd")
 const Taunts = preload("res://scripts/taunts.gd")
+const NetGame = preload("res://scripts/net_game.gd")
+const Effects = preload("res://scripts/effects.gd")
+const Autobot = preload("res://scripts/autobot.gd")
 
+const GAME_VERSION := "0.2 (first multiplayer test)"
 const HIDE_TIME := 30.0
 const HUNT_TIME := 180.0
 const BOT_COUNT := 3
@@ -17,34 +22,56 @@ const PROP_COUNT := 45
 const MAP_HALF := 28.0
 const ANGEL_SPAWN := Vector3(0, 0.1, -24)
 const DEMON_SPAWN := Vector3(0, 0.1, 0)
+const SETTINGS_PATH := "user://settings.cfg"
 
-enum State { HIDING, HUNTING, ENDED }
+enum State { LOBBY, HIDING, HUNTING, ENDED }
 
-var state: State = State.HIDING
+var mode := "menu"           # menu, practice, online
+var state: State = State.LOBBY
 var time_left := 0.0
-var role := "angel"          # start on the side that has a full round to play
-var bots_left := 0
+var role := "angel"          # practice starts on the side that has a full round to play
+var bots_left := 0           # demons left (test demons in practice, players online)
+var my_health := 0           # online demons: shown in the HUD
 var player: Player
+var net: Node = null
+var autobot: Node = null
 var round_root: Node3D
 var rng := RandomNumberGenerator.new()
 var structures: Array = []   # each: [Vector2 center, float keep-clear radius]
 var used_spots: Array = []
+var lobby_names: Array = []
 
 var status_label: Label
 var hint_label: Label
 var controls_label: Label
 var center_label: Label
 var blind_rect: ColorRect
+var hurt_rect: ColorRect
 var crosshair: Label
 var _toast_time := 0.0
 var _hitmarker_time := 0.0
+var _hurt_time := 0.0
 var _sounds := {}             # name -> AudioStreamPlayer
 var bar_fills := {}           # HUD stamina bars: name -> [fill ColorRect, Label]
 var taunt_label: Label
 var hud_layer: CanvasLayer
 var _taunt_label_time := 0.0
 var tuning_panel: PanelContainer
-var _tuning_rows := {}        # tuning key -> [HSlider, Label]
+var _tuning_rows := {}        # tuning key -> [HSlider, Label, title]
+var _tuning_defaults := {}
+
+var menu_panel: PanelContainer
+var name_edit: LineEdit
+var address_edit: LineEdit
+var port_edit: LineEdit
+var menu_status: Label
+var pause_panel: PanelContainer
+var lobby_panel: PanelContainer
+var lobby_players: Label
+var lobby_info: Label
+var lobby_start: Button
+var _public_ip := ""
+var _settings := ConfigFile.new()
 
 # F1 tuning panel: [key, label, min, max, step]
 const TUNING_SLIDERS := [
@@ -72,9 +99,15 @@ func _ready() -> void:
 	player.form_changed.connect(func(): _play("possess"))
 	player.hit_confirmed.connect(_on_hit_confirmed)
 	player.taunted.connect(_on_taunted)
+	player.launched.connect(_on_player_launched)
+	player.hit_taken.connect(_on_player_hit_taken)
 	_build_tuning_panel()
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	start_round()
+	_build_menu()
+	_build_pause_menu()
+	_build_lobby()
+	_load_settings()
+	_show_menu("")
+	_handle_command_line()
 
 
 # ---------- input ----------
@@ -111,18 +144,31 @@ func _setup_input() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if mode == "menu":
+		return
 	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	elif event.is_action_pressed("restart"):
-		start_round()
-	elif event.is_action_pressed("switch_role"):
-		role = "demon" if role == "angel" else "angel"
-		start_round()
-	elif event.is_action_pressed("skip_hiding") and state == State.HIDING:
-		time_left = 0.0
+		pause_panel.visible = not pause_panel.visible
+		_refresh_mouse()
 	elif event.is_action_pressed("toggle_tuning"):
 		tuning_panel.visible = not tuning_panel.visible
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if tuning_panel.visible else Input.MOUSE_MODE_CAPTURED
+		_refresh_mouse()
+	elif mode == "practice":
+		if event.is_action_pressed("restart"):
+			start_round()
+		elif event.is_action_pressed("switch_role"):
+			role = "demon" if role == "angel" else "angel"
+			start_round()
+		elif event.is_action_pressed("skip_hiding") and state == State.HIDING:
+			time_left = 0.0
+
+
+# The mouse is free whenever a menu or panel is open; otherwise it steers.
+func _refresh_mouse() -> void:
+	var ui_open := menu_panel.visible or pause_panel.visible or tuning_panel.visible \
+			or lobby_panel.visible
+	player.input_enabled = not ui_open
+	if DisplayServer.get_name() != "headless":
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui_open else Input.MOUSE_MODE_CAPTURED
 
 
 # ---------- world ----------
@@ -220,6 +266,28 @@ func _spawn_prop(type_name: String, pos: Vector3) -> void:
 	round_root.add_child(body)
 
 
+# Fresh props for a round. The same seed gives the same layout on every computer,
+# which is how everyone in an online match sees an identical map.
+func _reset_round_props(seed_value: int) -> void:
+	if round_root:
+		round_root.free()
+	round_root = Node3D.new()
+	add_child(round_root)
+	used_spots.clear()
+	rng.seed = seed_value
+	var types := PropLib.type_names()
+	for i in PROP_COUNT:
+		_spawn_prop(types[rng.randi() % types.size()], _random_spot())
+
+
+# Spread players out around a spawn point so they don't stack.
+func spawn_point(for_role: String, index: int) -> Vector3:
+	var base := ANGEL_SPAWN if for_role == "angel" else DEMON_SPAWN
+	var offsets := [Vector3.ZERO, Vector3(1.5, 0, 0), Vector3(-1.5, 0, 0), Vector3(0, 0, 1.5),
+			Vector3(0, 0, -1.5), Vector3(1.5, 0, 1.5), Vector3(-1.5, 0, 1.5), Vector3(1.5, 0, -1.5)]
+	return base + offsets[index % offsets.size()]
+
+
 func _spawn_bot(type_name: String, pos: Vector3) -> void:
 	var bot := BotDemon.new()
 	bot.setup(type_name)
@@ -229,17 +297,234 @@ func _spawn_bot(type_name: String, pos: Vector3) -> void:
 	round_root.add_child(bot)
 
 
-# ---------- rounds ----------
+# ---------- menus ----------
 
-func start_round() -> void:
+func _panel(min_width: float) -> Array:
+	var panel := PanelContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	hud_layer.add_child(panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 18)
+	panel.add_child(margin)
+	var box := VBoxContainer.new()
+	box.custom_minimum_size.x = min_width
+	box.add_theme_constant_override("separation", 10)
+	margin.add_child(box)
+	return [panel, box]
+
+
+func _button(parent: Control, text: String, action: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size.y = 40
+	b.pressed.connect(action)
+	parent.add_child(b)
+	return b
+
+
+func _field(parent: Control, label_text: String, placeholder: String) -> LineEdit:
+	var lbl := Label.new()
+	lbl.text = label_text
+	parent.add_child(lbl)
+	var e := LineEdit.new()
+	e.placeholder_text = placeholder
+	parent.add_child(e)
+	return e
+
+
+func _build_menu() -> void:
+	var parts := _panel(420)
+	menu_panel = parts[0]
+	var box: VBoxContainer = parts[1]
+	var title := Label.new()
+	title.text = "HALOS & HORNS"
+	title.add_theme_font_size_override("font_size", 40)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(title)
+	var version := Label.new()
+	version.text = "version " + GAME_VERSION
+	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(version)
+	name_edit = _field(box, "Your name", "Name")
+	_button(box, "Practice (single player)", start_practice)
+	box.add_child(HSeparator.new())
+	port_edit = _field(box, "Port", str(NetGame.DEFAULT_PORT))
+	_button(box, "Host a game", _on_host_pressed)
+	address_edit = _field(box, "Host's address (to join)", "e.g. 203.0.113.5")
+	_button(box, "Join a game", _on_join_pressed)
+	box.add_child(HSeparator.new())
+	_button(box, "Quit", func(): get_tree().quit())
+	menu_status = Label.new()
+	menu_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	menu_status.add_theme_color_override("font_color", Color(1.0, 0.7, 0.5))
+	box.add_child(menu_status)
+
+
+func _build_pause_menu() -> void:
+	var parts := _panel(300)
+	pause_panel = parts[0]
+	var box: VBoxContainer = parts[1]
+	var title := Label.new()
+	title.text = "Paused (the game keeps running)"
+	box.add_child(title)
+	_button(box, "Resume", func():
+		pause_panel.visible = false
+		_refresh_mouse())
+	_button(box, "Leave to main menu", func(): _show_menu(""))
+	pause_panel.visible = false
+
+
+func _build_lobby() -> void:
+	var parts := _panel(460)
+	lobby_panel = parts[0]
+	var box: VBoxContainer = parts[1]
+	var title := Label.new()
+	title.text = "Lobby"
+	title.add_theme_font_size_override("font_size", 30)
+	box.add_child(title)
+	lobby_players = Label.new()
+	box.add_child(lobby_players)
+	lobby_info = Label.new()
+	lobby_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(lobby_info)
+	lobby_start = _button(box, "Start round", func():
+		if net:
+			net.start_round())
+	_button(box, "Leave", func(): _show_menu(""))
+	lobby_panel.visible = false
+
+
+func _load_settings() -> void:
+	_settings.load(SETTINGS_PATH)
+	name_edit.text = _settings.get_value("player", "name", "")
+	address_edit.text = _settings.get_value("net", "address", "")
+	port_edit.text = str(_settings.get_value("net", "port", NetGame.DEFAULT_PORT))
+
+
+func _save_settings() -> void:
+	_settings.set_value("player", "name", name_edit.text)
+	_settings.set_value("net", "address", address_edit.text)
+	_settings.set_value("net", "port", int(port_edit.text) if port_edit.text.is_valid_int() else NetGame.DEFAULT_PORT)
+	_settings.save(SETTINGS_PATH)
+
+
+func _show_menu(message: String) -> void:
+	if net:
+		net.leave()
+		net.name = "NetOld"
+		net.queue_free()
+		net = null
+	mode = "menu"
+	state = State.LOBBY
+	player.net_mode = ""
+	player.frozen = true
+	player.set_role("demon")
+	player.velocity = Vector3.ZERO
+	player.global_position = Vector3(0, 0.1, 22)   # a nice view of the map behind the menu
+	player.rotation.y = 0.0
+	player.visual_root.visible = false             # don't stand in front of the menu
 	if round_root:
 		round_root.free()
-	round_root = Node3D.new()
-	add_child(round_root)
-	used_spots.clear()
+		round_root = null
+	menu_status.text = message
+	menu_panel.visible = true
+	pause_panel.visible = false
+	lobby_panel.visible = false
+	tuning_panel.visible = false
+	blind_rect.visible = false
+	center_label.text = ""
+	_refresh_mouse()
+
+
+func _hide_menus() -> void:
+	menu_panel.visible = false
+	pause_panel.visible = false
+	lobby_panel.visible = false
+	_refresh_mouse()
+
+
+func _port() -> int:
+	return int(port_edit.text) if port_edit.text.is_valid_int() else NetGame.DEFAULT_PORT
+
+
+func _make_net() -> void:
+	net = NetGame.new()
+	net.name = "Net"     # must be the same path on every computer
+	net.main = self
+	add_child(net)
+
+
+func _on_host_pressed() -> void:
+	_save_settings()
+	_make_net()
+	var err: Error = net.host(_port(), name_edit.text)
+	if err != OK:
+		_show_menu("Couldn't host on port %d (error %d). Is another copy already hosting?" % [_port(), err])
+		return
+	mode = "online"
+	player.net_mode = "server"
+	_hide_menus()
+	_fetch_public_ip()
+	online_lobby(lobby_names, "lobby")
+
+
+func _on_join_pressed() -> void:
+	var address := address_edit.text.strip_edges()
+	if address == "":
+		menu_status.text = "Type the host's address first."
+		return
+	_save_settings()
+	_make_net()
+	var err: Error = net.join(address, _port(), name_edit.text)
+	if err != OK:
+		_show_menu("Couldn't start connecting (error %d)." % err)
+		return
+	mode = "online"
+	player.net_mode = "client"
+	_hide_menus()
+	lobby_players.text = "Connecting to %s..." % address
+	lobby_info.text = ""
+	lobby_start.visible = false
+	lobby_panel.visible = true
+	_refresh_mouse()
+
+
+# The host's internet address, to share with friends (asks a free lookup service).
+func _fetch_public_ip() -> void:
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(result, code, _headers, body):
+		if result == HTTPRequest.RESULT_SUCCESS and code == 200:
+			_public_ip = body.get_string_from_utf8().strip_edges()
+			if net and lobby_panel.visible:
+				online_lobby(lobby_names, "lobby")
+		req.queue_free())
+	req.request("https://api.ipify.org")
+
+
+func _local_ips() -> Array:
+	var ips := []
+	for ip in IP.get_local_addresses():
+		if ip.count(".") == 3 and not ip.begins_with("127.") and not ip.begins_with("169.254."):
+			ips.append(ip)
+	return ips
+
+
+# ---------- practice rounds ----------
+
+func start_practice() -> void:
+	_hide_menus()
+	mode = "practice"
+	player.net_mode = ""
+	start_round()
+
+
+func start_round() -> void:
+	_reset_round_props(randi())
 	var types := PropLib.type_names()
-	for i in PROP_COUNT:
-		_spawn_prop(types[rng.randi() % types.size()], _random_spot())
 	bots_left = 0
 	if role == "angel":
 		for i in BOT_COUNT:
@@ -254,12 +539,20 @@ func start_round() -> void:
 	state = State.HIDING
 	time_left = HIDE_TIME
 	blind_rect.visible = role == "angel"
+	controls_label.text = _controls_text()
 	if role == "angel":
-		controls_label.text = "WASD move   Shift run   Ctrl sneak   Space jump   1 / 2 taunt\nLeft click throw   B change blessing (testing)   T first/third person   Tab switch to demon   R restart   F1 movement tuning   Esc free mouse"
 		_toast("The demons are hiding...\n(Enter to skip the wait while testing)", HIDE_TIME)
 	else:
-		controls_label.text = "WASD move   Shift run   Ctrl sneak   Space jump   1 / 2 taunt\nClick a prop to possess it   Hold click to return to demon form   T first/third person   Tab switch to angel   R restart   F1 movement tuning   Esc free mouse"
-		_toast("Demon sandbox: practice possessing props.\nNo angel AI yet - that comes with multiplayer.", 5.0)
+		_toast("Demon sandbox: practice possessing props.\nTry Host / Join for real hunting.", 5.0)
+
+
+func _controls_text() -> String:
+	var common := "WASD move   Shift run   Ctrl sneak   Space jump   1 / 2 taunt   T first/third person"
+	var side := "Left click throw   B change blessing (testing)" if role == "angel" \
+			else "Click a prop to possess it   Hold click to return to demon form"
+	if mode == "practice":
+		return common + "\n" + side + "   Tab switch side   R restart   F1 movement tuning   Esc menu"
+	return common + "\n" + side + "   F1 movement tuning   Esc menu"
 
 
 func _start_hunting() -> void:
@@ -288,14 +581,189 @@ func _on_bot_caught(_bot) -> void:
 
 
 func _process(delta: float) -> void:
-	if state != State.ENDED:
+	if mode == "practice" and state != State.ENDED:
 		time_left -= delta
 		if time_left <= 0.0:
 			if state == State.HIDING:
 				_start_hunting()
 			else:
 				_end_round("Time's up! The demons win." if role == "angel" else "Time's up! You survived!")
+	elif mode == "online":
+		time_left = maxf(time_left - delta, 0.0)   # the host decides when phases change
 	_update_hud(delta)
+
+
+# ---------- online (called by net_game.gd) ----------
+
+func in_online_round() -> bool:
+	return mode == "online" and (state == State.HIDING or state == State.HUNTING)
+
+
+func _phase_to_state(phase: String) -> State:
+	match phase:
+		"hiding":
+			return State.HIDING
+		"hunting":
+			return State.HUNTING
+		"ended":
+			return State.ENDED
+	return State.LOBBY
+
+
+func online_lobby(names: Array, host_phase: String) -> void:
+	lobby_names = names
+	if state != State.LOBBY:
+		return   # mid-round: the list updates, the panel stays hidden
+	lobby_players.text = "Players (%d):\n  %s" % [names.size(), "\n  ".join(names)]
+	var is_host: bool = net != null and net.is_host
+	lobby_start.visible = is_host
+	if is_host:
+		lobby_start.disabled = names.size() < 2
+		lobby_start.text = "Start round" if names.size() >= 2 else "Start round (need at least 2 players)"
+		var lines := ["Friends join with your address and port %d:" % _port()]
+		if _public_ip != "":
+			lines.append("  Over the internet: %s  (needs the port forwarded on your router)" % _public_ip)
+		var lan := _local_ips()
+		if not lan.is_empty():
+			lines.append("  Same house / same Wi-Fi: %s" % ", ".join(lan))
+		lobby_info.text = "\n".join(lines)
+	elif host_phase == "lobby":
+		lobby_info.text = "Waiting for the host to start the round..."
+	else:
+		lobby_info.text = "A round is in progress. You'll join it as an angel in a moment..."
+	lobby_panel.visible = true
+	_refresh_mouse()
+
+
+func online_round_start(seed_value: int, new_role: String, pos: Vector3, phase: String, seconds: float) -> void:
+	_reset_round_props(seed_value)
+	role = new_role
+	my_health = NetGame.DEMON_HEALTH
+	player.set_role(new_role)
+	player.velocity = Vector3.ZERO
+	player.global_position = pos
+	player.rotation.y = PI if new_role == "angel" else 0.0
+	state = _phase_to_state(phase)
+	time_left = seconds
+	player.frozen = new_role == "angel" and state == State.HIDING
+	blind_rect.visible = player.frozen
+	controls_label.text = _controls_text()
+	lobby_panel.visible = false
+	pause_panel.visible = false
+	_refresh_mouse()
+	if new_role == "angel":
+		_toast("You're an ANGEL.\nThe demons are hiding..." if state == State.HIDING else "You're an ANGEL. Find the demons!", 4.0)
+	else:
+		_toast("You're a DEMON! Hide!\nClick a prop to possess it.", 4.0)
+
+
+func online_phase(phase: String, seconds: float) -> void:
+	state = _phase_to_state(phase)
+	time_left = seconds
+	if state == State.HUNTING:
+		player.frozen = false
+		blind_rect.visible = false
+		_toast("The hunt is on!" if role == "demon" else "Go find them!", 2.5)
+
+
+func online_count(n: int) -> void:
+	bots_left = n
+
+
+func online_you_hit(health: int) -> void:
+	my_health = health
+	_hurt_time = 0.25
+
+
+func online_you_were_caught(pos: Vector3) -> void:
+	role = "angel"
+	player.set_role("angel")
+	player.velocity = Vector3.ZERO
+	player.global_position = pos
+	player.rotation.y = PI
+	player.frozen = false
+	controls_label.text = _controls_text()
+	_toast("You were caught and REDEEMED!\nNow you're an angel. Hunt your old friends!", 4.0)
+
+
+func online_caught_fx(pos: Vector3) -> void:
+	_play("caught")
+	Effects.puff(self, pos + Vector3.UP * 0.5, Color(0.8, 0.1, 0.1, 0.9), 1.6)
+	if role == "angel" and bots_left > 0:
+		_toast("A demon was redeemed! %d left" % bots_left, 2.0)
+
+
+func online_round_end(message: String) -> void:
+	state = State.ENDED
+	player.frozen = true
+	_toast(message + "\nBack to the lobby in a few seconds...", 9999.0)
+
+
+func online_back_to_lobby() -> void:
+	state = State.LOBBY
+	center_label.text = ""
+	blind_rect.visible = false
+	if round_root:
+		round_root.free()
+		round_root = null
+	player.frozen = true
+	online_lobby(lobby_names, "lobby")
+
+
+func online_correct(pos: Vector3) -> void:
+	player.global_position = pos
+	player.velocity = Vector3.ZERO
+
+
+func online_disconnected(message: String) -> void:
+	_show_menu(message)
+
+
+func _on_player_launched(origin: Vector3, velocity: Vector3, kind: String) -> void:
+	if net:
+		net.on_local_launched(origin, velocity, kind)
+
+
+func _on_player_hit_taken(damage: int) -> void:
+	if net and net.is_host:
+		net.damage_player(1, damage)
+
+
+# ---------- command line (automated testing) ----------
+# e.g.  godot -- --host --name=Ted --autostart=3 --hide=5
+#       godot -- --join=127.0.0.1 --name=Bot --autobot
+
+func _handle_command_line() -> void:
+	var args := {}
+	for a in OS.get_cmdline_user_args():
+		var kv: PackedStringArray = a.trim_prefix("--").split("=", true, 1)
+		args[kv[0]] = kv[1] if kv.size() > 1 else "true"
+	if args.is_empty():
+		return
+	if args.has("name"):
+		name_edit.text = args["name"]
+	if args.has("port"):
+		port_edit.text = args["port"]
+	if args.has("autobot"):
+		autobot = Autobot.new()
+		autobot.main = self
+		autobot.options = args
+		add_child(autobot)
+	if args.has("practice"):
+		start_practice()
+	elif args.has("host"):
+		_on_host_pressed()
+		if net and args.has("hide"):
+			net.hide_time = float(args["hide"])
+		if net and args.has("hunt"):
+			net.hunt_time = float(args["hunt"])
+		if net and args.has("roles"):   # e.g. --roles=Theo:demon,Wife:angel
+			for pair in args["roles"].split(","):
+				var kv: PackedStringArray = pair.split(":")
+				net.forced_roles[kv[0]] = kv[1]
+	elif args.has("join"):
+		address_edit.text = args["join"]
+		_on_join_pressed()
 
 
 # ---------- HUD ----------
@@ -319,6 +787,12 @@ func _build_hud() -> void:
 	blind_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	blind_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(blind_rect)
+
+	hurt_rect = ColorRect.new()
+	hurt_rect.color = Color(0.9, 0.05, 0.05, 0.0)
+	hurt_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	hurt_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(hurt_rect)
 
 	status_label = _make_label(30)
 	status_label.set_anchors_preset(Control.PRESET_CENTER_TOP)
@@ -420,7 +894,7 @@ func _build_tuning_panel() -> void:
 	box.custom_minimum_size.x = 340
 	tuning_panel.add_child(box)
 	var title := Label.new()
-	title.text = "Movement tuning (F1 to close)\nApplies to both teams for now"
+	title.text = "Movement tuning (F1 to close)\nApplies to both teams, only on your computer"
 	box.add_child(title)
 	for row in TUNING_SLIDERS:
 		var key: String = row[0]
@@ -439,9 +913,6 @@ func _build_tuning_panel() -> void:
 	reset.text = "Reset to defaults"
 	reset.pressed.connect(_reset_tuning)
 	box.add_child(reset)
-
-
-var _tuning_defaults := {}
 
 
 func _on_tuning_changed(key: String, value: float) -> void:
@@ -493,6 +964,8 @@ func _on_hit_confirmed() -> void:
 func _on_taunted(taunt_name: String) -> void:
 	taunt_label.text = "\"%s\"" % Taunts.label(taunt_name)
 	_taunt_label_time = 1.5
+	if net:
+		net.on_local_taunt(taunt_name)
 
 
 func _toast(text: String, seconds: float) -> void:
@@ -504,6 +977,11 @@ func _update_hud(delta: float) -> void:
 	_toast_time -= delta
 	if _toast_time <= 0.0:
 		center_label.text = ""
+	var in_game := mode != "menu" and state != State.LOBBY
+	status_label.visible = in_game
+	crosshair.visible = in_game
+	controls_label.visible = in_game
+	bar_fills["sprint"][0].get_parent().get_parent().get_parent().visible = in_game
 	var t := maxi(int(ceil(time_left)), 0)
 	var clock := "%d:%02d" % [t / 60, t % 60]
 	var phase := "Hiding" if state == State.HIDING else ("Hunting" if state == State.HUNTING else "Round over")
@@ -511,7 +989,13 @@ func _update_hud(delta: float) -> void:
 	var text := "%s   |   %s  %s" % [side, phase, clock if state != State.ENDED else ""]
 	if role == "angel":
 		text += "   |   Demons left: %d   |   %s" % [bots_left, Blessings.label(player.blessing)]
+	elif mode == "online":
+		text += "   |   Health: %d" % maxi(my_health, 0)
 	status_label.text = text
+
+	_hurt_time -= delta
+	hurt_rect.color.a = clampf(_hurt_time, 0.0, 0.25) * 1.4
+
 	_hitmarker_time -= delta
 	if _hitmarker_time > 0.0:
 		crosshair.text = "X"
@@ -538,7 +1022,7 @@ func _update_hud(delta: float) -> void:
 	if player.hold_fraction > 0.0:
 		var filled := int(round(player.hold_fraction * 10))
 		hint_label.text = "Returning to demon form  " + "|".repeat(filled) + ".".repeat(10 - filled)
-	elif role == "demon" and player.look_target_type != "":
+	elif role == "demon" and player.look_target_type != "" and in_game:
 		hint_label.text = "Click: possess %s" % PropLib.label(player.look_target_type)
 	else:
 		hint_label.text = ""
