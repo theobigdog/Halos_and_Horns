@@ -15,9 +15,24 @@ One small test map, placeholder shapes for everything.
 Download `HalosAndHorns.exe` from the [Releases page](https://github.com/theobigdog/halos_and_horns/releases) and run it. Nothing to install.
 Windows may warn "Windows protected your PC" because the game isn't signed; click **More info**, then **Run anyway**.
 
+## Playing (Linux)
+
+Download `HalosAndHorns.x86_64` from the [Releases page](https://github.com/theobigdog/halos_and_horns/releases). Nothing to install, but Linux needs to be told the file is a program before it will run it:
+
+```
+chmod +x HalosAndHorns.x86_64
+./HalosAndHorns.x86_64
+```
+
+(Or in your file manager: right-click the file → Properties → Permissions → allow executing, then double-click it.)
+
+Windows and Linux players can play together.
+
+## Hosting and joining
+
 **Hosting:** click **Host a game**. The lobby shows the addresses friends should use. Click **Start round** once at least 2 players are in.
 - Friends on the same Wi-Fi use the "same house" address. That needs no setup.
-- Friends over the internet use your internet address, which needs **UDP port 7777 forwarded** on your router to your PC. Windows will also ask to allow the game through the firewall: allow it.
+- Friends over the internet use your internet address, which needs **UDP port 7777 forwarded** on your router to your PC. Windows will also ask to allow the game through the firewall: allow it. On Linux, if you run a firewall, allow UDP port 7777 yourself.
 
 **Joining:** type the host's address, click **Join a game**. Everyone needs the same version.
 
@@ -25,7 +40,9 @@ Windows may warn "Windows protected your PC" because the game isn't signed; clic
 
 1. Download **Godot 4.3** (standard, *not* .NET): https://godotengine.org/download/archive/4.3-stable/
 2. Open Godot, click **Import**, pick `project.godot`, press **F5**.
-3. To build the .exe yourself: Editor → Manage Export Templates → Download, then Project → Export → Windows.
+3. To build the game yourself: Editor → Manage Export Templates → Download, then Project → Export → Windows or Linux. Either one can be built from either operating system.
+
+The Linux build is also made automatically: publishing a release on GitHub runs [the Linux build workflow](.github/workflows/linux-build.yml), which attaches `HalosAndHorns.x86_64` to that release a few minutes later.
 
 ## Controls
 
