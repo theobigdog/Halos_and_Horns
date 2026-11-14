@@ -133,7 +133,7 @@ func _run() -> void:
 				if m is MeshInstance3D and m.material_overlay != null:
 					outlined = true
 	check(outlined, "hovered prop is outlined")
-	var ok: bool = player.try_possess()
+	var ok: bool = player.try_transform()
 	check(ok and player.possessed_type == prop.get_meta("prop_type"),
 			"demon possessed a %s" % prop.get_meta("prop_type"))
 	await frames(30)
@@ -241,6 +241,7 @@ func _run() -> void:
 	check(player.sprint_stamina > 10.0, "sprint stamina refills after resting (%.0f)" % player.sprint_stamina)
 
 	# ---- Hatred ----
+	player.hatred = 40.0   # demons start full; spend some first
 	var hatred_before: float = player.hatred
 	await frames(60)
 	check(player.hatred > hatred_before, "demon Hatred fills over time")

@@ -7,20 +7,23 @@ extends Node3D
 const Effects = preload("res://scripts/effects.gd")
 
 const DAMAGE := 25
-const GRAVITY := 4.0
 const LIFETIME := 3.0
 var color := Color(1.0, 0.9, 0.4)   # set by the thrower from its blessing type
 var velocity := Vector3.ZERO
 var shooter: CollisionObject3D
 var visual_only := false
+var damage := DAMAGE
+var gravity := 4.0
+var size := 0.12
+var on_impact: Callable          # called with the hit position (vacuum orb); host/practice only
 var _life := LIFETIME
 
 
 func _ready() -> void:
 	var mi := MeshInstance3D.new()
 	var s := SphereMesh.new()
-	s.radius = 0.12
-	s.height = 0.24
+	s.radius = size
+	s.height = size * 2.0
 	mi.mesh = s
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
@@ -36,7 +39,7 @@ func _physics_process(delta: float) -> void:
 	if _life <= 0.0:
 		queue_free()
 		return
-	velocity.y -= GRAVITY * delta
+	velocity.y -= gravity * delta
 	var from := global_position
 	var to := from + velocity * delta
 	var query := PhysicsRayQueryParameters3D.create(from, to)
@@ -49,7 +52,9 @@ func _physics_process(delta: float) -> void:
 	var collider: Object = hit["collider"]
 	var hit_demon := false
 	# take_hit returns true only if the hit counted (a demon, not a fellow angel).
-	if not visual_only and collider and collider.has_method("take_hit") and collider.take_hit(DAMAGE):
+	if not visual_only and on_impact.is_valid():
+		on_impact.call(hit["position"])
+	if not visual_only and damage > 0 and collider and collider.has_method("take_hit") and collider.take_hit(damage):
 		hit_demon = true
 		if is_instance_valid(shooter) and shooter.has_method("confirm_hit"):
 			shooter.confirm_hit()

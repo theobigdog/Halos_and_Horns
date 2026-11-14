@@ -4,16 +4,30 @@
 extends RefCounted
 
 # shape: "box" uses size, "cylinder" uses radius + height (collision only)
+# hp / speed: a demon disguised as this prop. Small = fragile but quick,
+# big = tanky but slow. First guesses, to be tuned in playtests.
 const TYPES := {
-	"barrel": {"shape": "cylinder", "radius": 0.45, "height": 1.0, "label": "Barrel"},
-	"crate": {"shape": "box", "size": Vector3(0.9, 0.9, 0.9), "label": "Crate"},
-	"lamp": {"shape": "cylinder", "radius": 0.3, "height": 1.75, "label": "Lamp"},
-	"pumpkin": {"shape": "cylinder", "radius": 0.4, "height": 0.66, "label": "Pumpkin"},
-	"pot": {"shape": "cylinder", "radius": 0.35, "height": 0.6, "label": "Pot"},
-	"bench": {"shape": "box", "size": Vector3(1.6, 0.5, 0.5), "label": "Bench"},
-	"books": {"shape": "box", "size": Vector3(0.45, 0.35, 0.3), "label": "Stack of books"},
-	"hay": {"shape": "box", "size": Vector3(1.2, 0.8, 0.8), "label": "Hay bale"},
+	"barrel": {"shape": "cylinder", "radius": 0.45, "height": 1.0, "label": "Barrel", "hp": 120, "speed": 5.0},
+	"crate": {"shape": "box", "size": Vector3(0.9, 0.9, 0.9), "label": "Crate", "hp": 110, "speed": 5.5},
+	"lamp": {"shape": "cylinder", "radius": 0.3, "height": 1.75, "label": "Lamp", "hp": 80, "speed": 5.5},
+	"pumpkin": {"shape": "cylinder", "radius": 0.4, "height": 0.66, "label": "Pumpkin", "hp": 70, "speed": 6.5},
+	"pot": {"shape": "cylinder", "radius": 0.35, "height": 0.6, "label": "Pot", "hp": 60, "speed": 7.0},
+	"bench": {"shape": "box", "size": Vector3(1.6, 0.5, 0.5), "label": "Bench", "hp": 120, "speed": 5.0},
+	"books": {"shape": "box", "size": Vector3(0.45, 0.35, 0.3), "label": "Stack of books", "hp": 50, "speed": 7.5},
+	"hay": {"shape": "box", "size": Vector3(1.2, 0.8, 0.8), "label": "Hay bale", "hp": 150, "speed": 4.5},
 }
+
+const DEMON_FORM_HP := 100
+const DEMON_FORM_SPEED := 6.5
+
+
+# Max health for a demon in this form ("" = demon form).
+static func max_hp(type_name: String) -> int:
+	return TYPES[type_name]["hp"] if TYPES.has(type_name) else DEMON_FORM_HP
+
+
+static func speed(type_name: String) -> float:
+	return TYPES[type_name]["speed"] if TYPES.has(type_name) else DEMON_FORM_SPEED
 
 
 static func type_names() -> Array:

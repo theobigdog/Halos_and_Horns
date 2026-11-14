@@ -8,6 +8,9 @@ signal form_changed    # we possessed a prop or returned to demon form
 signal taunted(taunt_name)
 signal launched(origin, velocity, kind)   # a throw left our hand (multiplayer forwards it)
 signal hit_taken(damage)                  # a counted hit on us as a demon (host decides)
+signal skill_used(skill_id, origin, dir, point, index)   # main decides what actually happens
+signal melee_used(origin, dir)
+signal released_possessed                 # we left a real (possessed) prop behind
 
 const PropLib = preload("res://scripts/prop_library.gd")
 const Projectile = preload("res://scripts/projectile.gd")
@@ -16,6 +19,7 @@ const Blessings = preload("res://scripts/blessings.gd")
 const Taunts = preload("res://scripts/taunts.gd")
 const Sfx = preload("res://scripts/sfx.gd")
 const Bodies = preload("res://scripts/bodies.gd")
+const Skills = preload("res://scripts/skills.gd")
 
 const ANGEL_SPEED := 6.0
 const DEMON_SPEED := 6.5
@@ -44,9 +48,15 @@ const SPRINT_REGEN := 18.0
 const SPRINT_REGEN_DELAY := 0.8
 const SPRINT_RESTART := 25.0      # once empty, need this much back before running again
 
-# Demons' Hatred: their "mana". Fills slowly; demon skills will spend it later.
+# Demons' Hatred: their "mana". Fills slowly; flying and demon skills spend it.
 const HATRED_MAX := 100.0
 const HATRED_REGEN := 4.0
+const HATRED_FLY_DRAIN := 19.0    # while flying; minus regen = ~6.7 s of flight from full
+
+# Flying (demons, any form, hold right mouse)
+const FLY_SPEED := 7.0            # in the direction you look
+const FLY_VERTICAL := 4.5         # Space = up, Ctrl = down
+const PULL_SPEED := 14.0          # being yanked by a vacuum or grappling hook
 
 const TAUNT_COOLDOWN := 0.8
 
@@ -63,7 +73,8 @@ var tuning := {
 
 var role := "demon"           # "angel" or "demon"
 var frozen := false           # true while angels wait out the hiding period
-var possessed_type := ""      # prop type the demon is currently possessing
+var possessed_type := ""      # prop type the demon currently looks like ("" = demon form)
+var possessed_index := -1     # >= 0 when that's a real map prop we possessed (not a copy)
 var look_target_type := ""    # prop type the demon is aiming at (for the HUD hint)
 var first_person := {"angel": true, "demon": false}
 var hold_fraction := 0.0      # 0-1 progress of hold-to-return (for the HUD)
@@ -74,6 +85,12 @@ var throw_stamina := THROW_STAMINA_MAX
 var throw_regen_multiplier := 1.0   # the future "quick regen" power-up raises this
 var sprint_stamina := SPRINT_MAX
 var hatred := 0.0
+var hatred_regen_multiplier := 1.0  # a future power-up raises this; high enough = endless flight
+var flying := false
+var skill_lock := 0.0         # seconds left of a vacuum lockout (no skills, no flying)
+var loadout := Skills.DEFAULTS.duplicate(true)
+var skill_cd := {}            # skill id -> seconds until ready
+var melee_cd := 0.0
 var last_taunt := ""
 var input_enabled := true      # false while a menu is open
 var net_mode := ""            # "" offline/practice, "server" = host, "client" = joined someone
@@ -95,6 +112,10 @@ var _bob_offset := 0.0
 var _land_dip := 0.0
 var _was_on_floor := true
 var _fall_speed := 0.0
+var _grapple_target := Vector3.ZERO
+var _grapple_time := 0.0
+var _pull_target := Vector3.ZERO
+var _pull_time := 0.0
 
 var shape_node: CollisionShape3D
 var visual_root: Node3D
@@ -105,6 +126,10 @@ var voice: AudioStreamPlayer3D
 
 
 func _ready() -> void:
+	# Never get carried or launched by something moving under or next to us (other
+	# players' bodies jump around as positions arrive). There are no moving platforms.
+	platform_floor_layers = 0
+	platform_on_leave = CharacterBody3D.PLATFORM_ON_LEAVE_DO_NOTHING
 	shape_node = CollisionShape3D.new()
 	add_child(shape_node)
 	visual_root = Node3D.new()
@@ -138,8 +163,15 @@ func set_role(new_role: String) -> void:
 	throw_stamina = THROW_STAMINA_MAX
 	sprint_stamina = SPRINT_MAX
 	_sprint_exhausted = false
-	hatred = 0.0
+	hatred = HATRED_MAX           # demons start full, so they can fly to a hiding spot
 	last_taunt = ""
+	possessed_index = -1
+	flying = false
+	skill_lock = 0.0
+	skill_cd.clear()
+	melee_cd = 0.0
+	_grapple_time = 0.0
+	_pull_time = 0.0
 	_apply_form()
 
 
@@ -207,11 +239,23 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if frozen:
 		return
+	if event.is_action_pressed("skill_1"):
+		use_skill(0)
+		return
+	if event.is_action_pressed("melee"):
+		if role == "angel":
+			melee()
+		else:
+			use_skill(1)      # demons don't melee: F is their second skill
+		return
+	if event.is_action_pressed("rmb") and role == "angel":
+		use_skill(1)          # demons hold right mouse to fly instead
+		return
 	if event.is_action_pressed("shoot"):
 		if role == "angel":
 			try_throw()   # on the click itself, not the next physics tick
 		elif possessed_type == "":
-			try_possess()
+			try_transform()
 		else:
 			# Already a prop: a quick tap switches props, a hold returns to demon form.
 			_holding = true
@@ -220,24 +264,25 @@ func _unhandled_input(event: InputEvent) -> void:
 		_holding = false
 		hold_fraction = 0.0
 		if _hold_time < HOLD_TO_RETURN:
-			try_possess()
+			try_transform()
 
 
 func _physics_process(delta: float) -> void:
 	_throw_cooldown = maxf(_throw_cooldown - delta, 0.0)
 	_taunt_cooldown = maxf(_taunt_cooldown - delta, 0.0)
+	melee_cd = maxf(melee_cd - delta, 0.0)
+	skill_lock = maxf(skill_lock - delta, 0.0)
+	for id in skill_cd:
+		skill_cd[id] = maxf(skill_cd[id] - delta, 0.0)
 	var on_floor := is_on_floor()
-	if not on_floor:
-		var g: float = gravity * tuning["gravity_scale"]
-		if velocity.y < 0.0:
-			g *= tuning["fall_multiplier"]   # fall faster than you rise: less floaty
-		velocity.y -= g * delta
-		_fall_speed = maxf(_fall_speed, -velocity.y)
 
 	var controls_active := input_enabled and not frozen and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	var input_dir := Vector2.ZERO
 	var want_run := false
 	var want_jump := false
+	var want_fly := false
+	var want_up := false
+	var want_down := false
 	sneaking = false
 	if not test_input.is_empty():
 		# Automated tests drive movement here (headless mode can't capture the mouse).
@@ -245,43 +290,78 @@ func _physics_process(delta: float) -> void:
 		sneaking = test_input.get("sneak", false)
 		want_run = test_input.get("run", false)
 		want_jump = test_input.get("jump", false)
+		want_fly = test_input.get("fly", false)
+		want_up = test_input.get("up", false)
+		want_down = test_input.get("down", false)
 	elif controls_active:
 		input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 		sneaking = Input.is_action_pressed("sneak")
 		want_run = Input.is_action_pressed("run")
 		want_jump = Input.is_action_just_pressed("jump")
-	if want_jump and on_floor:
-		velocity.y = tuning["jump_velocity"]
+		want_fly = Input.is_action_pressed("rmb")
+		want_up = Input.is_action_pressed("jump")
+		want_down = sneaking
 
-	_update_sprint(delta, want_run and not sneaking and input_dir != Vector2.ZERO)
-
-	var direction := global_transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)
-	direction.y = 0.0
-	direction = direction.normalized()
-	var speed := ANGEL_SPEED if role == "angel" else DEMON_SPEED
-	if running:
-		speed *= RUN_MULTIPLIER
-	elif sneaking:
-		speed *= SNEAK_MULTIPLIER
-	# Accelerate toward the wanted speed instead of snapping to it: gives weight.
-	var target := Vector2(direction.x, direction.z) * speed
-	var current := Vector2(velocity.x, velocity.z)
-	var rate: float
-	if not on_floor:
-		rate = tuning["air_accel"]
-	elif target.length() < current.length():
-		rate = tuning["ground_decel"]
+	# Hatred always refills; flying spends it faster than it refills (unless boosted).
+	if role == "demon":
+		flying = want_fly and not frozen and hatred > 0.5 and skill_lock <= 0.0
+		hatred += HATRED_REGEN * hatred_regen_multiplier * delta
+		if flying:
+			hatred -= HATRED_FLY_DRAIN * delta
+		hatred = clampf(hatred, 0.0, HATRED_MAX)
 	else:
-		rate = tuning["ground_accel"]
-	current = current.move_toward(target, rate * delta)
-	velocity.x = current.x
-	velocity.z = current.y
+		flying = false
+
+	var current := Vector2(velocity.x, velocity.z)
+	if _pull_time > 0.0:
+		_pull_step(delta)
+		running = false
+	elif _grapple_time > 0.0:
+		_grapple_step(delta, want_jump)
+		running = false
+	elif flying:
+		_fly_step(delta, input_dir, want_up, want_down)
+		running = false
+	else:
+		if not on_floor:
+			var g: float = gravity * tuning["gravity_scale"]
+			if velocity.y < 0.0:
+				g *= tuning["fall_multiplier"]   # fall faster than you rise: less floaty
+			velocity.y -= g * delta
+			_fall_speed = maxf(_fall_speed, -velocity.y)
+		if want_jump and on_floor:
+			velocity.y = tuning["jump_velocity"]
+
+		_update_sprint(delta, want_run and not sneaking and input_dir != Vector2.ZERO)
+
+		var direction := global_transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)
+		direction.y = 0.0
+		direction = direction.normalized()
+		var speed := ANGEL_SPEED if role == "angel" else PropLib.speed(possessed_type)
+		if running:
+			speed *= RUN_MULTIPLIER
+		elif sneaking:
+			speed *= SNEAK_MULTIPLIER
+		# Accelerate toward the wanted speed instead of snapping to it: gives weight.
+		var target := Vector2(direction.x, direction.z) * speed
+		var rate: float
+		if not on_floor and input_dir == Vector2.ZERO:
+			rate = 0.0                     # no keys held in the air: keep your momentum
+			target = current
+		elif not on_floor:
+			rate = tuning["air_accel"]
+		elif target.length() < current.length():
+			rate = tuning["ground_decel"]
+		else:
+			rate = tuning["ground_accel"]
+		current = current.move_toward(target, rate * delta)
+		velocity.x = current.x
+		velocity.z = current.y
 	move_and_slide()
+	current = Vector2(velocity.x, velocity.z)
 
 	_update_head_bob(delta, current.length())
 	_update_throw_stamina(delta)
-	if role == "demon":
-		hatred = minf(hatred + HATRED_REGEN * delta, HATRED_MAX)
 
 	if role == "angel":
 		# Holding the button keeps throwing as fast as cooldown and stamina allow.
@@ -302,6 +382,121 @@ func _physics_process(delta: float) -> void:
 		hovered = aim["collider"]
 	_set_hover(hovered)
 	look_target_type = hovered.get_meta("prop_type") if hovered else ""
+
+
+# Flying: move where you look (including up/down), Space rises, Ctrl sinks,
+# let go of everything and you hover.
+func _fly_step(delta: float, input_dir: Vector2, up: bool, down: bool) -> void:
+	var dir := camera.global_transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)
+	if dir.length() > 1.0:
+		dir = dir.normalized()
+	var vertical := (1.0 if up else 0.0) - (1.0 if down else 0.0)
+	var target := dir * FLY_SPEED + Vector3.UP * vertical * FLY_VERTICAL
+	velocity = velocity.move_toward(target, 25.0 * delta)
+
+
+# Zipping toward a grappling hook. Jump lets go early (with a hop).
+func _grapple_step(delta: float, jump: bool) -> void:
+	_grapple_time -= delta
+	var to := _grapple_target - global_position
+	if to.length() < 1.3 or jump:
+		_grapple_time = 0.0
+		# Arriving: a little hop up and forward, so hooking the top edge of a wall
+		# carries you up over it onto the roof (that's how you climb with it).
+		var flat := Vector3(velocity.x, 0.0, velocity.z).normalized()
+		velocity = flat * 4.0 + Vector3.UP * 7.5
+		return
+	velocity = to.normalized() * Skills.GRAPPLE_SPEED
+
+
+# Being yanked somewhere by the angels (vacuum orb, grappling hook).
+func _pull_step(delta: float) -> void:
+	_pull_time -= delta
+	var to := _pull_target - global_position
+	if to.length() < 0.8:
+		_pull_time = 0.0
+		velocity = Vector3.ZERO
+		return
+	velocity = to.normalized() * minf(PULL_SPEED, to.length() / maxf(delta, 0.001))
+
+
+# Called when the host (or practice game) yanks us somewhere.
+func pull_to(target: Vector3, seconds := 1.0) -> void:
+	_pull_target = target
+	_pull_time = seconds
+	_grapple_time = 0.0
+
+
+func is_grappling() -> bool:
+	return _grapple_time > 0.0
+
+
+# Q (slot 0), and right mouse (angels) or F (demons) for slot 1.
+# Only the parts that must feel instant happen here (zipping, leaping);
+# everything else is decided by the host / practice game via skill_used.
+func use_skill(slot: int) -> bool:
+	var id: String = loadout[role][slot]
+	if id == "" or frozen or skill_cd.get(id, 0.0) > 0.0:
+		return false
+	if role == "demon" and skill_lock > 0.0:
+		return false
+	var origin := camera.global_position
+	var dir := -camera.global_transform.basis.z
+	var point := Vector3.ZERO
+	var index := -1
+	match id:
+		"possess":
+			if not is_instance_valid(_hover_prop) or not _hover_prop.has_meta("prop_index"):
+				return false
+			index = _hover_prop.get_meta("prop_index")
+			point = _hover_prop.global_position
+		"grapple":
+			var hit := _aim_ray(Skills.GRAPPLE_RANGE)
+			if hit.is_empty():
+				return false
+			point = hit["position"]
+			if not hit["collider"].has_method("take_hit"):
+				# Hooked the world or a plain prop: zip there.
+				_grapple_target = point - dir * 0.5
+				_grapple_time = 1.6
+				_pull_time = 0.0
+		"chicken":
+			var hit := _aim_ray(Skills.CHICKEN_RANGE)
+			point = hit["position"] if not hit.is_empty() else origin + dir * Skills.CHICKEN_RANGE
+		"vacuum":
+			point = origin + dir
+		"leap":
+			if not is_on_floor():
+				return false
+			var f := -global_transform.basis.z
+			velocity.y = Skills.LEAP_VELOCITY
+			velocity += Vector3(f.x, 0.0, f.z) * 4.0
+	skill_cd[id] = Skills.cooldown(id)
+	skill_used.emit(id, origin, dir, point, index)
+	return true
+
+
+func melee() -> bool:
+	if melee_cd > 0.0 or frozen or role != "angel":
+		return false
+	melee_cd = Skills.MELEE_COOLDOWN
+	var origin := camera.global_position
+	var dir := -camera.global_transform.basis.z
+	Effects.swing(get_parent(), origin - Vector3.UP * 0.3, dir)
+	melee_used.emit(origin, dir)
+	return true
+
+
+# The host / practice game approved a possession: we ARE that prop now, exactly
+# where it stood. No puff: possessing is meant to be sneaky.
+func become_possessed(type_name: String, pos: Vector3, yaw: float, index: int) -> void:
+	possessed_index = index
+	possessed_type = type_name
+	global_position = pos
+	rotation.y = yaw
+	velocity = Vector3.ZERO
+	_apply_form()
+	form_changed.emit()
 
 
 func _update_sprint(delta: float, wants_to_run: bool) -> void:
@@ -380,7 +575,8 @@ func _aim_ray(reach: float) -> Dictionary:
 	return get_world_3d().direct_space_state.intersect_ray(query)
 
 
-func try_possess() -> bool:
+# Left click: TRANSFORM into a copy of the prop you're aiming at (the original stays).
+func try_transform() -> bool:
 	var hit := _aim_ray(spring.spring_length + POSSESS_REACH)
 	if hit.is_empty() or not hit["collider"].is_in_group("prop"):
 		return false
@@ -388,7 +584,15 @@ func try_possess() -> bool:
 	return true
 
 
+func _leave_possessed() -> void:
+	if possessed_index >= 0:
+		possessed_index = -1
+		released_possessed.emit()
+
+
+# Become a copy of this prop type (named before possess/transform were split).
 func force_possess(type_name: String) -> void:
+	_leave_possessed()
 	possessed_type = type_name
 	_apply_form()
 	Effects.puff(get_parent(), global_position + Vector3.UP * 0.5, Color(0.8, 0.1, 0.1, 0.8))
@@ -398,6 +602,7 @@ func force_possess(type_name: String) -> void:
 func unpossess() -> void:
 	if possessed_type == "":
 		return
+	_leave_possessed()
 	possessed_type = ""
 	_apply_form()
 	Effects.puff(get_parent(), global_position + Vector3.UP * 0.8, Color(0.8, 0.1, 0.1, 0.8))

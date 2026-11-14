@@ -13,8 +13,13 @@ const Taunts = preload("res://scripts/taunts.gd")
 const NetGame = preload("res://scripts/net_game.gd")
 const Effects = preload("res://scripts/effects.gd")
 const Autobot = preload("res://scripts/autobot.gd")
+const Skills = preload("res://scripts/skills.gd")
+const Chicken = preload("res://scripts/chicken.gd")
+const Vortex = preload("res://scripts/vortex.gd")
+const Rope = preload("res://scripts/rope.gd")
+const Projectile = preload("res://scripts/projectile.gd")
 
-const GAME_VERSION := "0.2.1 (ping + Tab roster)"
+const GAME_VERSION := "0.3 (flying, skills, possess)"
 const HIDE_TIME := 30.0
 const HUNT_TIME := 180.0
 const BOT_COUNT := 3
@@ -31,7 +36,16 @@ var state: State = State.LOBBY
 var time_left := 0.0
 var role := "angel"          # practice starts on the side that has a full round to play
 var bots_left := 0           # demons left (test demons in practice, players online)
-var my_health := 0           # online demons: shown in the HUD
+var my_health := 0           # online demons: health percent, shown in the HUD
+var loadout := Skills.DEFAULTS.duplicate(true)   # your chosen skills (saved)
+var props: Array = []        # this round's map props, by index (same on every computer)
+var chickens := {}           # chicken id -> Chicken node (visuals, everyone)
+var _auth_chickens := {}     # chicken id -> {pos, until, alarmed} (decider only)
+var _chicken_counter := 0
+var _chicken_check := 0.0
+var _possessions := {}       # who possesses which prop: user key -> prop index (decider only)
+var _loadout_buttons: Array = []   # [team, slot, OptionButton]
+var skill_label: Label
 var player: Player
 var net: Node = null
 var autobot: Node = null
@@ -108,6 +122,9 @@ func _ready() -> void:
 	player.taunted.connect(_on_taunted)
 	player.launched.connect(_on_player_launched)
 	player.hit_taken.connect(_on_player_hit_taken)
+	player.skill_used.connect(_on_player_skill)
+	player.melee_used.connect(_on_player_melee)
+	player.released_possessed.connect(_on_player_released)
 	_build_tuning_panel()
 	_build_menu()
 	_build_pause_menu()
@@ -144,6 +161,13 @@ func _setup_input() -> void:
 	_add_key("taunt_random", KEY_1)
 	_add_key("taunt_signature", KEY_2)
 	_add_key("toggle_tuning", KEY_F1)
+	_add_key("skill_1", KEY_Q)
+	_add_key("melee", KEY_F)
+	if not InputMap.has_action("rmb"):
+		InputMap.add_action("rmb")
+		var right := InputEventMouseButton.new()
+		right.button_index = MOUSE_BUTTON_RIGHT
+		InputMap.action_add_event("rmb", right)
 	if not InputMap.has_action("shoot"):
 		InputMap.add_action("shoot")
 		var click := InputEventMouseButton.new()
@@ -232,6 +256,13 @@ func _build_map() -> void:
 	_add_block(Vector3(0, 2, -MAP_HALF - 1), Vector3(span, 4, 1), wall_color, Vector3.ZERO, false)
 	_add_block(Vector3(MAP_HALF + 1, 2, 0), Vector3(1, 4, span), wall_color, Vector3.ZERO, false)
 	_add_block(Vector3(-MAP_HALF - 1, 2, 0), Vector3(1, 4, span), wall_color, Vector3.ZERO, false)
+	# Invisible walls above the visible ones, and a ceiling, so flying demons
+	# (and grappling angels) can't leave the map.
+	_add_invisible(Vector3(0, 17, MAP_HALF + 1), Vector3(span, 26, 1))
+	_add_invisible(Vector3(0, 17, -MAP_HALF - 1), Vector3(span, 26, 1))
+	_add_invisible(Vector3(MAP_HALF + 1, 17, 0), Vector3(1, 26, span))
+	_add_invisible(Vector3(-MAP_HALF - 1, 17, 0), Vector3(1, 26, span))
+	_add_invisible(Vector3(0, CEILING + 0.5, 0), Vector3(span, 1, span))
 	# Buildings and cover
 	_add_block(Vector3(8, 2, 8), Vector3(6, 4, 6), Color(0.7, 0.6, 0.5))
 	_add_block(Vector3(-10, 2, -6), Vector3(7, 4, 5), Color(0.6, 0.55, 0.65))
@@ -241,6 +272,20 @@ func _build_map() -> void:
 	# A raised platform with a ramp up to it
 	_add_block(Vector3(-6, 1, 12), Vector3(8, 2, 4), Color(0.6, 0.6, 0.55))
 	_add_block(Vector3(-6, 0.8, 7.3), Vector3(2.5, 0.4, 5.9), Color(0.5, 0.45, 0.4), Vector3(-0.35, 0, 0))   # top edge flush with the platform
+
+
+const CEILING := 24.0
+
+
+func _add_invisible(center: Vector3, size: Vector3) -> void:
+	var body := StaticBody3D.new()
+	var shape_node := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = size
+	shape_node.shape = box
+	body.add_child(shape_node)
+	body.position = center
+	add_child(body)
 
 
 func _random_spot() -> Vector3:
@@ -271,6 +316,8 @@ func _spawn_prop(type_name: String, pos: Vector3) -> void:
 	body.add_child(shape_node)
 	body.position = pos
 	body.rotation.y = rng.randf_range(0, TAU)
+	body.set_meta("prop_index", props.size())
+	props.append(body)
 	round_root.add_child(body)
 
 
@@ -282,6 +329,10 @@ func _reset_round_props(seed_value: int) -> void:
 	round_root = Node3D.new()
 	add_child(round_root)
 	used_spots.clear()
+	props.clear()
+	chickens.clear()
+	_auth_chickens.clear()
+	_possessions.clear()
 	rng.seed = seed_value
 	var types := PropLib.type_names()
 	for i in PROP_COUNT:
@@ -357,6 +408,7 @@ func _build_menu() -> void:
 	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(version)
 	name_edit = _field(box, "Your name", "Name")
+	_build_loadout(box)
 	_button(box, "Practice (single player)", start_practice)
 	box.add_child(HSeparator.new())
 	port_edit = _field(box, "Port", str(NetGame.DEFAULT_PORT))
@@ -398,6 +450,7 @@ func _build_lobby() -> void:
 	lobby_info = Label.new()
 	lobby_info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(lobby_info)
+	_build_loadout(box)
 	lobby_start = _button(box, "Start round", func():
 		if net:
 			net.start_round())
@@ -405,17 +458,76 @@ func _build_lobby() -> void:
 	lobby_panel.visible = false
 
 
+# Pick 2 skills per side. Shown on the main menu and in the lobby (between rounds).
+func _build_loadout(parent: Control) -> void:
+	var title := Label.new()
+	title.text = "Your skills (2 per side)"
+	parent.add_child(title)
+	for team in ["angel", "demon"]:
+		var row := HBoxContainer.new()
+		var lbl := Label.new()
+		lbl.text = "Angel:" if team == "angel" else "Demon:"
+		lbl.custom_minimum_size.x = 64
+		row.add_child(lbl)
+		var keys := ["Q", "Right click"] if team == "angel" else ["Q", "F"]
+		for slot in 2:
+			var ob := OptionButton.new()
+			ob.add_item("%s: none" % keys[slot])
+			ob.set_item_metadata(0, "")
+			for id in Skills.for_team(team):
+				ob.add_item("%s: %s" % [keys[slot], Skills.label(id)])
+				ob.set_item_metadata(ob.item_count - 1, id)
+				ob.set_item_tooltip(ob.item_count - 1, Skills.SKILLS[id]["desc"])
+			ob.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			ob.item_selected.connect(func(i): _on_loadout_pick(team, slot, ob.get_item_metadata(i)))
+			row.add_child(ob)
+			_loadout_buttons.append([team, slot, ob])
+		parent.add_child(row)
+	_sync_loadout_buttons()
+
+
+func _on_loadout_pick(team: String, slot: int, id: String) -> void:
+	var picked: Array = loadout[team].duplicate()
+	if id != "" and id in picked:
+		picked[picked.find(id)] = ""   # picking it in the other slot moves it
+	picked[slot] = id
+	loadout[team] = Skills.clean_loadout(team, picked)
+	_apply_loadout()
+	_save_settings()
+
+
+func _apply_loadout() -> void:
+	player.loadout = loadout.duplicate(true)
+	_sync_loadout_buttons()
+	if net:
+		net.send_loadout(loadout)
+
+
+func _sync_loadout_buttons() -> void:
+	for entry in _loadout_buttons:
+		var ob: OptionButton = entry[2]
+		var id: String = loadout[entry[0]][entry[1]]
+		for i in ob.item_count:
+			if ob.get_item_metadata(i) == id:
+				ob.select(i)
+
+
 func _load_settings() -> void:
 	_settings.load(SETTINGS_PATH)
 	name_edit.text = _settings.get_value("player", "name", "")
 	address_edit.text = _settings.get_value("net", "address", "")
 	port_edit.text = str(_settings.get_value("net", "port", NetGame.DEFAULT_PORT))
+	for team in ["angel", "demon"]:
+		loadout[team] = Skills.clean_loadout(team, _settings.get_value("skills", team, Skills.DEFAULTS[team]))
+	_apply_loadout()
 
 
 func _save_settings() -> void:
 	_settings.set_value("player", "name", name_edit.text)
 	_settings.set_value("net", "address", address_edit.text)
 	_settings.set_value("net", "port", int(port_edit.text) if port_edit.text.is_valid_int() else NetGame.DEFAULT_PORT)
+	_settings.set_value("skills", "angel", loadout["angel"])
+	_settings.set_value("skills", "demon", loadout["demon"])
 	_settings.save(SETTINGS_PATH)
 
 
@@ -474,6 +586,7 @@ func _on_host_pressed() -> void:
 		return
 	mode = "online"
 	player.net_mode = "server"
+	net.send_loadout(loadout)
 	_hide_menus()
 	_fetch_public_ip()
 	online_lobby(lobby_names, "lobby")
@@ -570,8 +683,8 @@ func start_round() -> void:
 
 func _controls_text() -> String:
 	var common := "WASD move   Shift run   Ctrl sneak   Space jump   1 / 2 taunt   T first/third person"
-	var side := "Left click throw   B change blessing (testing)" if role == "angel" \
-			else "Click a prop to possess it   Hold click to return to demon form"
+	var side := "Left click throw   Q / Right click skills   F melee   B blessing (testing)" if role == "angel" \
+			else "Click a prop: transform   Hold click: demon form   Hold right click: fly   Q / F skills"
 	if mode == "practice":
 		return common + "\n" + side + "   F2 switch side   R restart   F1 movement tuning   Esc menu"
 	return common + "\n" + side + "   Tab roster   F1 movement tuning   Esc menu"
@@ -612,6 +725,8 @@ func _process(delta: float) -> void:
 				_end_round("Time's up! The demons win." if role == "angel" else "Time's up! You survived!")
 	elif mode == "online":
 		time_left = maxf(time_left - delta, 0.0)   # the host decides when phases change
+	if is_authority():
+		_check_chickens(delta)
 	_update_hud(delta)
 
 
@@ -722,6 +837,15 @@ func online_you_hit(health: int) -> void:
 	_hurt_time = 0.25
 
 
+# The angels yanked us (vacuum orb or grappling hook).
+func online_affected(target: Vector3, hatred_drain: float, lockout: float) -> void:
+	player.pull_to(target, 1.0)
+	player.hatred = maxf(player.hatred - hatred_drain, 0.0)
+	player.skill_lock = maxf(player.skill_lock, lockout)
+	_hurt_time = 0.2
+	_toast("VACUUMED!" if lockout > 0.0 else "HOOKED!", 1.2)
+
+
 func online_you_were_caught(pos: Vector3) -> void:
 	role = "angel"
 	player.set_role("angel")
@@ -774,6 +898,289 @@ func _on_player_launched(origin: Vector3, velocity: Vector3, kind: String) -> vo
 func _on_player_hit_taken(damage: int) -> void:
 	if net and net.is_host:
 		net.damage_player(1, damage)
+
+
+# ---------- skills: deciding what happens ----------
+# In practice the game itself decides what a skill does; online, the host does
+# (net_game.gd checks every request first). The same code runs either way, and
+# broadcast_fx() shows the results on every screen.
+
+func is_authority() -> bool:
+	return mode == "practice" or (net != null and net.is_host)
+
+
+func _on_player_skill(id: String, origin: Vector3, dir: Vector3, point: Vector3, index: int) -> void:
+	if id == "grapple":
+		var rope := Rope.new()          # instant, and it follows us while we zip
+		rope.from_node = player
+		rope.to_pos = point
+		rope.duration = 0.25 if not player.is_grappling() else 1.2
+		_fx_parent().add_child(rope)
+	if mode == "practice":
+		authority_skill(player, 0, id, origin, dir, point, index)
+	elif net:
+		if id == "vacuum" and not net.is_host:
+			_spawn_orb(origin, dir, true)   # our own copy, just to see; the host's is real
+		net.on_local_skill(id, origin, dir, point, index)
+
+
+func _on_player_melee(origin: Vector3, dir: Vector3) -> void:
+	if mode == "practice":
+		authority_melee(player, 0, origin, dir)
+	elif net:
+		net.on_local_melee(origin, dir)
+
+
+func _on_player_released() -> void:
+	if mode == "practice":
+		authority_release(0, player.global_position, player.rotation.y)
+	elif net:
+		net.on_local_release()
+
+
+func _ray(from: Vector3, to: Vector3, exclude: Array) -> Dictionary:
+	var q := PhysicsRayQueryParameters3D.create(from, to)
+	var rids := []
+	for n in exclude:
+		if is_instance_valid(n) and n is CollisionObject3D:
+			rids.append(n.get_rid())
+	q.exclude = rids
+	return get_world_3d().direct_space_state.intersect_ray(q)
+
+
+func ground_below(point: Vector3) -> Vector3:
+	var hit := _ray(point + Vector3.UP * 0.5, point + Vector3.DOWN * 40.0, [])
+	return hit["position"] if not hit.is_empty() else Vector3(point.x, 0.0, point.z)
+
+
+# Every demon the decider can affect: practice test demons, or (host) players.
+func demon_targets() -> Array:
+	if mode == "practice":
+		var out := []
+		if round_root:
+			for c in round_root.get_children():
+				if c is BotDemon:
+					out.append(c)
+		return out
+	return net.demon_nodes() if net else []
+
+
+# `user` is whoever used the skill (our player, or another player's stand-in on the
+# host); `user_key` is 0 in practice, otherwise their network id (1 = host).
+func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, dir: Vector3,
+		point: Vector3, index: int) -> void:
+	match id:
+		"chicken":
+			_chicken_counter += 1
+			var pos := ground_below(point)
+			_auth_chickens[_chicken_counter] = {"pos": pos, "until": Time.get_ticks_msec() / 1000.0 + Skills.CHICKEN_LIFETIME, "alarmed": false}
+			broadcast_fx("chicken", [_chicken_counter, pos])
+			print("[decider] chicken dropped")
+		"vacuum":
+			var orb := _spawn_orb(origin, dir, false)
+			orb.shooter = user
+			orb.on_impact = _vacuum_at
+			broadcast_fx("orb", [origin, dir], user_key)
+		"grapple":
+			var hit := _ray(origin, origin + dir * Skills.GRAPPLE_RANGE, [user])
+			if hit.is_empty():
+				return
+			var c = hit["collider"]
+			broadcast_fx("rope", [user.global_position + Vector3.UP * 1.2, hit["position"], 0.5], user_key)
+			if c.has_method("take_hit") and c.take_hit(Skills.GRAPPLE_DAMAGE):
+				user.confirm_hit()
+				var flat := Vector3(dir.x, 0.0, dir.z).normalized()
+				_affect_demon(c, user.global_position + flat * 1.5, 0.0, 0.0)
+				print("[decider] grappling hook snagged a demon")
+			elif net and user_key > 1:
+				net.grant_grapple(user_key)   # they may zip fast for a moment
+		"possess":
+			_authority_possess(user, user_key, index)
+
+
+func authority_melee(user: Node3D, _user_key: int, origin: Vector3, dir: Vector3) -> void:
+	var hit := _ray(origin, origin + dir * Skills.MELEE_RANGE, [user])
+	if not hit.is_empty() and hit["collider"].has_method("take_hit") \
+			and hit["collider"].take_hit(Skills.MELEE_DAMAGE):
+		user.confirm_hit()
+		print("[decider] melee hit a demon")
+
+
+func _spawn_orb(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
+	var orb := Projectile.new()
+	orb.color = Color(0.65, 0.35, 1.0)
+	orb.size = 0.22
+	orb.gravity = 9.0
+	orb.damage = 0
+	orb.visual_only = visual_only
+	_fx_parent().add_child(orb)
+	orb.global_position = origin + dir * 0.6
+	orb.velocity = dir * 22.0 + Vector3.UP * 2.0
+	return orb
+
+
+func _vacuum_at(center: Vector3) -> void:
+	var caught := false
+	for d in demon_targets():
+		if d.global_position.distance_to(center) <= Skills.VACUUM_RADIUS:
+			caught = true
+			var offset := Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))
+			_affect_demon(d, center + offset, Skills.VACUUM_HATRED_DRAIN, Skills.VACUUM_LOCKOUT)
+	broadcast_fx("vortex", [center, caught])
+	print("[decider] vacuum orb %s" % ("CAUGHT a demon" if caught else "found nothing"))
+
+
+# Yank a demon somewhere, drain Hatred, lock their skills.
+func _affect_demon(node: Node3D, target: Vector3, hatred_drain: float, lockout: float) -> void:
+	if node is BotDemon:
+		var tw := node.create_tween()
+		tw.tween_property(node, "global_position", Vector3(target.x, node.global_position.y, target.z), 0.5)
+	elif net:
+		net.affect_node(node, target, hatred_drain, lockout)
+
+
+func _authority_possess(user: Node3D, user_key: int, index: int) -> void:
+	if index < 0 or index >= props.size():
+		return
+	var prop = props[index]
+	if not is_instance_valid(prop) or not prop.is_in_group("prop"):
+		return   # already possessed by someone, or dissolving
+	if user.global_position.distance_to(prop.global_position) > 12.0:
+		return
+	var from: Vector3 = user.global_position
+	authority_release(user_key, from, user.rotation.y)
+	_possessions[user_key] = index
+	broadcast_fx("prop_taken", [index])
+	broadcast_fx("sparkle", [from, prop.global_position])
+	var type_name: String = prop.get_meta("prop_type")
+	if user_key <= 1:
+		player.become_possessed(type_name, prop.global_position, prop.rotation.y, index)
+	else:
+		net.tell_possessed(user_key, type_name, prop.global_position, prop.rotation.y, index)
+	print("[decider] a demon possessed a %s" % type_name)
+
+
+# Someone left a possessed prop (or was caught in it): the original stays where
+# they left it and slowly dissolves.
+func authority_release(user_key: int, pos: Vector3, yaw: float) -> void:
+	if not _possessions.has(user_key):
+		return
+	var index: int = _possessions[user_key]
+	_possessions.erase(user_key)
+	broadcast_fx("prop_shell", [index, pos, yaw])
+
+
+func _check_chickens(delta: float) -> void:
+	_chicken_check -= delta
+	if _chicken_check > 0.0 or _auth_chickens.is_empty():
+		return
+	_chicken_check = 0.25
+	var now := Time.get_ticks_msec() / 1000.0
+	var targets := demon_targets()
+	for cid in _auth_chickens.keys():
+		var c: Dictionary = _auth_chickens[cid]
+		if now > c["until"]:
+			_auth_chickens.erase(cid)
+			continue
+		var near := false
+		for d in targets:
+			if d.global_position.distance_to(c["pos"]) <= Skills.CHICKEN_RADIUS:
+				near = true
+		if near != c["alarmed"]:
+			c["alarmed"] = near
+			broadcast_fx("chicken_alarm", [cid, near])
+			if near:
+				print("[decider] chicken alarm: demon nearby")
+
+
+# ---------- effects everyone sees ----------
+
+# Show an effect here and on everyone else's screen. `except_key` is the player
+# who caused it: they already drew their own rope / orb, so they don't get a copy.
+func broadcast_fx(kind: String, args: Array, except_key := -1) -> void:
+	var we_caused_it := except_key == 0 or except_key == 1   # practice player or the host
+	if not (we_caused_it and (kind == "rope" or kind == "orb")):
+		fx(kind, args)
+	if net and net.is_host:
+		net.send_fx(kind, args, except_key)
+
+
+func _fx_parent() -> Node:
+	return round_root if round_root else self
+
+
+func fx(kind: String, args: Array) -> void:
+	match kind:
+		"chicken":
+			var c := Chicken.new()
+			c.chicken_id = args[0]
+			_fx_parent().add_child(c)
+			c.global_position = args[1]
+			chickens[args[0]] = c
+		"chicken_alarm":
+			if chickens.has(args[0]) and is_instance_valid(chickens[args[0]]):
+				chickens[args[0]].alarmed = args[1]
+		"orb":
+			_spawn_orb(args[0], args[1], true)
+		"vortex":
+			var v := Vortex.new()
+			v.caught = args[1]
+			_fx_parent().add_child(v)
+			v.global_position = args[0]
+			_pull_props(args[0])
+		"rope":
+			var r := Rope.new()
+			r.from_pos = args[0]
+			r.to_pos = args[1]
+			r.duration = args[2]
+			_fx_parent().add_child(r)
+		"sparkle":
+			Effects.sparkle_trail(_fx_parent(), args[0], args[1])
+		"prop_taken":
+			_set_prop_taken(args[0])
+		"prop_shell":
+			_make_shell(args[0], args[1], args[2])
+
+
+func _set_prop_taken(index: int) -> void:
+	if index < 0 or index >= props.size() or not is_instance_valid(props[index]):
+		return
+	var prop: Node3D = props[index]
+	prop.visible = false
+	prop.remove_from_group("prop")
+	for c in prop.get_children():
+		if c is CollisionShape3D:
+			c.disabled = true
+
+
+# The abandoned original: back where the demon left it, solid (shots just hit it,
+# no damage), can't be transformed into or possessed again, fading away.
+func _make_shell(index: int, pos: Vector3, yaw: float) -> void:
+	if index < 0 or index >= props.size() or not is_instance_valid(props[index]):
+		return
+	var prop: Node3D = props[index]
+	prop.global_position = pos
+	prop.rotation.y = yaw
+	prop.visible = true
+	for c in prop.get_children():
+		if c is CollisionShape3D:
+			c.disabled = false
+	Effects.dissolve(prop, 6.0)
+
+
+# The vortex drags nearby props toward its middle. Every computer runs the same
+# math on the same starting positions, so every screen ends up identical.
+func _pull_props(center: Vector3) -> void:
+	for prop in props:
+		if not is_instance_valid(prop) or not prop.is_in_group("prop"):
+			continue
+		var flat := Vector3(prop.global_position.x - center.x, 0.0, prop.global_position.z - center.z)
+		var d := flat.length()
+		if d >= Skills.VACUUM_RADIUS or d < 0.01:
+			continue
+		var target := Vector3(center.x, prop.global_position.y, center.z) + flat / d * maxf(1.2, d * 0.45)
+		var tw: Tween = prop.create_tween()
+		tw.tween_property(prop, "global_position", target, 1.2).set_ease(Tween.EASE_IN)
 
 
 # ---------- command line (automated testing) ----------
@@ -890,6 +1297,15 @@ func _build_hud() -> void:
 	_make_bar(bars, "sprint", Color(0.4, 0.85, 0.45))
 	_make_bar(bars, "power", Color(1.0, 0.85, 0.3))
 
+	# Skills, bottom right
+	skill_label = _make_label(18)
+	skill_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	skill_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	skill_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	skill_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	skill_label.position += Vector2(-16, -16)
+	hud.add_child(skill_label)
+
 	# Ping, top right
 	ping_label = _make_label(20)
 	ping_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
@@ -991,6 +1407,25 @@ func _fill_scoreboard() -> void:
 			waiting += 1
 	_scoreboard_footer.text = "%d waiting in the lobby for the next round" % waiting if waiting > 0 else ""
 	_scoreboard_footer.visible = waiting > 0
+
+
+func _skill_line(key: String, id: String) -> String:
+	if id == "":
+		return "[%s] -" % key
+	var cd: float = player.skill_cd.get(id, 0.0)
+	return "[%s] %s   %s" % [key, Skills.label(id), "ready" if cd <= 0.0 else "%ds" % ceili(cd)]
+
+
+func _skill_text() -> String:
+	var lo: Array = player.loadout[role]
+	if role == "angel":
+		var melee := "ready" if player.melee_cd <= 0.0 else "..."
+		return "%s\n%s\n[F] Melee   %s" % [_skill_line("Q", lo[0]), _skill_line("Right click", lo[1]), melee]
+	var text := "%s\n%s\n[Hold right click] Fly%s" % [_skill_line("Q", lo[0]), _skill_line("F", lo[1]),
+			"   (flying)" if player.flying else ""]
+	if player.skill_lock > 0.0:
+		text += "\nSKILLS LOCKED  %.1fs" % player.skill_lock
+	return text
 
 
 func _ping_color(ms: int) -> Color:
@@ -1158,7 +1593,7 @@ func _update_hud(delta: float) -> void:
 	if role == "angel":
 		text += "   |   Demons left: %d   |   %s" % [bots_left, Blessings.label(player.blessing)]
 	elif mode == "online":
-		text += "   |   Health: %d" % maxi(my_health, 0)
+		text += "   |   Health: %d%%" % maxi(my_health, 0)
 	status_label.text = text
 
 	_hurt_time -= delta
@@ -1177,6 +1612,8 @@ func _update_hud(delta: float) -> void:
 	_taunt_label_time -= delta
 	if _taunt_label_time <= 0.0:
 		taunt_label.text = ""
+	skill_label.visible = in_game
+	skill_label.text = _skill_text()
 
 	var sprint_color := Color(0.85, 0.35, 0.3) if player._sprint_exhausted else Color(0.4, 0.85, 0.45)
 	_set_bar("sprint", "Sprint", player.sprint_stamina / player.SPRINT_MAX, sprint_color)

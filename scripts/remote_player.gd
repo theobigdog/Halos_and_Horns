@@ -30,6 +30,11 @@ var _has_state := false
 func _ready() -> void:
 	sync_to_physics = false
 	_shape = CollisionShape3D.new()
+	# No body until we know where it is: created at the map's center, a solid
+	# body would sit on whoever is standing there (the demon spawn!) and then
+	# fling them across the map when it snaps to its real position.
+	_shape.disabled = true
+	visible = false
 	add_child(_shape)
 	_voice = AudioStreamPlayer3D.new()
 	_voice.bus = Sfx.BUS
@@ -62,7 +67,10 @@ func apply_state(pos: Vector3, yaw: float, new_form: String, new_role: String) -
 	if not _has_state or snap or global_position.distance_to(pos) > 3.0:
 		global_position = pos
 		rotation.y = yaw
-		_has_state = true
+		if not _has_state:
+			_has_state = true
+			_shape.disabled = false
+			visible = true
 	if new_form != form or new_role != role:
 		form = new_form
 		role = new_role

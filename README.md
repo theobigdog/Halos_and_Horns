@@ -3,12 +3,15 @@
 A free, non-commercial prop-hunt game: demons possess everyday objects to hide, angels hunt them down.
 Passion project, inspired by Witch It.
 
-## Status: version 0.2.1, first multiplayer test
+## Status: version 0.3, flying, skills and possess
 
 One small test map, placeholder shapes for everything.
 
 - **Practice:** single player. The angel side hunts 3 test demons (they hop and taunt so you can find them); the demon side is a sandbox for possessing props.
 - **Online:** one player hosts, friends join by address. Mobification rules: caught demons are redeemed and switch to the angels. About one angel per three players.
+- **Skills:** pick 2 per side on the main menu or in the lobby. Angels: Grappling Hook, Alarm Chicken, Vacuum Orb, Holy Leap. Demons: Possess (more coming).
+- **Demons fly** (hold right click) using Hatred, and can **transform** into a copy of any prop (click) or, with the Possess skill, **become** the real one (Q).
+- Every prop form has its own health and speed: small = fragile but quick, big = tanky but slow.
 
 ## Playing (Windows)
 
@@ -53,8 +56,11 @@ Both builds are also made automatically: publishing a release on GitHub runs [th
 | Ctrl | Sneak | Sneak |
 | 1 | Random taunt | Random taunt |
 | 2 | Signature taunt | Signature taunt |
-| Left click | Throw a blessing (hold to keep throwing; uses blessing stamina) | Possess the outlined prop under the crosshair |
+| Left click | Throw a blessing (hold to keep throwing; uses blessing stamina) | Transform into a copy of the outlined prop |
 | Hold left click | | Back to demon form |
+| Q | Skill 1 | Skill 1 (e.g. Possess the real prop) |
+| Right click | Skill 2 | Hold to fly (uses Hatred; Space up, Ctrl down) |
+| F | Melee | Skill 2 |
 | T | First/third person | First/third person |
 | B | Change blessing type (testing) | |
 | F1 | Movement tuning panel | Movement tuning panel |
@@ -64,11 +70,12 @@ Both builds are also made automatically: publishing a release on GitHub runs [th
 
 ## How online play stays fair
 
-The host is the referee. It decides every hit (other players' throws are only visuals on their own screens), checks every movement for speed hacks and out-of-bounds tricks and snaps cheaters back, mirrors blessing stamina, and limits taunt spam. Each player only receives names for their own team, so an angel's game never knows who a disguised demon is.
+The host is the referee. It decides every hit (other players' throws are only visuals on their own screens), checks every movement for speed hacks and out-of-bounds tricks and snaps cheaters back, mirrors blessing stamina and Hatred (flying longer than your Hatred allows, or floating without flying, drops you to the ground), checks every skill against your loadout and cooldowns, and limits taunt spam. Each player only receives names for their own team, so an angel's game never knows who a disguised demon is.
 
 ## Automated tests
 
 - `godot --headless -s res://tests/test_gameplay.gd`: practice mode, movement, stamina, taunts.
+- `godot --headless -s res://tests/test_skills.gd`: flying, possess vs transform, per-form health and speed, every angel tool.
 - `GODOT=godot tests/test_multiplayer.sh`: plays a whole 5-player online match with bots, including a cheater, and checks the results and that no names leak.
 
 ## License
