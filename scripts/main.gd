@@ -19,7 +19,7 @@ const Vortex = preload("res://scripts/vortex.gd")
 const Rope = preload("res://scripts/rope.gd")
 const Projectile = preload("res://scripts/projectile.gd")
 
-const GAME_VERSION := "0.3 (flying, skills, possess)"
+const GAME_VERSION := "0.3.1 (Fly is a skill)"
 const HIDE_TIME := 30.0
 const HUNT_TIME := 180.0
 const BOT_COUNT := 3
@@ -36,7 +36,7 @@ var state: State = State.LOBBY
 var time_left := 0.0
 var role := "angel"          # practice starts on the side that has a full round to play
 var bots_left := 0           # demons left (test demons in practice, players online)
-var my_health := 0           # online demons: health percent, shown in the HUD
+var my_health := 1.0         # online demons: fraction of health left (same fraction in every form)
 var loadout := Skills.DEFAULTS.duplicate(true)   # your chosen skills (saved)
 var props: Array = []        # this round's map props, by index (same on every computer)
 var chickens := {}           # chicken id -> Chicken node (visuals, everyone)
@@ -46,6 +46,8 @@ var _chicken_check := 0.0
 var _possessions := {}       # who possesses which prop: user key -> prop index (decider only)
 var _loadout_buttons: Array = []   # [team, slot, OptionButton]
 var skill_label: Label
+var hold_bar: ColorRect          # "returning to demon form" progress, under the crosshair
+var hold_fill: ColorRect
 var player: Player
 var net: Node = null
 var autobot: Node = null
@@ -469,7 +471,7 @@ func _build_loadout(parent: Control) -> void:
 		lbl.text = "Angel:" if team == "angel" else "Demon:"
 		lbl.custom_minimum_size.x = 64
 		row.add_child(lbl)
-		var keys := ["Q", "Right click"] if team == "angel" else ["Q", "F"]
+		var keys: Array = Skills.SLOT_KEYS
 		for slot in 2:
 			var ob := OptionButton.new()
 			ob.add_item("%s: none" % keys[slot])
@@ -519,6 +521,9 @@ func _load_settings() -> void:
 	port_edit.text = str(_settings.get_value("net", "port", NetGame.DEFAULT_PORT))
 	for team in ["angel", "demon"]:
 		loadout[team] = Skills.clean_loadout(team, _settings.get_value("skills", team, Skills.DEFAULTS[team]))
+	# Picks saved before Fly became a skill (v0.3.1) wouldn't include it: reset once.
+	if _settings.get_value("skills", "version", 1) < 2:
+		loadout["demon"] = Skills.DEFAULTS["demon"].duplicate()
 	_apply_loadout()
 
 
@@ -528,6 +533,7 @@ func _save_settings() -> void:
 	_settings.set_value("net", "port", int(port_edit.text) if port_edit.text.is_valid_int() else NetGame.DEFAULT_PORT)
 	_settings.set_value("skills", "angel", loadout["angel"])
 	_settings.set_value("skills", "demon", loadout["demon"])
+	_settings.set_value("skills", "version", 2)
 	_settings.save(SETTINGS_PATH)
 
 
@@ -684,7 +690,7 @@ func start_round() -> void:
 func _controls_text() -> String:
 	var common := "WASD move   Shift run   Ctrl sneak   Space jump   1 / 2 taunt   T first/third person"
 	var side := "Left click throw   Q / Right click skills   F melee   B blessing (testing)" if role == "angel" \
-			else "Click a prop: transform   Hold click: demon form   Hold right click: fly   Q / F skills"
+			else "Click a prop: transform   Hold click: demon form   Q / Right click skills (hold Fly to rise)"
 	if mode == "practice":
 		return common + "\n" + side + "   F2 switch side   R restart   F1 movement tuning   Esc menu"
 	return common + "\n" + side + "   Tab roster   F1 movement tuning   Esc menu"
@@ -800,7 +806,7 @@ func online_scoreboard(rows: Array) -> void:
 func online_round_start(seed_value: int, new_role: String, pos: Vector3, phase: String, seconds: float) -> void:
 	_reset_round_props(seed_value)
 	role = new_role
-	my_health = NetGame.DEMON_HEALTH
+	my_health = 1.0
 	player.set_role(new_role)
 	player.velocity = Vector3.ZERO
 	player.global_position = pos
@@ -832,8 +838,8 @@ func online_count(n: int) -> void:
 	bots_left = n
 
 
-func online_you_hit(health: int) -> void:
-	my_health = health
+func online_you_hit(health_fraction: float) -> void:
+	my_health = health_fraction
 	_hurt_time = 0.25
 
 
@@ -843,7 +849,8 @@ func online_affected(target: Vector3, hatred_drain: float, lockout: float) -> vo
 	player.hatred = maxf(player.hatred - hatred_drain, 0.0)
 	player.skill_lock = maxf(player.skill_lock, lockout)
 	_hurt_time = 0.2
-	_toast("VACUUMED!" if lockout > 0.0 else "HOOKED!", 1.2)
+	if state != State.ENDED:
+		_toast("VACUUMED!" if lockout > 0.0 else "HOOKED!", 1.2)
 
 
 func online_you_were_caught(pos: Vector3) -> void:
@@ -1034,7 +1041,7 @@ func _vacuum_at(center: Vector3) -> void:
 func _affect_demon(node: Node3D, target: Vector3, hatred_drain: float, lockout: float) -> void:
 	if node is BotDemon:
 		var tw := node.create_tween()
-		tw.tween_property(node, "global_position", Vector3(target.x, node.global_position.y, target.z), 0.5)
+		tw.tween_property(node, "global_position", Vector3(target.x, node.global_position.y, target.z), 0.3)
 	elif net:
 		net.affect_node(node, target, hatred_drain, lockout)
 
@@ -1070,6 +1077,20 @@ func authority_release(user_key: int, pos: Vector3, yaw: float) -> void:
 	broadcast_fx("prop_shell", [index, pos, yaw])
 
 
+# Decider only: a blessing hit a chicken. Send it skidding the way the shot was going.
+func kick_chicken(cid: int, shot_velocity: Vector3) -> void:
+	if not _auth_chickens.has(cid) or not chickens.has(cid) or not is_instance_valid(chickens[cid]):
+		return
+	var flat := Vector3(shot_velocity.x, 0, shot_velocity.z)
+	if flat.length() < 0.1:
+		return
+	var vel := flat.normalized() * Skills.CHICKEN_KICK_SPEED + Vector3.UP * Skills.CHICKEN_KICK_UP
+	var pos: Vector3 = chickens[cid].global_position + Vector3.UP * 0.05
+	_auth_chickens[cid]["rested"] = false
+	broadcast_fx("chicken_kick", [cid, pos, vel])
+	print("[decider] chicken kicked")
+
+
 func _check_chickens(delta: float) -> void:
 	_chicken_check -= delta
 	if _chicken_check > 0.0 or _auth_chickens.is_empty():
@@ -1082,6 +1103,13 @@ func _check_chickens(delta: float) -> void:
 		if now > c["until"]:
 			_auth_chickens.erase(cid)
 			continue
+		var node = chickens.get(cid)
+		if node != null and is_instance_valid(node):
+			c["pos"] = node.global_position   # it may have been knocked somewhere
+			# Once it comes to rest, tell everyone where it ended up (tiny drift fix).
+			if node.is_on_floor() and node.velocity.length() < 0.2 and not c.get("rested", true):
+				c["rested"] = true
+				broadcast_fx("chicken_kick", [cid, node.global_position, Vector3.ZERO])
 		var near := false
 		for d in targets:
 			if d.global_position.distance_to(c["pos"]) <= Skills.CHICKEN_RADIUS:
@@ -1117,6 +1145,11 @@ func fx(kind: String, args: Array) -> void:
 			_fx_parent().add_child(c)
 			c.global_position = args[1]
 			chickens[args[0]] = c
+			if mode != "online" or (net and net.is_host):
+				c.on_kick = kick_chicken
+		"chicken_kick":
+			if chickens.has(args[0]) and is_instance_valid(chickens[args[0]]):
+				chickens[args[0]].launch(args[1], args[2])
 		"chicken_alarm":
 			if chickens.has(args[0]) and is_instance_valid(chickens[args[0]]):
 				chickens[args[0]].alarmed = args[1]
@@ -1165,6 +1198,10 @@ func _make_shell(index: int, pos: Vector3, yaw: float) -> void:
 	for c in prop.get_children():
 		if c is CollisionShape3D:
 			c.disabled = false
+	# Whoever just left it is standing inside it: let them walk straight out
+	# instead of being stuck until it fades. (Everyone else still bumps into it.)
+	if player and prop is PhysicsBody3D and player.global_position.distance_to(pos) < 3.0:
+		player.add_collision_exception_with(prop)
 	Effects.dissolve(prop, 6.0)
 
 
@@ -1294,8 +1331,24 @@ func _build_hud() -> void:
 	bars.add_theme_constant_override("separation", 6)
 	bars.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(bars)
+	_make_bar(bars, "health", Color(0.85, 0.2, 0.25))
 	_make_bar(bars, "sprint", Color(0.4, 0.85, 0.45))
 	_make_bar(bars, "power", Color(1.0, 0.85, 0.3))
+
+	# Hold-to-return progress bar, just under the crosshair
+	hold_bar = ColorRect.new()
+	hold_bar.color = Color(0, 0, 0, 0.5)
+	hold_bar.size = Vector2(80, 6)
+	hold_bar.set_anchors_preset(Control.PRESET_CENTER)
+	hold_bar.position += Vector2(-40, 24)
+	hold_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hold_bar.visible = false
+	hud.add_child(hold_bar)
+	hold_fill = ColorRect.new()
+	hold_fill.color = Color(0.9, 0.2, 0.15)
+	hold_fill.size = Vector2(0, 6)
+	hold_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hold_bar.add_child(hold_fill)
 
 	# Skills, bottom right
 	skill_label = _make_label(18)
@@ -1412,6 +1465,8 @@ func _fill_scoreboard() -> void:
 func _skill_line(key: String, id: String) -> String:
 	if id == "":
 		return "[%s] -" % key
+	if Skills.SKILLS[id].get("hold", false):
+		return "[Hold %s] %s%s" % [key, Skills.label(id), "   (flying)" if player.flying else ""]
 	var cd: float = player.skill_cd.get(id, 0.0)
 	return "[%s] %s   %s" % [key, Skills.label(id), "ready" if cd <= 0.0 else "%ds" % ceili(cd)]
 
@@ -1421,8 +1476,7 @@ func _skill_text() -> String:
 	if role == "angel":
 		var melee := "ready" if player.melee_cd <= 0.0 else "..."
 		return "%s\n%s\n[F] Melee   %s" % [_skill_line("Q", lo[0]), _skill_line("Right click", lo[1]), melee]
-	var text := "%s\n%s\n[Hold right click] Fly%s" % [_skill_line("Q", lo[0]), _skill_line("F", lo[1]),
-			"   (flying)" if player.flying else ""]
+	var text := "%s\n%s" % [_skill_line("Q", lo[0]), _skill_line("Right click", lo[1])]
 	if player.skill_lock > 0.0:
 		text += "\nSKILLS LOCKED  %.1fs" % player.skill_lock
 	return text
@@ -1450,16 +1504,20 @@ func _make_bar(parent: Control, bar_name: String, color: Color) -> void:
 	back.size_flags_vertical = Control.SIZE_SHRINK_CENTER   # don't stretch to the label's height
 	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(back)
+	var value := _make_label(16)      # optional number to the right of the bar
+	value.custom_minimum_size.x = 80
+	row.add_child(value)
 	var fill := ColorRect.new()
 	fill.color = color
 	fill.size = Vector2(BAR_WIDTH, 14)
 	fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	back.add_child(fill)
 	parent.add_child(row)
-	bar_fills[bar_name] = [fill, lbl]
+	bar_fills[bar_name] = [fill, lbl, value]
 
 
-func _set_bar(bar_name: String, text: String, fraction: float, color := Color.TRANSPARENT) -> void:
+func _set_bar(bar_name: String, text: String, fraction: float, color := Color.TRANSPARENT, value := "") -> void:
+	bar_fills[bar_name][2].text = value
 	var fill: ColorRect = bar_fills[bar_name][0]
 	fill.size.x = BAR_WIDTH * clampf(fraction, 0.0, 1.0)
 	if color != Color.TRANSPARENT:
@@ -1592,8 +1650,6 @@ func _update_hud(delta: float) -> void:
 	var text := "%s   |   %s  %s" % [side, phase, clock if state != State.ENDED else ""]
 	if role == "angel":
 		text += "   |   Demons left: %d   |   %s" % [bots_left, Blessings.label(player.blessing)]
-	elif mode == "online":
-		text += "   |   Health: %d%%" % maxi(my_health, 0)
 	status_label.text = text
 
 	_hurt_time -= delta
@@ -1615,6 +1671,15 @@ func _update_hud(delta: float) -> void:
 	skill_label.visible = in_game
 	skill_label.text = _skill_text()
 
+	# Health: the bar shows how much is left, the number shows real hit points for
+	# the current form (a hay bale has more to lose than a stack of books).
+	var health_row: Control = bar_fills["health"][0].get_parent().get_parent()
+	health_row.visible = mode == "online" and role == "demon"
+	if health_row.visible:
+		var max_hp := PropLib.max_hp(player.possessed_type)
+		_set_bar("health", "Health", my_health, Color.TRANSPARENT,
+				"%d / %d" % [int(ceil(my_health * max_hp)), max_hp])
+
 	var sprint_color := Color(0.85, 0.35, 0.3) if player._sprint_exhausted else Color(0.4, 0.85, 0.45)
 	_set_bar("sprint", "Sprint", player.sprint_stamina / player.SPRINT_MAX, sprint_color)
 	if role == "angel":
@@ -1624,9 +1689,10 @@ func _update_hud(delta: float) -> void:
 	else:
 		_set_bar("power", "Hatred", player.hatred / player.HATRED_MAX, Color(0.8, 0.12, 0.12))
 
+	hold_bar.visible = player.hold_fraction > 0.0
+	hold_fill.size.x = 80.0 * player.hold_fraction
 	if player.hold_fraction > 0.0:
-		var filled := int(round(player.hold_fraction * 10))
-		hint_label.text = "Returning to demon form  " + "|".repeat(filled) + ".".repeat(10 - filled)
+		hint_label.text = ""
 	elif role == "demon" and player.look_target_type != "" and in_game:
 		hint_label.text = "Click: possess %s" % PropLib.label(player.look_target_type)
 	else:

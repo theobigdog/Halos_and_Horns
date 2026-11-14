@@ -63,55 +63,70 @@ func _run() -> void:
 	var player = main.player
 	player.rotation = Vector3.ZERO
 
-	# ---- Flying ----
+	# ---- Flying (a demon skill: hold its key to rise, let go to fall) ----
+	player.loadout["demon"] = ["possess", "fly"]
 	player.global_position = Vector3(0, 0.1, 20)
 	player.hatred = player.HATRED_MAX
 	await frames(5)
-	player.test_input = {"fly": true, "up": true}
-	await frames(60)
-	check(player.flying and player.global_position.y > 2.5, "holding right click flies up (y %.1f)" % player.global_position.y)
 	player.test_input = {"fly": true}
-	var y_hover: float = player.global_position.y
+	await frames(60)
+	check(player.flying and player.global_position.y > 3.0, "holding the Fly key rises (y %.1f)" % player.global_position.y)
+	player.test_input = {"fly": true, "dir": Vector2(1, 0)}
+	var x_before: float = player.global_position.x
 	await frames(30)
-	check(absf(player.global_position.y - y_hover) < 0.6, "letting go of everything hovers in place")
-	var seconds := 1.5
-	while player.flying and seconds < 15.0:
+	check(player.global_position.x > x_before + 1.5, "WASD steers while flying")
+	player.test_input = {}
+	var y_top: float = player.global_position.y
+	await frames(150)   # coasts upward first (it was rising fast), like the top of a jump
+	check(player.global_position.y < y_top - 0.3, "letting go: gravity takes you down (%.1f -> %.1f, flying %s)" % [y_top, player.global_position.y, player.flying])
+	await frames(90)
+	check(player.is_on_floor(), "...all the way to the ground (no fall damage either)")
+
+	player.hatred = player.HATRED_MAX
+	var seconds := 0.0
+	player.test_input = {"fly": true}
+	while seconds < 1.0 or (player.flying and seconds < 15.0):
 		await frames(6)
 		seconds += 0.1
 	check(seconds > 5.0 and seconds < 8.5, "a full Hatred bar gives 5-8 s of flight (%.1f s)" % seconds)
-	player.test_input = {"fly": true}
-	await frames(60)
-	check(not player.flying and player.global_position.y < 0.5, "out of Hatred: you fall back down")
+	await frames(30)
+	check(not player.flying, "out of Hatred: no more lift")
 	player.test_input = {}
+	await frames(240)
 
 	player.hatred = player.HATRED_MAX
 	player.hatred_regen_multiplier = 6.0   # the future fast-Hatred power-up
-	player.test_input = {"fly": true, "up": true}
-	await frames(60)
 	player.test_input = {"fly": true}
-	await frames(600)
-	check(player.flying, "with fast Hatred regen you can fly endlessly (10 s and counting)")
+	await frames(660)
+	check(player.flying, "with fast Hatred regen you can fly endlessly (11 s and counting)")
 	player.hatred_regen_multiplier = 1.0
 	player.test_input = {}
-	await frames(90)
+	await frames(300)
 
 	player.hatred = player.HATRED_MAX
 	player.skill_lock = 2.0
-	player.test_input = {"fly": true, "up": true}
+	player.test_input = {"fly": true}
 	await frames(20)
 	check(not player.flying, "can't fly during a vacuum lockout")
 	player.skill_lock = 0.0
 	player.test_input = {}
 	await frames(30)
 
+	player.loadout["demon"] = ["possess", ""]
+	player.test_input = {"fly": true}
+	await frames(20)
+	check(not player.flying, "no Fly skill picked: no flying")
+	player.loadout["demon"] = ["possess", "fly"]
+	player.test_input = {}
+
 	player.force_possess("hay")
 	await frames(2)
 	player.hatred = player.HATRED_MAX
-	player.test_input = {"fly": true, "up": true}
+	player.test_input = {"fly": true}
 	await frames(40)
 	check(player.flying and player.global_position.y > 1.5, "props can fly (a flying hay bale)")
 	player.test_input = {}
-	await frames(90)
+	await frames(120)
 
 	# ---- Per-form health and speed ----
 	check(PropLib.max_hp("books") < PropLib.max_hp("") and PropLib.max_hp("") < PropLib.max_hp("hay"),
@@ -188,6 +203,12 @@ func _run() -> void:
 	player.unpossess()
 	await frames(5)
 	check(second == null or (is_instance_valid(second) and second.visible), "leaving a possessed prop leaves it behind too")
+	var walk_from: Vector3 = player.global_position
+	player.test_input = {"dir": Vector2(0, -1)}
+	await frames(30)
+	player.test_input = {}
+	var walked := Vector2(player.global_position.x - walk_from.x, player.global_position.z - walk_from.z).length()
+	check(walked > 1.0, "you can walk away right away, not stuck inside the prop you left (%.1f m)" % walked)
 
 	# ---- Angel tools vs the test demons ----
 	main.role = "angel"
@@ -205,6 +226,23 @@ func _run() -> void:
 	var far_c = main.chickens.get(2)
 	check(near_c != null and near_c.alarmed, "a chicken near a hidden demon squawks")
 	check(far_c != null and not far_c.alarmed, "a chicken with no demon nearby stays calm")
+	check(near_c != null and near_c._bubble.visible, "...and shows its detection bubble")
+	check(far_c != null and not far_c._bubble.visible, "...a calm chicken shows no bubble, it's just a chicken")
+
+	# Knock the calm chicken down the "hallway" with a blessing.
+	if far_c != null:
+		var c_start: Vector3 = far_c.global_position
+		var shot = preload("res://scripts/projectile.gd").new()
+		shot.velocity = Vector3(30, 0, 0)
+		shot.shooter = player
+		main.add_child(shot)
+		shot.global_position = c_start + Vector3(-3, 0.4, 0)
+		await frames(150)
+		var moved: float = far_c.global_position.x - c_start.x
+		check(moved > 6.0, "a blessing sends the chicken skidding (%.1f m)" % moved)
+		check(absf(far_c.velocity.x) < 0.3, "...and it slides to a stop")
+		check(main._auth_chickens.has(2) and main._auth_chickens[2]["pos"].distance_to(far_c.global_position) < 0.5,
+				"...and it keeps watching from where it landed")
 
 	# Vacuum: pulls nearby props in and yanks the demon.
 	var center: Vector3 = bot.global_position + Vector3(3, 0, 0)

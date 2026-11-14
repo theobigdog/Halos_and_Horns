@@ -15,6 +15,7 @@ var eid := 0                  # entity id for this round (not the player's netwo
 var role := ""
 var form := ""                # possessed prop type, "" = body form
 var player_name := ""         # only set for teammates
+var team := ""                # side, as the host's roster told us (arrives with the name)
 var snap := false             # host: jump straight to reported positions (hits must be exact)
 var net                       # the multiplayer controller (host only uses it for hits)
 

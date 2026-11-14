@@ -17,7 +17,7 @@ const PropLib = preload("res://scripts/prop_library.gd")
 const Effects = preload("res://scripts/effects.gd")
 const Skills = preload("res://scripts/skills.gd")
 
-const PROTOCOL_VERSION := 3      # bump whenever online messages change; mismatches can't join
+const PROTOCOL_VERSION := 5      # bump whenever online messages change; mismatches can't join
 const DEFAULT_PORT := 7777
 const MAX_PLAYERS := 16
 const SEND_RATE := 30.0          # joined players report their position this many times a second
@@ -31,7 +31,7 @@ const THROW_REGEN := 30.0
 const SCOREBOARD_RATE := 1.0     # roster (Tab) updates per second
 const GRAPPLE_MOVE_SPEED := 26.0  # allowed speed for a moment after a grapple the host approved
 const HATRED_REGEN := 4.0         # must match player.gd (mirrored to catch fly hacks)
-const HATRED_FLY_DRAIN := 19.0
+const HATRED_FLY_DRAIN := 22.0
 const HATRED_MAX_MIRROR := 100.0
 const FLOAT_LIMIT := 3.0          # seconds off the ground without flying before it's a cheat
 
@@ -461,6 +461,7 @@ func _apply_roster(roster: Array) -> void:
 	forget_names()
 	for entry in roster:
 		var r := _get_or_make_remote(entry[0])
+		r.team = entry[2]
 		r.set_name_for_teammate(entry[1])
 
 
@@ -548,6 +549,10 @@ func c_state(pos: Vector3, yaw: float, form: String, flying: bool) -> void:
 	if form != "" and (rec["role"] != "demon" or not PropLib.TYPES.has(form)):
 		form = ""
 	flying = flying and rec["role"] == "demon"
+	if flying and not "fly" in rec["loadout"]["demon"]:
+		_note_cheat(id, "flying without the Fly skill")
+		_drop_to_ground(id, rec, pos)
+		return
 	rec["pos"] = pos
 	rec["valid_pos"] = pos
 	rec["yaw"] = yaw
@@ -703,19 +708,19 @@ func damage_player(id: int, damage: int) -> bool:
 	# Health is kept as a fraction, so switching forms keeps your percentage:
 	# the same hit hurts a stack of books (50 hp) more than a hay bale (150 hp).
 	rec["hp"] -= float(damage) / PropLib.max_hp(rec["form"])
-	var percent := maxi(int(ceil(rec["hp"] * 100.0)), 0)
+	var left := maxf(rec["hp"], 0.0)
 	if id == 1:
-		main.online_you_hit(percent)
+		main.online_you_hit(left)
 	else:
-		s_you_hit.rpc_id(id, percent)
+		s_you_hit.rpc_id(id, left)
 	if rec["hp"] <= 0.0:
 		_catch(id)
 	return true
 
 
 @rpc("authority", "call_remote", "reliable")
-func s_you_hit(health: int) -> void:
-	main.online_you_hit(health)
+func s_you_hit(health_fraction: float) -> void:
+	main.online_you_hit(clampf(health_fraction, 0.0, 1.0))
 
 
 # Mobification: a caught demon is redeemed and joins the angels.
@@ -930,7 +935,7 @@ func c_release() -> void:
 
 func grant_grapple(id: int) -> void:
 	if peers.has(id):
-		peers[id]["grapple_until"] = now() + 1.8
+		peers[id]["grapple_until"] = now() + Skills.GRAPPLE_RANGE / Skills.GRAPPLE_SPEED + 0.6
 
 
 # Every demon in the round, as bodies the host can measure and hit.

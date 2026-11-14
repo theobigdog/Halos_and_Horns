@@ -1,6 +1,6 @@
 # Every skill in the game, and loadouts (each player picks 2 per team).
-# Keys: Q = skill 1. Angels: right-click = skill 2, F = melee.
-#                    Demons: F = skill 2, right-click (hold) = fly.
+# Keys (both teams): Q = skill 1, right click = skill 2. Angels also have F = melee.
+# "Hold" skills (Fly) work while their key is held down.
 # Numbers here are first guesses, meant to be tuned in playtests.
 extends RefCounted
 
@@ -8,26 +8,32 @@ const SKILLS := {
 	# ---- angels ----
 	"grapple": {"team": "angel", "label": "Grappling Hook", "cooldown": 6.0,
 		"desc": "Zip to walls and roofs, or snag a demon: damages it and drags it to you."},
-	"chicken": {"team": "angel", "label": "Alarm Chicken", "cooldown": 20.0,
-		"desc": "Drop a chicken that pulses for 9 seconds and squawks if a demon is close."},
-	"vacuum": {"team": "angel", "label": "Vacuum Orb", "cooldown": 18.0,
+	"chicken": {"team": "angel", "label": "Alarm Chicken", "cooldown": 10.0,
+		"desc": "Drop a chicken for 9 seconds. If a demon comes close it squawks and shows its detection bubble. Hit it with a blessing to send it skidding off to check further away."},
+	"vacuum": {"team": "angel", "label": "Vacuum Orb", "cooldown": 8.0,
 		"desc": "Throw into a pile of props: sucks them in, yanks hidden demons hard, drains their Hatred and locks their skills for 2 seconds."},
 	"leap": {"team": "angel", "label": "Holy Leap", "cooldown": 8.0,
 		"desc": "A magnificent jump."},
 	# ---- demons ----
+	"fly": {"team": "demon", "label": "Fly", "cooldown": 0.0, "hold": true,
+		"desc": "Hold the key to rise, spending Hatred (about 5-6 seconds from full). Let go and you fall. No fall damage."},
 	"possess": {"team": "demon", "label": "Possess", "cooldown": 1.5,
-		"desc": "Become a real prop instead of a copy (Q while aiming at it). The one you leave behind slowly dissolves."},
+		"desc": "Become a real prop instead of a copy (press its key while aiming at the prop). The one you leave behind slowly dissolves."},
 }
 
-const DEFAULTS := {"angel": ["grapple", "chicken"], "demon": ["possess", ""]}
+const DEFAULTS := {"angel": ["grapple", "chicken"], "demon": ["possess", "fly"]}
+const SLOT_KEYS := ["Q", "Right click"]
 
 # Tuning
-const GRAPPLE_RANGE := 25.0
+const GRAPPLE_RANGE := 40.0
 const GRAPPLE_SPEED := 20.0       # m/s while zipping toward the hook
 const GRAPPLE_DAMAGE := 20
 const CHICKEN_RANGE := 15.0       # how far away you can drop it
 const CHICKEN_RADIUS := 6.0       # detection radius
 const CHICKEN_LIFETIME := 9.0
+const CHICKEN_KICK_SPEED := 16.0  # how fast a blessing sends it skidding
+const CHICKEN_KICK_UP := 3.5
+const CHICKEN_FRICTION := 9.0     # m/s lost per second while sliding on the ground (~14 m per kick)
 const VACUUM_RADIUS := 6.0
 const VACUUM_TIME := 2.5
 const VACUUM_HATRED_DRAIN := 35.0

@@ -51,12 +51,14 @@ const SPRINT_RESTART := 25.0      # once empty, need this much back before runni
 # Demons' Hatred: their "mana". Fills slowly; flying and demon skills spend it.
 const HATRED_MAX := 100.0
 const HATRED_REGEN := 4.0
-const HATRED_FLY_DRAIN := 19.0    # while flying; minus regen = ~6.7 s of flight from full
+const HATRED_FLY_DRAIN := 22.0    # while flying; minus regen = ~5.5 s of flight from full
 
-# Flying (demons, any form, hold right mouse)
-const FLY_SPEED := 7.0            # in the direction you look
-const FLY_VERTICAL := 4.5         # Space = up, Ctrl = down
-const PULL_SPEED := 14.0          # being yanked by a vacuum or grappling hook
+# Flying (a demon skill, any form): hold its key for upward thrust, let go to fall.
+# Thrust beats gravity, so you keep speeding up toward FLY_MAX_RISE. Jumping first
+# gives a head start; from standing it takes a moment to build speed.
+const FLY_THRUST := 24.0          # m/s² upward (gravity pulls ~13.2 the other way)
+const FLY_MAX_RISE := 11.0        # top climbing speed, m/s
+const PULL_SPEED := 24.0          # being yanked by a vacuum or grappling hook (much faster than the props)
 
 const TAUNT_COOLDOWN := 0.8
 
@@ -245,11 +247,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("melee"):
 		if role == "angel":
 			melee()
-		else:
-			use_skill(1)      # demons don't melee: F is their second skill
 		return
-	if event.is_action_pressed("rmb") and role == "angel":
-		use_skill(1)          # demons hold right mouse to fly instead
+	if event.is_action_pressed("rmb"):
+		use_skill(1)
 		return
 	if event.is_action_pressed("shoot"):
 		if role == "angel":
@@ -281,8 +281,6 @@ func _physics_process(delta: float) -> void:
 	var want_run := false
 	var want_jump := false
 	var want_fly := false
-	var want_up := false
-	var want_down := false
 	sneaking = false
 	if not test_input.is_empty():
 		# Automated tests drive movement here (headless mode can't capture the mouse).
@@ -291,20 +289,16 @@ func _physics_process(delta: float) -> void:
 		want_run = test_input.get("run", false)
 		want_jump = test_input.get("jump", false)
 		want_fly = test_input.get("fly", false)
-		want_up = test_input.get("up", false)
-		want_down = test_input.get("down", false)
 	elif controls_active:
 		input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 		sneaking = Input.is_action_pressed("sneak")
 		want_run = Input.is_action_pressed("run")
 		want_jump = Input.is_action_just_pressed("jump")
-		want_fly = Input.is_action_pressed("rmb")
-		want_up = Input.is_action_pressed("jump")
-		want_down = sneaking
+		want_fly = _hold_key_down("fly")
 
 	# Hatred always refills; flying spends it faster than it refills (unless boosted).
 	if role == "demon":
-		flying = want_fly and not frozen and hatred > 0.5 and skill_lock <= 0.0
+		flying = want_fly and "fly" in loadout["demon"] and not frozen and hatred > 0.5 and skill_lock <= 0.0
 		hatred += HATRED_REGEN * hatred_regen_multiplier * delta
 		if flying:
 			hatred -= HATRED_FLY_DRAIN * delta
@@ -319,11 +313,13 @@ func _physics_process(delta: float) -> void:
 	elif _grapple_time > 0.0:
 		_grapple_step(delta, want_jump)
 		running = false
-	elif flying:
-		_fly_step(delta, input_dir, want_up, want_down)
-		running = false
 	else:
-		if not on_floor:
+		if flying:
+			# Thrust up against plain gravity; WASD steers like any other time in the air.
+			var g_fly: float = gravity * tuning["gravity_scale"]
+			velocity.y = minf(velocity.y + (FLY_THRUST - g_fly) * delta, FLY_MAX_RISE)
+			_fall_speed = 0.0
+		elif not on_floor:
 			var g: float = gravity * tuning["gravity_scale"]
 			if velocity.y < 0.0:
 				g *= tuning["fall_multiplier"]   # fall faster than you rise: less floaty
@@ -384,15 +380,11 @@ func _physics_process(delta: float) -> void:
 	look_target_type = hovered.get_meta("prop_type") if hovered else ""
 
 
-# Flying: move where you look (including up/down), Space rises, Ctrl sinks,
-# let go of everything and you hover.
-func _fly_step(delta: float, input_dir: Vector2, up: bool, down: bool) -> void:
-	var dir := camera.global_transform.basis * Vector3(input_dir.x, 0.0, input_dir.y)
-	if dir.length() > 1.0:
-		dir = dir.normalized()
-	var vertical := (1.0 if up else 0.0) - (1.0 if down else 0.0)
-	var target := dir * FLY_SPEED + Vector3.UP * vertical * FLY_VERTICAL
-	velocity = velocity.move_toward(target, 25.0 * delta)
+# Is the key for this "hold" skill (e.g. Fly) held down? Q for slot 1, right click for slot 2.
+func _hold_key_down(id: String) -> bool:
+	var lo: Array = loadout[role]
+	return (lo[0] == id and Input.is_action_pressed("skill_1")) \
+			or (lo[1] == id and Input.is_action_pressed("rmb"))
 
 
 # Zipping toward a grappling hook. Jump lets go early (with a hop).
@@ -436,7 +428,7 @@ func is_grappling() -> bool:
 # everything else is decided by the host / practice game via skill_used.
 func use_skill(slot: int) -> bool:
 	var id: String = loadout[role][slot]
-	if id == "" or frozen or skill_cd.get(id, 0.0) > 0.0:
+	if id == "" or frozen or skill_cd.get(id, 0.0) > 0.0 or Skills.SKILLS[id].get("hold", false):
 		return false
 	if role == "demon" and skill_lock > 0.0:
 		return false
@@ -458,7 +450,7 @@ func use_skill(slot: int) -> bool:
 			if not hit["collider"].has_method("take_hit"):
 				# Hooked the world or a plain prop: zip there.
 				_grapple_target = point - dir * 0.5
-				_grapple_time = 1.6
+				_grapple_time = global_position.distance_to(_grapple_target) / Skills.GRAPPLE_SPEED + 0.3
 				_pull_time = 0.0
 		"chicken":
 			var hit := _aim_ray(Skills.CHICKEN_RANGE)

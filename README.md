@@ -3,15 +3,16 @@
 A free, non-commercial prop-hunt game: demons possess everyday objects to hide, angels hunt them down.
 Passion project, inspired by Witch It.
 
-## Status: version 0.3, flying, skills and possess
+## Status: version 0.3.1, Fly is a skill
 
 One small test map, placeholder shapes for everything.
 
 - **Practice:** single player. The angel side hunts 3 test demons (they hop and taunt so you can find them); the demon side is a sandbox for possessing props.
 - **Online:** one player hosts, friends join by address. Mobification rules: caught demons are redeemed and switch to the angels. About one angel per three players.
-- **Skills:** pick 2 per side on the main menu or in the lobby. Angels: Grappling Hook, Alarm Chicken, Vacuum Orb, Holy Leap. Demons: Possess (more coming).
-- **Demons fly** (hold right click) using Hatred, and can **transform** into a copy of any prop (click) or, with the Possess skill, **become** the real one (Q).
-- Every prop form has its own health and speed: small = fragile but quick, big = tanky but slow.
+- **Skills:** pick 2 per side on the main menu or in the lobby. Angels: Grappling Hook, Alarm Chicken, Vacuum Orb, Holy Leap. Demons: Possess, Fly (more coming).
+- **Demons** can **transform** into a copy of any prop (click), or with skills **become** the real one (Possess) and **fly** (hold the key: you rise while Hatred lasts, gravity brings you down; no fall damage).
+- The Alarm Chicken is just a chicken until a demon comes close; then it squawks and shows its detection bubble. Shoot it with a blessing to send it skidding down a hallway.
+- Every prop form has its own health and speed: small = fragile but quick, big = tanky but slow. Your health bar shows how much is left; the number shows real hit points for your current form.
 
 ## Playing (Windows)
 
@@ -58,9 +59,10 @@ Both builds are also made automatically: publishing a release on GitHub runs [th
 | 2 | Signature taunt | Signature taunt |
 | Left click | Throw a blessing (hold to keep throwing; uses blessing stamina) | Transform into a copy of the outlined prop |
 | Hold left click | | Back to demon form |
-| Q | Skill 1 | Skill 1 (e.g. Possess the real prop) |
-| Right click | Skill 2 | Hold to fly (uses Hatred; Space up, Ctrl down) |
-| F | Melee | Skill 2 |
+| Q | Skill 1 | Skill 1 |
+| Right click | Skill 2 | Skill 2 |
+| F | Melee | |
+| (hold the key) | | Fly, if it's one of your skills: rise while held, fall when let go |
 | T | First/third person | First/third person |
 | B | Change blessing type (testing) | |
 | F1 | Movement tuning panel | Movement tuning panel |

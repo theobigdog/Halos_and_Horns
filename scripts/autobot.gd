@@ -48,7 +48,7 @@ func _physics_process(delta: float) -> void:
 		_loadout_sent = true
 		if options.has("skills"):
 			main.loadout["angel"] = Array(options["skills"].split(","))
-		main.loadout["demon"] = ["possess", ""]
+		main.loadout["demon"] = ["possess", "fly"]
 		main._apply_loadout()
 	# Host: start once enough players are in (--autostart=N).
 	if main.net and main.net.is_host and options.has("autostart") \
@@ -92,7 +92,7 @@ func _physics_process(delta: float) -> void:
 		var shown := []
 		for eid in main.net.remotes:
 			var r = main.net.remotes[eid]
-			shown.append("%s=%s" % [r.role if r.role != "" else "?", r.player_name if r.player_name != "" else "<hidden>"])
+			shown.append("%s=%s" % [r.team if r.team != "" else "?", r.player_name if r.player_name != "" else "<hidden>"])
 		log_line("as %s, names I can see: %s" % [main.role, ", ".join(shown)])
 		var roster := []
 		for row in main.scoreboard_rows:
@@ -113,7 +113,7 @@ func _physics_process(delta: float) -> void:
 	if "fly" in options.get("cheat", "") and main.role == "demon" and main.state == main.State.HIDING \
 			and _role_time > 2.5:
 		p.hatred = p.HATRED_MAX   # a hacked client with endless Hatred
-		p.test_input = {"fly": true, "up": p.global_position.y < 6.0}
+		p.test_input = {"fly": true}
 		if not _used.has("flycheat"):
 			_used["flycheat"] = true
 			log_line("cheating: flying forever")
@@ -130,7 +130,7 @@ func _play_demon(delta: float, p) -> void:
 		return
 	_fly_time += delta
 	if _fly_time < 0.8:
-		p.test_input = {"fly": true, "up": true}   # a little flight first
+		p.test_input = {"fly": true}   # a little flight first
 		if not _used.has("fly"):
 			_used["fly"] = true
 			log_line("flying")

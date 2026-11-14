@@ -54,6 +54,8 @@ func _physics_process(delta: float) -> void:
 	# take_hit returns true only if the hit counted (a demon, not a fellow angel).
 	if not visual_only and on_impact.is_valid():
 		on_impact.call(hit["position"])
+	if not visual_only and collider and collider.has_method("kick"):
+		collider.kick(velocity)   # the angels' alarm chicken goes skidding
 	if not visual_only and damage > 0 and collider and collider.has_method("take_hit") and collider.take_hit(damage):
 		hit_demon = true
 		if is_instance_valid(shooter) and shooter.has_method("confirm_hit"):
