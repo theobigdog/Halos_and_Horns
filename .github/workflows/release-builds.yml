@@ -1,0 +1,73 @@
+# Builds the game for Windows and Linux.
+#
+# - When a release is published, both builds are attached to it:
+#   HalosAndHorns.exe (Windows) and HalosAndHorns.x86_64 (Linux).
+#   A file with the same name that is already on the release is replaced.
+# - It can also be run by hand from the Actions tab; the builds are then
+#   available as downloadable artifacts on the run page.
+name: Release builds
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+env:
+  # Must match the Godot version the project is made with (see project.godot).
+  GODOT_VERSION: "4.3"
+
+jobs:
+  build:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # needed to attach the builds to the release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # preset: the name in export_presets.cfg
+          # template: Godot's export template file for that platform
+          # file: the name of the finished game file
+          - preset: Windows
+            template: windows_release_x86_64.exe
+            file: HalosAndHorns.exe
+          - preset: Linux
+            template: linux_release.x86_64
+            file: HalosAndHorns.x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot and the ${{ matrix.preset }} export template
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl -fsSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl -fsSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          unzip -q godot.zip -d "$RUNNER_TEMP"
+          templates="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$templates"
+          unzip -q -j templates.tpz templates/version.txt "templates/${{ matrix.template }}" -d "$templates"
+          rm godot.zip templates.tpz
+          echo "GODOT=$RUNNER_TEMP/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Export the ${{ matrix.preset }} build
+        run: |
+          mkdir -p builds
+          "$GODOT" --headless --export-release "${{ matrix.preset }}" "builds/${{ matrix.file }}"
+          test -s "builds/${{ matrix.file }}"
+          chmod +x "builds/${{ matrix.file }}"
+
+      - name: Check the build starts
+        if: matrix.preset == 'Linux'
+        run: timeout 60 "builds/${{ matrix.file }}" --headless --quit-after 10
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HalosAndHorns-${{ matrix.preset }}
+          path: builds/${{ matrix.file }}
+
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" "builds/${{ matrix.file }}" --clobber
