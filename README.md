@@ -3,7 +3,7 @@
 A free, non-commercial prop-hunt game: demons possess everyday objects to hide, angels hunt them down.
 Passion project, inspired by Witch It.
 
-## Status: version 0.3.1, Fly is a skill
+## Status: version 0.3.2, Fly is a skill
 
 One small test map, placeholder shapes for everything.
 

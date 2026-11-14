@@ -288,6 +288,23 @@ func _run() -> void:
 	player.rotation = Vector3.ZERO
 	player.velocity = Vector3.ZERO
 	await frames(5)
+	# Aiming at the open sky (the invisible ceiling is in reach): nothing to hook.
+	player.pivot.rotation.x = 1.2
+	await frames(2)
+	check(not player.use_skill(0), "the hook can't grab the sky")
+	await frames(30)
+	check(player.global_position.y < 1.0, "...and doesn't pull you anywhere (y %.1f)" % player.global_position.y)
+	# The invisible map walls still stop you.
+	player.global_position = Vector3(26, 0.1, 18)
+	player.test_input = {"dir": Vector2(1, 0)}
+	await frames(90)
+	player.test_input = {}
+	check(player.global_position.x < 28.6, "the invisible map wall still stops you (x %.1f)" % player.global_position.x)
+	player.global_position = Vector3(8, 0.1, 18)
+	player.velocity = Vector3.ZERO
+	player.skill_cd.clear()
+	player.pivot.rotation.x = 0.0
+	await frames(2)
 	var eye: Vector3 = player.camera.global_position
 	var roof_edge := Vector3(8, 3.9, 11)   # the 4 m tall building at (8, 8)
 	player.pivot.rotation.x = atan2(roof_edge.y - eye.y, eye.z - roof_edge.z)

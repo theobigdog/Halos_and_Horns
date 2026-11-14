@@ -132,6 +132,7 @@ func _ready() -> void:
 	# players' bodies jump around as positions arrive). There are no moving platforms.
 	platform_floor_layers = 0
 	platform_on_leave = CharacterBody3D.PLATFORM_ON_LEAVE_DO_NOTHING
+	collision_mask = 1 | 2   # the world, plus the invisible map walls and ceiling
 	shape_node = CollisionShape3D.new()
 	add_child(shape_node)
 	visual_root = Node3D.new()
@@ -562,7 +563,7 @@ func _apply_outline(node: Node, material: Material) -> void:
 func _aim_ray(reach: float) -> Dictionary:
 	var from := camera.global_position
 	var to := from - camera.global_transform.basis.z * reach
-	var query := PhysicsRayQueryParameters3D.create(from, to)
+	var query := PhysicsRayQueryParameters3D.create(from, to, 1)   # world only, not the invisible map bounds
 	query.exclude = [get_rid()]
 	return get_world_3d().direct_space_state.intersect_ray(query)
 

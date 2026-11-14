@@ -39,6 +39,7 @@ func _ready() -> void:
 	shape.position.y = 0.375
 	add_child(shape)
 	floor_snap_length = 0.2
+	collision_mask = 1 | 2   # stays inside the map's invisible walls
 	_body = Node3D.new()
 	add_child(_body)
 	var body := MeshInstance3D.new()

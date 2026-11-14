@@ -19,7 +19,7 @@ const Vortex = preload("res://scripts/vortex.gd")
 const Rope = preload("res://scripts/rope.gd")
 const Projectile = preload("res://scripts/projectile.gd")
 
-const GAME_VERSION := "0.3.1 (Fly is a skill)"
+const GAME_VERSION := "0.3.2 (no more sky hooks)"
 const HIDE_TIME := 30.0
 const HUNT_TIME := 180.0
 const BOT_COUNT := 3
@@ -276,6 +276,8 @@ func _build_map() -> void:
 	_add_block(Vector3(-6, 0.8, 7.3), Vector3(2.5, 0.4, 5.9), Color(0.5, 0.45, 0.4), Vector3(-0.35, 0, 0))   # top edge flush with the platform
 
 
+const WORLD_LAYER := 1         # everything real you can see, hit and hook
+const BOUNDS_LAYER := 2        # invisible map walls and ceiling
 const CEILING := 24.0
 
 
@@ -287,6 +289,10 @@ func _add_invisible(center: Vector3, size: Vector3) -> void:
 	shape_node.shape = box
 	body.add_child(shape_node)
 	body.position = center
+	# Its own layer: it stops bodies (players, chickens) but aim rays, hooks and
+	# throws go right through, so you can't hook the sky.
+	body.collision_layer = BOUNDS_LAYER
+	body.collision_mask = 0
 	add_child(body)
 
 
@@ -946,7 +952,7 @@ func _on_player_released() -> void:
 
 
 func _ray(from: Vector3, to: Vector3, exclude: Array) -> Dictionary:
-	var q := PhysicsRayQueryParameters3D.create(from, to)
+	var q := PhysicsRayQueryParameters3D.create(from, to, WORLD_LAYER)
 	var rids := []
 	for n in exclude:
 		if is_instance_valid(n) and n is CollisionObject3D:
