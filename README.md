@@ -42,7 +42,7 @@ Windows and Linux players can play together.
 2. Open Godot, click **Import**, pick `project.godot`, press **F5**.
 3. To build the game yourself: Editor → Manage Export Templates → Download, then Project → Export → Windows or Linux. Either one can be built from either operating system.
 
-The Linux build is also made automatically: publishing a release on GitHub runs [the Linux build workflow](.github/workflows/linux-build.yml), which attaches `HalosAndHorns.x86_64` to that release a few minutes later.
+Both builds are also made automatically: publishing a release on GitHub runs [the release builds workflow](.github/workflows/release-builds.yml), which attaches `HalosAndHorns.exe` and `HalosAndHorns.x86_64` to that release a few minutes later.
 
 ## Controls
 
