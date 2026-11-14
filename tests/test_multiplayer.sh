@@ -47,6 +47,11 @@ leaks=$(grep -h "names I can see" "$OUT"/*.log | awk '{
 }')
 check "no player ever saw an enemy's name" "[ -z \"$leaks\" ]"
 check "name checks actually ran" "[ \$(grep -h 'names I can see' '$OUT'/*.log | wc -l) -ge 5 ]"
+for n in Wife Brother Squirrel Oddy; do
+	line=$(grep -m1 "roster:" "$OUT/$n.log")
+	check "$n's Tab roster lists all 5 players" "[ \$(echo \"$line\" | grep -oE '(Theo|Wife|Brother|Squirrel|Oddy)\\((angel|demon),' | wc -l) -eq 5 ]"
+	check "$n's ping is measured" "echo \"$line\" | grep -qE 'my ping [0-9]+'"
+done
 check "no player script errors" "! grep -q 'SCRIPT ERROR' '$OUT'/*.log"
 
 if [ $fail -eq 0 ]; then echo "ALL PASSED"; else echo "FAILED (logs in $OUT)"; fi

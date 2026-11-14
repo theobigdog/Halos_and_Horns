@@ -16,7 +16,7 @@ const Taunts = preload("res://scripts/taunts.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const Effects = preload("res://scripts/effects.gd")
 
-const PROTOCOL_VERSION := 1      # bump whenever online messages change; mismatches can't join
+const PROTOCOL_VERSION := 2      # bump whenever online messages change; mismatches can't join
 const DEFAULT_PORT := 7777
 const MAX_PLAYERS := 16
 const SEND_RATE := 30.0          # joined players report their position this many times a second
@@ -27,6 +27,7 @@ const END_SCREEN_TIME := 8.0
 const THROW_COST := 7.0
 const THROW_STAMINA_MAX := 100.0
 const THROW_REGEN := 30.0
+const SCOREBOARD_RATE := 1.0     # roster (Tab) updates per second
 
 var main                         # the game scene (set by main.gd)
 var is_host := false
@@ -46,6 +47,7 @@ var forced_roles := {}           # testing only: player name -> "angel"/"demon"
 var remotes := {}
 
 var _relay_accum := 0.0
+var _score_accum := 0.0
 var _send_accum := 0.0
 var _used_eids := {}
 
@@ -94,7 +96,7 @@ func _new_record(player_name: String) -> Dictionary:
 		"pos": Vector3.ZERO, "valid_pos": Vector3.ZERO, "yaw": 0.0, "form": "",
 		"last_time": now(), "last_correct": 0.0, "grace_until": 0.0, "health": DEMON_HEALTH,
 		"stamina": THROW_STAMINA_MAX, "stamina_time": now(), "last_taunt": 0.0,
-		"throws": 0, "hits": 0,
+		"throws": 0, "hits": 0, "redeemed": false, "skills": [],
 	}
 
 
@@ -177,6 +179,7 @@ func _broadcast_lobby() -> void:
 	main.online_lobby(names, phase)
 	for id in _client_ids():
 		s_lobby.rpc_id(id, names, phase)
+	_send_scoreboards()
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -211,6 +214,7 @@ func start_round() -> void:
 		rec["stamina"] = THROW_STAMINA_MAX
 		rec["stamina_time"] = now()
 		rec["in_round"] = true
+		rec["redeemed"] = false
 		rec["throws"] = 0
 		rec["hits"] = 0
 		_place(rec, main.spawn_point(rec["role"], i))
@@ -268,6 +272,7 @@ func _send_rosters() -> void:
 func _add_late_joiner(id: int) -> void:
 	var rec: Dictionary = peers[id]
 	rec["role"] = "angel"   # late joiners hunt
+	rec["redeemed"] = false
 	rec["eid"] = _new_eid()
 	rec["form"] = ""
 	rec["in_round"] = true
@@ -368,6 +373,10 @@ func _process(delta: float) -> void:
 
 
 func _host_tick(delta: float) -> void:
+	_score_accum += delta
+	if _score_accum >= SCOREBOARD_RATE:
+		_score_accum = 0.0
+		_send_scoreboards()
 	if phase != "lobby":
 		phase_time -= delta
 		if phase_time <= 0.0:
@@ -635,6 +644,7 @@ func _catch(id: int) -> void:
 	var rec: Dictionary = peers[id]
 	var where: Vector3 = rec["pos"]
 	rec["role"] = "angel"
+	rec["redeemed"] = true
 	rec["form"] = ""
 	rec["health"] = DEMON_HEALTH
 	rec["stamina"] = THROW_STAMINA_MAX
@@ -709,6 +719,48 @@ func c_taunt(taunt_name: String) -> void:
 func s_taunt(eid: int, taunt_name: String) -> void:
 	if remotes.has(eid):
 		remotes[eid].play_taunt(taunt_name)
+
+
+# ---------------- ping and the Tab roster ----------------
+
+# Round-trip time in milliseconds, as measured by the network library.
+func ping_to(id: int) -> int:
+	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet == null:
+		return -1
+	var ep := enet.get_peer(id)
+	if ep == null:
+		return -1
+	return int(ep.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME))
+
+
+# Our own ping to the host (the host itself has none).
+func my_ping() -> int:
+	return 0 if is_host else ping_to(1)
+
+
+# Roster rows: name, side, ping, skills, caught-this-round, is-you, is-host.
+# Deliberately NO entity ids or positions: knowing who's a demon is fine,
+# knowing which prop they are is not.
+func _scoreboard_for(viewer: int) -> Array:
+	var rows := []
+	for id in peers:
+		var rec: Dictionary = peers[id]
+		rows.append([rec["name"], rec["role"] if rec["in_round"] else "",
+				0 if id == 1 else ping_to(id), rec["skills"], rec["redeemed"],
+				id == viewer, id == 1])
+	return rows
+
+
+func _send_scoreboards() -> void:
+	main.online_scoreboard(_scoreboard_for(1))
+	for id in _client_ids():
+		s_scoreboard.rpc_id(id, _scoreboard_for(id))
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_scoreboard(rows: Array) -> void:
+	main.online_scoreboard(rows)
 
 
 # ---------------- other players' bodies ----------------

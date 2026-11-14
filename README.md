@@ -3,7 +3,7 @@
 A free, non-commercial prop-hunt game: demons possess everyday objects to hide, angels hunt them down.
 Passion project, inspired by Witch It.
 
-## Status: version 0.2, first multiplayer test
+## Status: version 0.2.1, first multiplayer test
 
 One small test map, placeholder shapes for everything.
 
@@ -42,7 +42,8 @@ Windows may warn "Windows protected your PC" because the game isn't signed; clic
 | B | Change blessing type (testing) | |
 | F1 | Movement tuning panel | Movement tuning panel |
 | Esc | Menu | Menu |
-| Tab / R / Enter | Practice only: switch side / restart / skip the hiding wait | |
+| Tab (hold) | Roster: both teams, ping, skills | Roster: both teams, ping, skills |
+| F2 / R / Enter | Practice only: switch side / restart / skip the hiding wait | |
 
 ## How online play stays fair
 

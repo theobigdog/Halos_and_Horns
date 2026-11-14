@@ -14,7 +14,7 @@ const NetGame = preload("res://scripts/net_game.gd")
 const Effects = preload("res://scripts/effects.gd")
 const Autobot = preload("res://scripts/autobot.gd")
 
-const GAME_VERSION := "0.2 (first multiplayer test)"
+const GAME_VERSION := "0.2.1 (ping + Tab roster)"
 const HIDE_TIME := 30.0
 const HUNT_TIME := 180.0
 const BOT_COUNT := 3
@@ -40,6 +40,7 @@ var rng := RandomNumberGenerator.new()
 var structures: Array = []   # each: [Vector2 center, float keep-clear radius]
 var used_spots: Array = []
 var lobby_names: Array = []
+var scoreboard_rows: Array = []   # Tab roster, from the host
 
 var status_label: Label
 var hint_label: Label
@@ -72,6 +73,12 @@ var lobby_info: Label
 var lobby_start: Button
 var _public_ip := ""
 var _settings := ConfigFile.new()
+var ping_label: Label
+var scoreboard_panel: PanelContainer
+var _scoreboard_columns := {}     # "angel"/"demon" -> GridContainer
+var _scoreboard_titles := {}
+var _scoreboard_footer: Label
+var _ping_timer := 0.0
 
 # F1 tuning panel: [key, label, min, max, step]
 const TUNING_SLIDERS := [
@@ -130,7 +137,8 @@ func _setup_input() -> void:
 	_add_key("sneak", KEY_CTRL)
 	_add_key("toggle_view", KEY_T)
 	_add_key("cycle_blessing", KEY_B)
-	_add_key("switch_role", KEY_TAB)
+	_add_key("switch_role", KEY_F2)
+	_add_key("scoreboard", KEY_TAB)
 	_add_key("restart", KEY_R)
 	_add_key("skip_hiding", KEY_ENTER)
 	_add_key("taunt_random", KEY_1)
@@ -505,11 +513,25 @@ func _fetch_public_ip() -> void:
 	req.request("https://api.ipify.org")
 
 
+# Real network addresses only, labeled with the adapter name ("Ethernet", "Wi-Fi").
+# Virtual adapters from VirtualBox, VMware, Hyper-V, WSL and so on are left out:
+# friends can't reach those, and they're confusing.
 func _local_ips() -> Array:
 	var ips := []
-	for ip in IP.get_local_addresses():
-		if ip.count(".") == 3 and not ip.begins_with("127.") and not ip.begins_with("169.254."):
-			ips.append(ip)
+	var virtual_words := ["virtualbox", "vmware", "vethernet", "hyper-v", "wsl", "loopback",
+			"bluetooth", "docker", "tap", "tun", "zerotier", "tailscale"]
+	for iface in IP.get_local_interfaces():
+		var label: String = str(iface.get("friendly", iface.get("name", "")))
+		var lower := label.to_lower()
+		var skip := false
+		for w in virtual_words:
+			if w in lower:
+				skip = true
+		for ip in iface.get("addresses", []):
+			if skip or ip.count(".") != 3 or ip.begins_with("127.") or ip.begins_with("169.254.") \
+					or ip.begins_with("192.168.56."):   # VirtualBox's usual fake network
+				continue
+			ips.append("%s (%s)" % [ip, label] if label != "" else ip)
 	return ips
 
 
@@ -551,8 +573,8 @@ func _controls_text() -> String:
 	var side := "Left click throw   B change blessing (testing)" if role == "angel" \
 			else "Click a prop to possess it   Hold click to return to demon form"
 	if mode == "practice":
-		return common + "\n" + side + "   Tab switch side   R restart   F1 movement tuning   Esc menu"
-	return common + "\n" + side + "   F1 movement tuning   Esc menu"
+		return common + "\n" + side + "   F2 switch side   R restart   F1 movement tuning   Esc menu"
+	return common + "\n" + side + "   Tab roster   F1 movement tuning   Esc menu"
 
 
 func _start_hunting() -> void:
@@ -614,7 +636,7 @@ func online_lobby(names: Array, host_phase: String) -> void:
 	lobby_names = names
 	if state != State.LOBBY:
 		return   # mid-round: the list updates, the panel stays hidden
-	lobby_players.text = "Players (%d):\n  %s" % [names.size(), "\n  ".join(names)]
+	lobby_players.text = "Players (%d):\n  %s" % [names.size(), "\n  ".join(_lobby_lines(names))]
 	var is_host: bool = net != null and net.is_host
 	lobby_start.visible = is_host
 	if is_host:
@@ -633,6 +655,31 @@ func online_lobby(names: Array, host_phase: String) -> void:
 		lobby_info.text = "A round is in progress. You'll join it as an angel in a moment..."
 	lobby_panel.visible = true
 	_refresh_mouse()
+
+
+# Lobby list with pings when the host has sent them.
+func _lobby_lines(names: Array) -> Array:
+	var lines := []
+	for n in names:
+		var line: String = n
+		for row in scoreboard_rows:
+			if row[0] == n:
+				if row[6]:
+					line += "   (host)"
+				elif row[2] >= 0:
+					line += "   %d ms" % row[2]
+				if row[5]:
+					line += "   <- you"
+		lines.append(line)
+	return lines
+
+
+func online_scoreboard(rows: Array) -> void:
+	scoreboard_rows = rows
+	if lobby_panel.visible and state == State.LOBBY:
+		lobby_players.text = "Players (%d):\n  %s" % [lobby_names.size(), "\n  ".join(_lobby_lines(lobby_names))]
+	if scoreboard_panel.visible:
+		_fill_scoreboard()
 
 
 func online_round_start(seed_value: int, new_role: String, pos: Vector3, phase: String, seconds: float) -> void:
@@ -843,6 +890,16 @@ func _build_hud() -> void:
 	_make_bar(bars, "sprint", Color(0.4, 0.85, 0.45))
 	_make_bar(bars, "power", Color(1.0, 0.85, 0.3))
 
+	# Ping, top right
+	ping_label = _make_label(20)
+	ping_label.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	ping_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	ping_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	ping_label.position += Vector2(-16, 14)
+	hud.add_child(ping_label)
+
+	_build_scoreboard(hud)
+
 	taunt_label = _make_label(22)
 	taunt_label.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
 	taunt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -852,6 +909,98 @@ func _build_hud() -> void:
 
 
 const BAR_WIDTH := 260.0
+
+
+# Hold Tab: both teams, ping and chosen skills.
+func _build_scoreboard(hud: CanvasLayer) -> void:
+	scoreboard_panel = PanelContainer.new()
+	scoreboard_panel.set_anchors_preset(Control.PRESET_CENTER)
+	scoreboard_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	scoreboard_panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	scoreboard_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	scoreboard_panel.visible = false
+	var bg := StyleBoxFlat.new()
+	bg.bg_color = Color(0.07, 0.05, 0.11, 0.9)   # dark enough to read over any scene
+	bg.set_corner_radius_all(10)
+	scoreboard_panel.add_theme_stylebox_override("panel", bg)
+	hud.add_child(scoreboard_panel)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 20)
+	scoreboard_panel.add_child(margin)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 12)
+	margin.add_child(outer)
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 48)
+	outer.add_child(cols)
+	_scoreboard_footer = Label.new()
+	_scoreboard_footer.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8))
+	outer.add_child(_scoreboard_footer)
+	for team in ["angel", "demon"]:
+		var box := VBoxContainer.new()
+		box.custom_minimum_size.x = 380
+		cols.add_child(box)
+		var title := Label.new()
+		title.add_theme_font_size_override("font_size", 26)
+		title.add_theme_color_override("font_color", Color(1.0, 0.88, 0.5) if team == "angel" else Color(1.0, 0.45, 0.4))
+		box.add_child(title)
+		_scoreboard_titles[team] = title
+		var grid := GridContainer.new()
+		grid.columns = 3
+		grid.add_theme_constant_override("h_separation", 24)
+		box.add_child(grid)
+		_scoreboard_columns[team] = grid
+
+
+func _fill_scoreboard() -> void:
+	var rows := scoreboard_rows
+	if mode == "practice":
+		rows = [[name_edit.text if name_edit.text != "" else "You", role, 0, [], false, true, false]]
+	for team in ["angel", "demon"]:
+		var grid: GridContainer = _scoreboard_columns[team]
+		for c in grid.get_children():
+			c.queue_free()
+		var count := 0
+		for header in ["Name", "Ping", "Skills"]:
+			var h := Label.new()
+			h.text = header
+			h.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8))
+			grid.add_child(h)
+		for row in rows:
+			if row[1] != team:
+				continue
+			count += 1
+			var n := Label.new()
+			n.text = row[0] + ("  (you)" if row[5] else "") + ("  (host)" if row[6] else "") \
+					+ ("  redeemed" if row[4] else "")
+			if row[5]:
+				n.add_theme_color_override("font_color", Color(0.6, 1.0, 0.7))
+			grid.add_child(n)
+			var p := Label.new()
+			p.text = "-" if row[6] or mode == "practice" else ("%d ms" % row[2] if row[2] >= 0 else "?")
+			p.add_theme_color_override("font_color", _ping_color(row[2]))
+			grid.add_child(p)
+			var sk := Label.new()
+			sk.text = ", ".join(row[3]) if not row[3].is_empty() else "none yet"
+			grid.add_child(sk)
+		_scoreboard_titles[team].text = ("ANGELS" if team == "angel" else "DEMONS") + " (%d)" % count
+	var waiting := 0
+	for row in rows:
+		if row[1] == "":
+			waiting += 1
+	_scoreboard_footer.text = "%d waiting in the lobby for the next round" % waiting if waiting > 0 else ""
+	_scoreboard_footer.visible = waiting > 0
+
+
+func _ping_color(ms: int) -> Color:
+	if ms < 0:
+		return Color(0.8, 0.8, 0.8)
+	if ms < 90:
+		return Color(0.55, 1.0, 0.55)
+	if ms < 170:
+		return Color(1.0, 0.9, 0.4)
+	return Color(1.0, 0.5, 0.4)
 
 
 func _make_bar(parent: Control, bar_name: String, color: Color) -> void:
@@ -974,6 +1123,25 @@ func _toast(text: String, seconds: float) -> void:
 
 
 func _update_hud(delta: float) -> void:
+	var want_board := mode != "menu" and Input.is_action_pressed("scoreboard") \
+			and not pause_panel.visible and not menu_panel.visible
+	if want_board and not scoreboard_panel.visible:
+		_fill_scoreboard()
+	scoreboard_panel.visible = want_board
+	center_label.modulate.a = 0.0 if want_board else 1.0   # don't overlap the roster
+	_ping_timer -= delta
+	if _ping_timer <= 0.0:
+		_ping_timer = 0.5
+		if mode == "online" and net:
+			if net.is_host:
+				ping_label.text = "You're hosting"
+				ping_label.remove_theme_color_override("font_color")
+			else:
+				var ms: int = net.my_ping()
+				ping_label.text = "Ping: %s" % ("%d ms" % ms if ms >= 0 else "...")
+				ping_label.add_theme_color_override("font_color", _ping_color(ms))
+		else:
+			ping_label.text = ""
 	_toast_time -= delta
 	if _toast_time <= 0.0:
 		center_label.text = ""

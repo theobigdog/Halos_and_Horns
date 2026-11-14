@@ -79,6 +79,10 @@ func _physics_process(delta: float) -> void:
 			var r = main.net.remotes[eid]
 			shown.append("%s=%s" % [r.role if r.role != "" else "?", r.player_name if r.player_name != "" else "<hidden>"])
 		log_line("as %s, names I can see: %s" % [main.role, ", ".join(shown)])
+		var roster := []
+		for row in main.scoreboard_rows:
+			roster.append("%s(%s,%dms)" % [row[0], row[1], row[2]])
+		log_line("roster: %s | my ping %d" % [" ".join(roster), main.net.my_ping()])
 	_taunt_timer -= delta
 	if _taunt_timer <= 0.0:
 		_taunt_timer = randf_range(6.0, 10.0)
