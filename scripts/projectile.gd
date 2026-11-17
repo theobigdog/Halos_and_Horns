@@ -25,6 +25,8 @@ var on_claim: Callable           # joined player's own throw hit a demon ON THEI
 var gate: Callable               # host: may this throw still hurt someone? (each throw hurts once)
 var bounces_on_pads := false     # Vacuum Orb: a bouncy pad flings it back up instead of setting it off
 var _pad_bounces := 0
+# Host / practice: main's hook for a blessing hitting a loose prop (it gets shoved).
+static var prop_hit: Callable
 var _life := LIFETIME
 
 
@@ -44,6 +46,44 @@ func _ready() -> void:
 	m.emission_energy_multiplier = 2.0
 	mi.material_override = m
 	add_child(mi)
+	_add_trail()
+
+
+# A trail of glowing motes behind it (and on High graphics, a little light).
+func _add_trail() -> void:
+	var trail := CPUParticles3D.new()
+	trail.amount = [6, 14, 22][Effects.quality]
+	trail.lifetime = 0.35
+	trail.local_coords = false
+	var mote := SphereMesh.new()
+	mote.radius = size * 0.45
+	mote.height = size * 0.9
+	mote.radial_segments = 6
+	mote.rings = 3
+	var mm := StandardMaterial3D.new()
+	mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mm.vertex_color_use_as_albedo = true
+	mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mote.material = mm
+	trail.mesh = mote
+	trail.spread = 180.0
+	trail.initial_velocity_max = 0.4
+	trail.gravity = Vector3.ZERO
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(color.r, color.g, color.b, 0.8))
+	ramp.set_color(1, Color(color.r, color.g, color.b, 0.0))
+	trail.color_ramp = ramp
+	var shrink := Curve.new()
+	shrink.add_point(Vector2(0.0, 1.0))
+	shrink.add_point(Vector2(1.0, 0.1))
+	trail.scale_amount_curve = shrink
+	add_child(trail)
+	if Effects.quality >= 2:
+		var light := OmniLight3D.new()
+		light.light_color = color
+		light.light_energy = 0.8
+		light.omni_range = 2.5
+		add_child(light)
 
 
 func _make_book() -> void:
@@ -105,9 +145,14 @@ func _physics_process(delta: float) -> void:
 		hit_demon = true
 		if is_instance_valid(shooter) and shooter.has_method("confirm_hit"):
 			shooter.confirm_hit()
-	# A demon hit gets a red puff; anything else gets a harmless golden one.
+	if not visual_only and prop_hit.is_valid() and collider is StaticBody3D and collider.is_in_group("prop"):
+		prop_hit.call(collider, velocity * (2.0 if book else 1.0), hit["position"])
+	# A demon hit gets a red puff; anything else gets a harmless golden one, and
+	# chips off whatever it hit.
 	var puff_color := Color(0.9, 0.15, 0.1, 0.8) if hit_demon else Color(1.0, 0.95, 0.6, 0.7)
 	Effects.puff(get_parent(), hit["position"], puff_color, 1.0 if hit_demon else 0.6)
+	if not hit_demon:
+		Effects.debris(get_parent(), hit["position"], hit.get("normal", Vector3.UP), Color(0.75, 0.68, 0.55), 6)
 	queue_free()
 
 

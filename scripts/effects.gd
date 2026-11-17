@@ -1,6 +1,8 @@
 # Small one-shot visual effects.
 extends RefCounted
 
+static var quality := 1    # graphics quality (graphics.gd): 0 low, 1 medium, 2 high
+
 
 # A quick expanding, fading sphere - used for hits and possessions.
 static func puff(parent: Node, pos: Vector3, color: Color, size: float = 1.0) -> void:
@@ -22,6 +24,146 @@ static func puff(parent: Node, pos: Vector3, color: Color, size: float = 1.0) ->
 	tw.tween_property(mi, "scale", Vector3.ONE * 1.3 * size, 0.35)
 	tw.tween_property(m, "albedo_color:a", 0.0, 0.35)
 	tw.chain().tween_callback(mi.queue_free)
+	# ...plus a burst of glowing motes flying out of it.
+	burst(parent, pos, color, int(6 + 6 * size), 1.6 + size * 1.2, 0.5)
+
+
+# How many particles to actually make at this graphics quality.
+static func _count(n: int) -> int:
+	return maxi(1, int(n * [0.4, 1.0, 1.6][quality]))
+
+
+static func _particles(parent: Node, pos: Vector3, amount: int, lifetime: float) -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.one_shot = true
+	p.explosiveness = 0.95
+	p.amount = _count(amount)
+	p.lifetime = lifetime
+	p.local_coords = false
+	parent.add_child(p)
+	p.global_position = pos
+	p.emitting = true
+	# Gone once the last particle has faded.
+	p.get_tree().create_timer(lifetime + 0.3).timeout.connect(p.queue_free)
+	return p
+
+
+static func _fading(color: Color) -> Gradient:
+	var g := Gradient.new()
+	g.set_color(0, color)
+	g.set_color(1, Color(color.r, color.g, color.b, 0.0))
+	return g
+
+
+static func _shrinking() -> Curve:
+	var c := Curve.new()
+	c.add_point(Vector2(0.0, 1.0))
+	c.add_point(Vector2(1.0, 0.0))
+	return c
+
+
+static func _mote_mesh(radius: float, glow: bool, color := Color.WHITE) -> Mesh:
+	var s := SphereMesh.new()
+	s.radius = radius
+	s.height = radius * 2.0
+	s.radial_segments = 6
+	s.rings = 3
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED if glow else BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	if glow:
+		m.emission_enabled = true
+		m.emission = Color(color.r, color.g, color.b)
+		m.emission_energy_multiplier = 1.5
+	s.material = m
+	return s
+
+
+# Glowing motes bursting out from a point, drifting a little up as they fade.
+static func burst(parent: Node, pos: Vector3, color: Color, amount: int, speed: float, lifetime: float) -> void:
+	var p := _particles(parent, pos, amount, lifetime)
+	p.mesh = _mote_mesh(0.035, true, color)
+	p.direction = Vector3.UP
+	p.spread = 180.0
+	p.initial_velocity_min = speed * 0.4
+	p.initial_velocity_max = speed
+	p.gravity = Vector3(0, 0.6, 0)
+	p.damping_min = 2.0
+	p.damping_max = 4.0
+	p.color_ramp = _fading(Color(color.r, color.g, color.b, 1.0))
+	p.scale_amount_curve = _shrinking()
+
+
+# Chips and splinters knocked off a surface: little bits that fly out and fall.
+static func debris(parent: Node, pos: Vector3, normal: Vector3, color: Color, amount := 8) -> void:
+	var p := _particles(parent, pos + normal * 0.05, amount, 0.9)
+	var box := BoxMesh.new()
+	box.size = Vector3(0.05, 0.05, 0.05)
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	box.material = m
+	p.mesh = box
+	p.direction = normal
+	p.spread = 55.0
+	p.initial_velocity_min = 1.5
+	p.initial_velocity_max = 4.0
+	p.gravity = Vector3(0, -12.0, 0)
+	p.angular_velocity_min = -540.0
+	p.angular_velocity_max = 540.0
+	p.scale_amount_min = 0.5
+	p.scale_amount_max = 1.4
+	var c := Color(color.r, color.g, color.b, 1.0)
+	p.color_ramp = _fading(c)
+
+
+# A ring of dust kicked up around a point on the ground (landings, stomps, props falling over).
+static func dust(parent: Node, pos: Vector3, radius: float, amount := 14) -> void:
+	var p := _particles(parent, pos + Vector3.UP * 0.1, amount, 0.9)
+	p.mesh = _mote_mesh(0.12, false)
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	p.emission_ring_axis = Vector3.UP
+	p.emission_ring_radius = radius
+	p.emission_ring_inner_radius = radius * 0.6
+	p.emission_ring_height = 0.05
+	p.direction = Vector3.UP
+	p.spread = 70.0
+	p.initial_velocity_min = 0.6
+	p.initial_velocity_max = 1.8
+	p.gravity = Vector3(0, -0.5, 0)
+	p.damping_min = 1.5
+	p.damping_max = 3.0
+	p.scale_amount_min = 0.6
+	p.scale_amount_max = 1.6
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.75, 0.68, 0.6, 0.55))
+	ramp.set_color(1, Color(0.75, 0.68, 0.6, 0.0))
+	p.color_ramp = ramp
+	var grow := Curve.new()
+	grow.add_point(Vector2(0.0, 0.5))
+	grow.add_point(Vector2(1.0, 1.6))
+	p.scale_amount_curve = grow
+
+
+# A soft billowing smoke puff (demon things: possessing, teleporting, minions).
+static func smoke(parent: Node, pos: Vector3, color: Color, size := 1.0) -> void:
+	var p := _particles(parent, pos, int(10 * size), 1.1)
+	p.mesh = _mote_mesh(0.18 * size, false)
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.3 * size
+	p.direction = Vector3.UP
+	p.spread = 60.0
+	p.initial_velocity_min = 0.4
+	p.initial_velocity_max = 1.4 * size
+	p.gravity = Vector3(0, 0.8, 0)
+	p.damping_min = 1.0
+	p.damping_max = 2.0
+	p.color_ramp = _fading(Color(color.r, color.g, color.b, 0.7))
+	var grow := Curve.new()
+	grow.add_point(Vector2(0.0, 0.6))
+	grow.add_point(Vector2(1.0, 1.8))
+	p.scale_amount_curve = grow
 
 
 # The faint trail between two props when a demon possesses from one to the next.

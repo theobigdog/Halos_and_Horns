@@ -76,6 +76,9 @@ var tuning := {
 	"fall_multiplier": 1.5,  # extra gravity on the way down
 	"jump_velocity": 5.6,
 	"head_bob": 1.0,         # 0 = off
+	"camera_kick": 1.0,      # FOV widening when you run/dash, a lean when you strafe, landing squash (0 = off)
+	"coyote_time": 0.1,      # seconds after running off a ledge you can still jump
+	"jump_buffer": 0.12,     # press jump this early before landing and it still counts
 	# Flying Dash (see _dash_step and _update_dash_momentum)
 	"dash_speed": 18.0,        # m/s during the burst
 	"dash_time": 0.25,         # seconds the burst lasts (speed x time = distance)
@@ -149,6 +152,14 @@ var _stomping := false
 var _leap_left := 0.0          # a stomp only counts this soon after the leap (the host allows 6 s)
 var _leap_peak := 0.0          # the highest we got since leaping (a stomp from higher hurts more)
 var _fear_phase := Vector2.ZERO
+# Camera juice (only on your own screen; nothing here changes how you actually move)
+const BASE_FOV := 75.0
+var _coyote := 0.0             # seconds left to still jump after leaving the ground
+var _jump_buffer := 0.0        # seconds left on an early jump press
+var _shake := 0.0              # camera shake strength, dies away
+var _roll := 0.0               # strafing lean
+var _squash := 0.0             # landing squash of your own body / prop (third person)
+var _cam_y := 0.0              # smoothed camera height in third person (steps and bumps)
 
 var shape_node: CollisionShape3D
 var visual_root: Node3D
@@ -433,8 +444,14 @@ func _physics_process(delta: float) -> void:
 				g *= tuning["fall_multiplier"]   # fall faster than you rise: less floaty
 			velocity.y -= g * delta
 			_fall_speed = maxf(_fall_speed, -velocity.y)
-		if want_jump and on_floor:
+		# A little forgiveness: jump just after running off a ledge, or press it just
+		# before landing. (Same jump either way.)
+		_coyote = tuning["coyote_time"] if on_floor else _coyote - delta
+		_jump_buffer = tuning["jump_buffer"] if want_jump else _jump_buffer - delta
+		if _jump_buffer > 0.0 and (on_floor or (_coyote > 0.0 and velocity.y <= 0.0)) and not flying:
 			velocity.y = Skills.LEAPER_JUMP if _is_leaper() else tuning["jump_velocity"]
+			_jump_buffer = 0.0
+			_coyote = 0.0
 
 		_update_sprint(delta, want_run and not sneaking and input_dir != Vector2.ZERO)
 
@@ -492,6 +509,7 @@ func _physics_process(delta: float) -> void:
 		throw_stamina = maxf(throw_stamina - Skills.FIRE_BLESSING_BURN * delta, 0.0)
 
 	_update_head_bob(delta, current.length())
+	_update_camera_juice(delta, input_dir)
 	_update_throw_stamina(delta)
 
 	if role == "angel":
@@ -882,6 +900,7 @@ func _update_head_bob(delta: float, ground_speed: float) -> void:
 	var on_floor := is_on_floor()
 	if on_floor and not _was_on_floor and _fall_speed > 2.0:
 		_land_dip = -minf(_fall_speed * 0.02, 0.15)
+		_squash = minf(_fall_speed * 0.025, 0.3) * tuning["camera_kick"]
 	if on_floor:
 		_fall_speed = 0.0
 	_was_on_floor = on_floor
@@ -895,6 +914,49 @@ func _update_head_bob(delta: float, ground_speed: float) -> void:
 	_bob_offset = lerpf(_bob_offset, target, minf(delta * 12.0, 1.0))
 	# Bob only in first person; in third person it just looks like a shaky camera.
 	spring.position.y = (_bob_offset + _land_dip) if first_person[role] else 0.0
+
+
+# Shake the camera (a stomp or a blast nearby, getting hit). Strongest wins.
+func shake(amount: float) -> void:
+	_shake = maxf(_shake, amount)
+
+
+# Feel without changing movement: the view widens a touch when you run or dash and
+# leans into strafes, your own body squashes when you land, the third-person camera
+# glides over steps instead of jolting, and shakes die away.
+func _update_camera_juice(delta: float, input_dir: Vector2) -> void:
+	var kick: float = tuning["camera_kick"]
+	var fov_target := BASE_FOV
+	if _dash_time > 0.0:
+		fov_target += 14.0 * kick
+	elif running:
+		fov_target += 6.0 * kick
+	if _leaping or _stomping:
+		fov_target += 8.0 * kick
+	camera.fov = lerpf(camera.fov, fov_target, minf(delta * 8.0, 1.0))
+	var lean := -input_dir.x * deg_to_rad(1.6) * kick if first_person[role] and is_on_floor() else 0.0
+	_roll = lerpf(_roll, lean, minf(delta * 6.0, 1.0))
+	camera.rotation.z = _roll
+	# Squash and stretch: flatten on landing, spring back with a little overshoot.
+	_squash = lerpf(_squash, 0.0, minf(delta * 9.0, 1.0))
+	var sq := 1.0 - _squash
+	visual_root.scale = Vector3(1.0 / sqrt(sq), sq, 1.0 / sqrt(sq))
+	# Third person: the camera's height lags a little behind sudden small changes.
+	if not first_person[role]:
+		var y := global_position.y
+		_cam_y = y if absf(_cam_y - y) > 1.5 else lerpf(_cam_y, y, minf(delta * 12.0, 1.0))
+		spring.position.y = clampf(_cam_y - y, -0.5, 0.5)
+	else:
+		_cam_y = global_position.y
+	# Shake: random jitter that fades.
+	if _shake > 0.001:
+		camera.h_offset = randf_range(-1.0, 1.0) * _shake * 0.15
+		camera.v_offset = randf_range(-1.0, 1.0) * _shake * 0.15
+		_shake = lerpf(_shake, 0.0, minf(delta * 7.0, 1.0))
+	else:
+		_shake = 0.0
+		camera.h_offset = 0.0
+		camera.v_offset = 0.0
 
 
 # Outline the prop under the crosshair so you know exactly what you'll become.

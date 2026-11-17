@@ -759,6 +759,7 @@ func _run() -> void:
 		await frames(10)
 		player.skill_cd.clear()
 		var hp_before: int = victim.health
+		var victim_at: Vector3 = victim.global_position   # (the stomp shoves it away, so remember where it was)
 		check(player.use_skill(1), "leap again")
 		await frames(12)
 		check(player.use_skill(1), "...press it again mid-air: Cloud Stomp")
@@ -768,9 +769,12 @@ func _run() -> void:
 			t_stomp += 1
 		await frames(3)
 		check(t_stomp < 20, "...slams straight down (%d frames)" % t_stomp)
-		var st_off: Vector3 = victim.global_position - player.global_position
+		var st_off: Vector3 = victim_at - player.global_position
 		var st_want := Skills.stomp_damage(Vector2(st_off.x, st_off.z).length(), player._leap_peak - player.global_position.y)
 		check(st_want > 0 and hp_before - victim.health == st_want, "...and hurts the demon it lands near (%d damage, %.1f m away, from %.1f m up)" % [hp_before - victim.health, Vector2(st_off.x, st_off.z).length(), player._leap_peak - player.global_position.y])
+		await frames(30)
+		var pushed := Vector2(victim.global_position.x - player.global_position.x, victim.global_position.z - player.global_position.z).length()
+		check(pushed > Vector2(st_off.x, st_off.z).length() + 1.0, "...and the shockwave shoves it away (%.1f m -> %.1f m)" % [Vector2(st_off.x, st_off.z).length(), pushed])
 		check(not player.use_skill(1), "...one stomp per leap (the cooldown is still running)")
 
 	# Holy Scripture: a heavy book that hits hard.

@@ -32,6 +32,9 @@ const MapData = preload("res://scripts/map_data.gd")
 const Editor = preload("res://scripts/editor.gd")
 const SenseCherub = preload("res://scripts/sense_cherub.gd")
 const Bodies = preload("res://scripts/bodies.gd")
+const Graphics = preload("res://scripts/graphics.gd")
+const Music = preload("res://scripts/music.gd")
+const Knock = preload("res://scripts/knock.gd")
 # The current map's layout (filled in by load_map from the map file).
 var map_data := {}
 var map_path := ""
@@ -188,6 +191,13 @@ var _scoreboard_columns := {}     # "angel"/"demon" -> GridContainer
 var _scoreboard_titles := {}
 var _scoreboard_footer: Label
 var _ping_timer := 0.0
+var graphics: Graphics          # sky, lighting and the graphics quality setting
+var music: Music               # the soundtrack (music.gd)
+var _music_volume := 0.6
+var _sound_volume := 1.0
+var _quality_pick: OptionButton
+var _music_slider: HSlider
+var _sound_slider: HSlider
 
 # F1 tuning panel: [key, label, min, max, step]
 const TUNING_SLIDERS := [
@@ -198,6 +208,9 @@ const TUNING_SLIDERS := [
 	["fall_multiplier", "Extra fall speed", 1.0, 3.0, 0.05],
 	["jump_velocity", "Jump strength", 3.0, 9.0, 0.1],
 	["head_bob", "Head bob (0 = off)", 0.0, 2.0, 0.05],
+	["camera_kick", "Camera kick: run/dash zoom, lean, landing squash (0 = off)", 0.0, 2.0, 0.05],
+	["coyote_time", "Jump: grace after leaving a ledge (s)", 0.0, 0.3, 0.01],
+	["jump_buffer", "Jump: early press still counts (s)", 0.0, 0.3, 0.01],
 	["dash_speed", "Dash: speed", 8.0, 35.0, 0.5],
 	["dash_time", "Dash: length (seconds)", 0.1, 0.6, 0.01],
 	["dash_carry", "Dash: momentum kept after", 0.0, 1.0, 0.05],
@@ -215,7 +228,11 @@ func _ready() -> void:
 	game_build = numbers[0] * 10000 + numbers[1] * 100 + numbers[2]
 	rng.randomize()
 	_setup_input()
-	_build_environment()
+	graphics = Graphics.new()
+	add_child(graphics)
+	music = Music.new()
+	add_child(music)
+	Projectile.prop_hit = _on_blessing_hit_prop
 	load_map(MapData.load_file(MapData.BUILT_IN[0]), MapData.BUILT_IN[0])
 	_build_hud()
 	_build_sounds()
@@ -544,29 +561,7 @@ func _update_chat(delta: float) -> void:
 
 # ---------- world ----------
 
-func _build_environment() -> void:
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	var sky := Sky.new()
-	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.45, 0.4, 0.75)       # heavenly lavender up top
-	sky_mat.sky_horizon_color = Color(0.95, 0.6, 0.45)   # hellish glow at the horizon
-	sky_mat.ground_horizon_color = Color(0.95, 0.6, 0.45)
-	sky.sky_material = sky_mat
-	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	var world_env := WorldEnvironment.new()
-	world_env.environment = env
-	add_child(world_env)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation = Vector3(deg_to_rad(-50), deg_to_rad(30), 0)
-	sun.shadow_enabled = true
-	add_child(sun)
-
-
-func _add_block(center: Vector3, size: Vector3, color: Color, rot := Vector3.ZERO, keep_clear := true, cylinder := false) -> StaticBody3D:
+func _add_block(center: Vector3, size: Vector3, color: Color, rot := Vector3.ZERO, keep_clear := true, cylinder := false, surface := "stone") -> StaticBody3D:
 	var body := StaticBody3D.new()
 	var shape_node := CollisionShape3D.new()
 	var mi := MeshInstance3D.new()
@@ -589,7 +584,7 @@ func _add_block(center: Vector3, size: Vector3, color: Color, rot := Vector3.ZER
 		mesh.size = size
 		mi.mesh = mesh
 	body.add_child(shape_node)
-	mi.material_override = PropLib.mat(color)
+	mi.material_override = PropLib.mat(color, surface)
 	body.add_child(mi)
 	body.position = center
 	body.rotation = rot
@@ -642,7 +637,7 @@ func _build_map() -> void:
 	shrine = null
 	var half: float = MAP_HALF
 	# Ground and boundary walls
-	_add_block(Vector3(0, -0.5, 0), Vector3(half * 2 + 2, 1, half * 2 + 2), Color(map_data["ground_color"]), Vector3.ZERO, false)
+	_add_block(Vector3(0, -0.5, 0), Vector3(half * 2 + 2, 1, half * 2 + 2), Color(map_data["ground_color"]), Vector3.ZERO, false, false, "ground")
 	var wall_color := Color(map_data["wall_color"])
 	var span := half * 2 + 2
 	_add_block(Vector3(0, 2, half + 1), Vector3(span, 4, 1), wall_color, Vector3.ZERO, false)
@@ -867,7 +862,7 @@ func _build_menu() -> void:
 	port_edit = _field(box, "Port", str(NetGame.DEFAULT_PORT))
 	_button(box, "Host directly", _on_host_pressed)
 	box.add_child(HSeparator.new())
-	_button(box, "Controls", _open_controls)
+	_button(box, "Settings & controls", _open_controls)
 	_button(box, "Quit", func(): get_tree().quit())
 	menu_status = Label.new()
 	menu_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -894,7 +889,7 @@ func _build_pause_menu() -> void:
 		_refresh_mouse())
 	_back_to_editor = _button(box, "Back to Creative", back_to_editor)
 	_back_to_editor.visible = false
-	_button(box, "Controls", _open_controls)
+	_button(box, "Settings & controls", _open_controls)
 	_button(box, "Leave to main menu", func(): _show_menu(""))
 	pause_panel.visible = false
 
@@ -915,9 +910,11 @@ func _build_controls() -> void:
 	controls_panel.add_theme_stylebox_override("panel", solid)
 	var box: VBoxContainer = parts[1]
 	var title := Label.new()
-	title.text = "Controls"
+	title.text = "Settings & controls"
 	title.add_theme_font_size_override("font_size", 28)
 	box.add_child(title)
+	_build_options(box)
+	box.add_child(HSeparator.new())
 	var hint := Label.new()
 	hint.text = "Click a key, then press the key or mouse button you want. Esc cancels."
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -943,6 +940,7 @@ func _build_controls() -> void:
 		row.add_child(b)
 		rows.add_child(row)
 		_bind_buttons[action] = b
+	scroll.custom_minimum_size.y = 300
 	_controls_note = Label.new()
 	_controls_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_controls_note.add_theme_color_override("font_color", Color(1.0, 0.8, 0.5))
@@ -964,6 +962,45 @@ func _build_controls() -> void:
 	done.pressed.connect(_close_controls)
 	bottom.add_child(done)
 	controls_panel.visible = false
+
+
+# Music and sound volume, and graphics quality (top of the Settings & controls panel).
+func _build_options(box: VBoxContainer) -> void:
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	box.add_child(grid)
+	_music_slider = _volume_row(grid, "Music", func(v):
+		_music_volume = v
+		_apply_volumes())
+	_sound_slider = _volume_row(grid, "Sound effects", func(v):
+		_sound_volume = v
+		_apply_volumes())
+	var lbl := Label.new()
+	lbl.text = "Graphics"
+	grid.add_child(lbl)
+	_quality_pick = OptionButton.new()
+	for q in Graphics.QUALITY_NAMES:
+		_quality_pick.add_item(q)
+	_quality_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_quality_pick.item_selected.connect(func(i): graphics.apply(i))
+	grid.add_child(_quality_pick)
+
+
+func _volume_row(grid: GridContainer, text: String, on_change: Callable) -> HSlider:
+	var lbl := Label.new()
+	lbl.text = text
+	grid.add_child(lbl)
+	var slider := HSlider.new()
+	slider.min_value = 0.0
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.custom_minimum_size.x = 260
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	slider.value_changed.connect(on_change)
+	grid.add_child(slider)
+	return slider
 
 
 var _controls_hid: Control     # the menu we hid while Controls is open
@@ -1177,6 +1214,14 @@ func _load_settings() -> void:
 		for action in _settings.get_section_keys("keys"):
 			saved_keys[action] = str(_settings.get_value("keys", action))
 	Keybinds.setup(saved_keys)
+	_music_volume = clampf(float(_settings.get_value("options", "music", 0.6)), 0.0, 1.0)
+	_sound_volume = clampf(float(_settings.get_value("options", "sound", 1.0)), 0.0, 1.0)
+	_music_slider.set_value_no_signal(_music_volume)
+	_sound_slider.set_value_no_signal(_sound_volume)
+	_apply_volumes()
+	var q := clampi(int(_settings.get_value("options", "graphics", 1)), 0, 2)
+	_quality_pick.select(q)
+	graphics.apply(q)
 
 
 func _save_settings() -> void:
@@ -1188,6 +1233,9 @@ func _save_settings() -> void:
 	_settings.set_value("skills", "version", 2)
 	for a in Keybinds.ACTIONS:
 		_settings.set_value("keys", a[0], Keybinds.current(a[0]))
+	_settings.set_value("options", "music", _music_volume)
+	_settings.set_value("options", "sound", _sound_volume)
+	_settings.set_value("options", "graphics", Graphics.quality)
 	_settings.save(SETTINGS_PATH)
 
 
@@ -1480,6 +1528,7 @@ func _start_hunting() -> void:
 
 func _end_round(message: String) -> void:
 	state = State.ENDED
+	_round_sting(message)
 	_toast(message + "\nR to play again   Tab to switch sides", 9999.0)
 
 
@@ -1511,6 +1560,7 @@ func _process(delta: float) -> void:
 			powerups.decider_tick(delta)
 			_check_sense(delta)
 	_check_burning()
+	_update_music()
 	_update_shrine(delta)
 	_update_chat(delta)
 	_update_hud(delta)
@@ -1636,6 +1686,7 @@ func online_you_hit(health_fraction: float) -> void:
 	if health_fraction < my_health - 0.001:   # (Unholy Mending also lands here: no "ouch" for a heal)
 		_hurt_time = 0.25
 		_play("hurt")
+		player.shake(0.25)
 	my_health = health_fraction
 
 
@@ -1671,6 +1722,7 @@ func online_caught_fx(pos: Vector3) -> void:
 
 func online_round_end(message: String) -> void:
 	state = State.ENDED
+	_round_sting(message)
 	player.frozen = true
 	if is_instance_valid(player.minion):
 		player.minion.queue_free()
@@ -1881,6 +1933,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 		"kick":
 			var c = _close_demon(user, dir, Skills.KICK_RANGE)
 			if c == null:
+				_boot_prop(user, dir, Skills.KICK_RANGE, PROP_KICK)   # nothing to kick but the furniture
 				return
 			if c.take_hit(Skills.KICK_DAMAGE, user):
 				user.confirm_hit()
@@ -1900,6 +1953,10 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 				var dmg := Skills.stomp_damage(Vector2(off.x, off.z).length(), drop)
 				if dmg > 0 and absf(off.y) < 3.0 and d.has_method("take_hit") and d.take_hit(dmg, user):
 					hurt += 1
+					# ...and the shockwave shoves them outward.
+					var out := Vector3(off.x, 0.0, off.z)
+					out = out.normalized() if out.length() > 0.1 else Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
+					_affect_demon(d, ground_below(d.global_position + out * STOMP_PUSH + Vector3.UP * 1.0), 0.0, 0.0, "SHOVED!")
 			if hurt > 0 and user.has_method("confirm_hit"):
 				user.confirm_hit()
 			broadcast_fx("stomp", [origin])
@@ -1925,6 +1982,8 @@ func authority_melee(user: Node3D, _user_key: int, origin: Vector3, dir: Vector3
 	if d and d.take_hit(Skills.MELEE_DAMAGE, user):
 		user.confirm_hit()
 		print("[decider] melee hit a demon")
+	elif d == null:
+		_boot_prop(user, dir, Skills.MELEE_RANGE, PROP_SWAT)
 
 
 # Up-close attacks (melee, kick) don't need pixel-perfect aim: the nearest demon
@@ -2371,6 +2430,8 @@ func fx(kind: String, args: Array) -> void:
 		"teleport":
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.8, Color(0.15, 0.02, 0.05, 0.85), 1.8)
 			Effects.puff(_fx_parent(), args[1] + Vector3.UP * 0.5, Color(0.15, 0.02, 0.05, 0.6), 0.9)
+			Effects.smoke(_fx_parent(), args[0] + Vector3.UP * 0.5, Color(0.2, 0.05, 0.08), 1.4)
+			Effects.smoke(_fx_parent(), args[1] + Vector3.UP * 0.3, Color(0.2, 0.05, 0.08), 0.8)
 		"bouncy_gone":
 			if bouncies.has(args[0]) and is_instance_valid(bouncies[args[0]]):
 				Effects.puff(_fx_parent(), bouncies[args[0]].global_position + Vector3.UP * 0.4, Color(1.0, 0.85, 0.4, 0.8), 1.0)
@@ -2385,6 +2446,9 @@ func fx(kind: String, args: Array) -> void:
 				var a := TAU * i / 10.0
 				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.3, sin(a)) * PowerUps.FIRE_BURST_RADIUS * 0.6, Color(1.0, 0.45, 0.05, 0.85), 2.2)
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.5, Color(1.0, 0.3, 0.0, 0.9), 3.5)
+			Effects.smoke(_fx_parent(), args[0] + Vector3.UP * 0.5, Color(0.25, 0.12, 0.08), 2.0)
+			_blast_props(args[0], PowerUps.FIRE_BURST_RADIUS, 6.0)
+			_shake_near(args[0], 0.4, 14.0)
 		"cherub":
 			var c := Cherub.new()
 			c.cherub_id = args[0]
@@ -2420,6 +2484,10 @@ func fx(kind: String, args: Array) -> void:
 			fires[args[0]] = f
 		"kick":
 			Effects.puff(_fx_parent(), args[0], Color(1.0, 0.95, 0.6, 0.8), 1.2)
+		"knock":
+			_knock_here(int(args[0]), args[1])
+		"prop_rest":
+			_prop_rest_here(int(args[0]), args[1], float(args[2]))
 		"sense_cherub":
 			# A teammate picked up Cherub Sense: hang a cherub over their head.
 			if net and net.remotes.has(args[0]):
@@ -2442,12 +2510,16 @@ func fx(kind: String, args: Array) -> void:
 				_play("fear")
 		"minion_pop":
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.6, Color(0.35, 0.05, 0.08, 0.8), 1.6)
+			Effects.smoke(_fx_parent(), args[0] + Vector3.UP * 0.4, Color(0.3, 0.06, 0.1), 1.0)
 		"stomp":
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.2, Color(1.0, 1.0, 1.0, 0.75), Skills.STOMP_RADIUS * 1.2)
 			for i in 10:   # a shockwave ring out to the edge of where it hurts
 				var a := TAU * i / 10.0
 				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.3, sin(a)) * Skills.STOMP_RADIUS * 0.8, Color(1.0, 0.97, 0.8, 0.6), 1.6)
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.6, Color(1.0, 0.95, 0.7, 0.6), 2.0)
+			Effects.dust(_fx_parent(), args[0], Skills.STOMP_RADIUS * 0.5, 24)
+			_blast_props(args[0], Skills.STOMP_RADIUS * 1.2, 7.0)
+			_shake_near(args[0], 0.5, 18.0)
 		"vortex":
 			var v := Vortex.new()
 			v.caught = args[1]
@@ -2471,6 +2543,8 @@ func prop_state() -> Array:
 		var prop = props[i]
 		if not is_instance_valid(prop) or not prop.is_in_group("prop"):
 			gone.append(i)
+		elif prop.has_meta("moved_basis"):
+			moved.append([i, prop.get_meta("moved_to"), prop.get_meta("moved_basis"), prop.get_meta("ground_offset", 0.0)])
 		elif prop.has_meta("moved_to"):
 			moved.append([i, prop.get_meta("moved_to")])
 	return [gone, moved]
@@ -2482,13 +2556,17 @@ func apply_prop_state(gone: Array, moved: Array) -> void:
 	for m in moved:
 		var i := int(m[0])
 		if i >= 0 and i < props.size() and is_instance_valid(props[i]):
-			props[i].global_position = m[1]
+			if m.size() >= 4:
+				_prop_rest_here(i, Transform3D(m[2], m[1]), float(m[3]))
+			else:
+				props[i].global_position = m[1]
 
 
 func _set_prop_taken(index: int) -> void:
 	if index < 0 or index >= props.size() or not is_instance_valid(props[index]):
 		return
 	var prop: Node3D = props[index]
+	_stop_knock(prop)
 	prop.visible = false
 	prop.remove_from_group("prop")
 	for c in prop.get_children():
@@ -2502,8 +2580,9 @@ func _make_shell(index: int, pos: Vector3, yaw: float) -> void:
 	if index < 0 or index >= props.size() or not is_instance_valid(props[index]):
 		return
 	var prop: Node3D = props[index]
+	_stop_knock(prop)
 	prop.global_position = pos
-	prop.rotation.y = yaw
+	prop.rotation = Vector3(0.0, yaw, 0.0)   # back upright, even if it had been knocked over
 	prop.visible = true
 	for c in prop.get_children():
 		if c is CollisionShape3D:
@@ -2529,6 +2608,144 @@ func _pull_props(center: Vector3) -> void:
 		var tw: Tween = prop.create_tween()
 		tw.tween_property(prop, "global_position", target, 1.2).set_ease(Tween.EASE_IN)
 		prop.set_meta("moved_to", target)   # (for anyone joining later)
+
+
+# ---------- loose props: shoving them about (see knock.gd) ----------
+
+const PROP_SWAT := 3.0          # a melee swing that hits furniture instead of a demon (first guess)
+const PROP_KICK := 7.0          # Holy Kick with no demon in reach (first guess)
+const BLESSING_SHOVE := 0.05    # share of a blessing's speed that shoves a prop (first guess)
+const STOMP_PUSH := 2.0         # m a Cloud Stomp shoves the demons it hurts (first guess)
+
+
+# Host / practice: shove a prop, and tell everyone.
+func knock_prop(index: int, impulse: Vector3) -> void:
+	if not is_authority() or index < 0 or index >= props.size():
+		return
+	if impulse.length() > 30.0:
+		impulse = impulse.limit_length(30.0)
+	broadcast_fx("knock", [index, impulse])
+
+
+func _knock_here(index: int, impulse: Vector3) -> void:
+	if index < 0 or index >= props.size() or not is_instance_valid(props[index]) or not props[index].is_in_group("prop"):
+		return
+	Knock.on(self, props[index], index).hit(impulse)
+
+
+# Host: a knocked prop came to rest; make sure everyone has it in exactly the same spot.
+func prop_rested(index: int, xf: Transform3D, offset: float) -> void:
+	if net and net.is_host:
+		net.send_fx("prop_rest", [index, xf, offset], -1)
+
+
+func _prop_rest_here(index: int, xf: Transform3D, offset: float) -> void:
+	if index < 0 or index >= props.size() or not is_instance_valid(props[index]):
+		return
+	var prop: StaticBody3D = props[index]
+	var k := prop.get_node_or_null("Knock")
+	if k and k.is_physics_processing():
+		k.set_physics_process(false)
+		k.queue_free()
+	prop.set_meta("moved_to", xf.origin)
+	prop.set_meta("moved_basis", xf.basis)
+	prop.set_meta("ground_offset", offset)
+	if prop.global_transform.origin.distance_to(xf.origin) < 0.01:
+		prop.global_transform = xf
+		return
+	var tw := prop.create_tween()
+	tw.tween_property(prop, "global_transform", xf, 0.25)
+
+
+func _stop_knock(prop: Node) -> void:
+	var k := prop.get_node_or_null("Knock")
+	if k:
+		k.free()
+	var visual := prop.get_child(0) as Node3D
+	if visual:
+		visual.transform = Transform3D.IDENTITY   # (a rolled apple straightens up)
+	prop.remove_meta("moved_basis")
+	prop.remove_meta("ground_offset")
+
+
+# Host / practice: a blessing hit a loose prop.
+func _on_blessing_hit_prop(prop: Node, velocity: Vector3, _point: Vector3) -> void:
+	knock_prop(int(prop.get_meta("prop_index", -1)), velocity * BLESSING_SHOVE + Vector3.UP * 0.6)
+
+
+# Host / practice: a melee swing or a kick with no demon in reach boots the nearest
+# prop in front instead.
+func _boot_prop(user: Node3D, dir: Vector3, reach: float, strength: float) -> void:
+	var flat := Vector3(dir.x, 0.0, dir.z).normalized()
+	var me := user.global_position
+	var best := -1
+	var best_d := INF
+	for i in props.size():
+		var prop = props[i]
+		if not is_instance_valid(prop) or not prop.is_in_group("prop"):
+			continue
+		var off: Vector3 = prop.global_position - me
+		var d := Vector2(off.x, off.z).length()
+		if d > reach + 0.6 or d >= best_d or absf(off.y) > 2.0:
+			continue
+		if d > 0.4 and rad_to_deg(Vector2(flat.x, flat.z).angle_to(Vector2(off.x, off.z))) > 50.0:
+			continue
+		best = i
+		best_d = d
+	if best >= 0:
+		knock_prop(best, flat * strength + Vector3.UP * strength * 0.3)
+
+
+# Everyone runs this from the same blast, so every screen shoves the same props
+# the same way (like the vortex). Nearer = harder.
+func _blast_props(center: Vector3, radius: float, strength: float) -> void:
+	for i in props.size():
+		var prop = props[i]
+		if not is_instance_valid(prop) or not prop.is_in_group("prop"):
+			continue
+		var off: Vector3 = prop.global_position - center
+		var flat := Vector3(off.x, 0.0, off.z)
+		var d := flat.length()
+		if d > radius or absf(off.y) > 3.0:
+			continue
+		var dir := flat / d if d > 0.05 else Vector3.RIGHT
+		var power := strength * (1.0 - d / radius * 0.7)
+		Knock.on(self, prop, i).hit(dir * power + Vector3.UP * power * 0.4)
+
+
+func _shake_near(where: Vector3, amount: float, reach: float) -> void:
+	var d := player.global_position.distance_to(where)
+	if d < reach and mode != "menu":
+		player.shake(amount * (1.0 - d / reach))
+
+
+# ---------- music ----------
+
+# Which song fits right now: the waltz in menus and lobbies, tiptoeing while the
+# demons hide, the chase during the hunt.
+func _update_music() -> void:
+	var song := "lobby"
+	if editor != null and editor.active():
+		song = "lobby"
+	elif mode != "menu":
+		match state:
+			State.HIDING: song = "hiding"
+			State.HUNTING: song = "hunt"
+			State.ENDED: song = ""
+	music.play(song)
+
+
+func _round_sting(message: String) -> void:
+	var angels_won := message.contains("Angels win")
+	music.sting("win" if angels_won == (role == "angel") else "lose")
+
+
+func _apply_volumes() -> void:
+	Music.set_volume(_music_volume)
+	var idx := AudioServer.get_bus_index(Sfx.BUS)
+	if idx != -1:
+		AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(_sound_volume, 0.001)))
+		AudioServer.set_bus_mute(idx, _sound_volume <= 0.001)
 
 
 # ---------- command line (automated testing) ----------
