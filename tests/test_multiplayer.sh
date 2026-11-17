@@ -97,7 +97,8 @@ check "name checks actually ran" "[ \$(grep -h 'names I can see' '$OUT'/*.log | 
 for n in Ava Ben Cal Dee; do
 	line=$(grep -m1 "roster:" "$OUT/$n.log")
 	check "$n's Tab roster lists all 5 players" "[ \$(echo \"$line\" | grep -oE '(Abe|Ava|Ben|Cal|Dee)\\((angel|demon),' | wc -l) -eq 5 ]"
-	check "$n's ping is measured" "echo \"$line\" | grep -qE 'my ping [0-9]+'"
+	# (any roster line: the very first can come before the first ping is back, more so through a relay)
+	check "$n's ping is measured" "grep 'roster:' '$OUT/$n.log' | grep -qE 'my ping [0-9]+'"
 done
 check "global chat reaches the other team" "grep -q 'Ava: hello_everyone' '$OUT/Dee.log'"
 check "team chat reaches teammates" "grep -q '\[TEAM\] Ben: demons_only_secret' '$OUT/host.log'"
