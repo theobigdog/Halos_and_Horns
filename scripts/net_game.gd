@@ -19,6 +19,7 @@ const Skills = preload("res://scripts/skills.gd")
 const PowerUps = preload("res://scripts/powerups.gd")
 const MapData = preload("res://scripts/map_data.gd")
 const RelayPeer = preload("res://scripts/relay_peer.gd")
+const Aura = preload("res://scripts/aura.gd")
 const RP = preload("res://relay/relay_protocol.gd")
 
 const PROTOCOL_VERSION := 5      # (old) kept for reference; joining now checks main.game_build
@@ -410,6 +411,7 @@ func start_round() -> void:
 			rec["role"] = forced_roles[rec["name"]]
 		rec["eid"] = _new_eid()
 		rec["form"] = ""
+		rec["aura_until"] = 0.0
 		rec["health"] = DEMON_HEALTH
 		rec["stamina"] = THROW_STAMINA_MAX
 		rec["stamina_time"] = now()
@@ -692,12 +694,37 @@ func _relay_states() -> void:
 				continue
 			if peers[viewer]["role"] == "angel" and _is_vanished(id):
 				continue   # invisible: angels get nothing about this demon
-			states.append([rec["eid"], rec["pos"], rec["yaw"], rec["form"], rec["role"]])
+			states.append([rec["eid"], rec["pos"], rec["yaw"], rec["form"], rec["role"], _shown_aura(id)])
 		for owner in minions:
 			if owner != viewer:
 				var m: Dictionary = minions[owner]
-				states.append([m["eid"], m["pos"], m["yaw"], m["form"], "demon"])
+				states.append([m["eid"], m["pos"], m["yaw"], m["form"], "demon", _minion_aura(owner)])
 		s_states.rpc_id(viewer, states)
+	# The host's own screen.
+	for id in peers:
+		var rec: Dictionary = peers[id]
+		if id != 1 and rec["in_round"] and remotes.has(rec["eid"]):
+			remotes[rec["eid"]].set_aura(_shown_aura(id))
+	for owner in minions:
+		if owner != 1 and remotes.has(minions[owner]["eid"]):
+			remotes[minions[owner]["eid"]].set_aura(_minion_aura(owner))
+
+
+# The power-up aura everyone may see on this player: only in their own body,
+# never while disguised as a prop or invisible (that would give them away).
+func _shown_aura(id: int) -> String:
+	var rec: Dictionary = peers[id]
+	if now() > rec.get("aura_until", 0.0) or rec["form"] != "" or _is_vanished(id):
+		return ""
+	return rec.get("aura", "")
+
+
+# A minion that looks like its owner's body copies the owner's aura (or it'd be
+# easy to tell which is the decoy).
+func _minion_aura(owner: int) -> String:
+	if not peers.has(owner) or minions[owner]["form"] != "" or now() > peers[owner].get("aura_until", 0.0):
+		return ""
+	return peers[owner].get("aura", "")
 
 
 # ---------------- rounds (joined players) ----------------
@@ -752,6 +779,7 @@ func s_states(states: Array) -> void:
 			continue
 		var r := _get_or_make_remote(st[0])
 		r.apply_state(st[1], st[2], st[3], st[4])
+		r.set_aura(st[5] if st.size() > 5 else "")
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -1390,6 +1418,9 @@ func give_powerup(id: int, kind: String) -> void:
 		"quick_throw": rec["quick_throw_until"] = until
 		"quick_skills": rec["quick_skills_until"] = until
 		"sense": rec["sense_until"] = until
+	if Aura.KINDS.has(kind):
+		rec["aura"] = kind
+		rec["aura_until"] = until
 	print("[host] %s picked up %s" % [rec["name"], kind])
 	if id == 1:
 		main.player.apply_powerup(kind)

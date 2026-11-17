@@ -566,6 +566,19 @@ func _run() -> void:
 	main.give_powerup(0, "fire_burst", player.global_position)
 	await frames(2)
 	check(player.burning > 0.0, "a demon's Fire Burst sets nearby angels burning")
+	await frames(2)
+	check("burning" in main.effect_icons.shown(), "...and a Hellfire icon shows in the top-right corner")
+	player.apply_powerup("quick_run")
+	await frames(2)
+	check("quick_run" in main.effect_icons.shown() and "burning" in main.effect_icons.shown(),
+			"power-ups get an icon too, next to the bad ones (%s)" % [main.effect_icons.shown()])
+	player.first_person[player.role] = false
+	await frames(2)
+	check(main.my_aura.kind == "quick_run", "in third person you see your own power-up aura")
+	player.first_person[player.role] = true
+	player.powerups.erase("quick_run")
+	await frames(2)
+	check(not "quick_run" in main.effect_icons.shown(), "...and the icon goes when it runs out")
 	await frames(250)
 	# Cherub Sense: walking near a demon sets off your own alarm.
 	var sensed = null
@@ -618,6 +631,53 @@ func _run() -> void:
 	player.test_input = {}
 	check(peak_b > 6.0, "a bouncy flings you way up (%.1f m)" % peak_b)
 	await frames(60)
+	player.global_position = Vector3(0, 0.1, 18)   # (out of the way)
+	await frames(5)
+	# A cherub dropped onto a bouncy goes flying up and off it.
+	var pad: Vector3 = main.BOUNCIES[0]
+	main._auth_cherubs[99] = {"pos": pad, "until": Time.get_ticks_msec() / 1000.0 + 9.0, "alarmed": false, "rested": false}
+	main.fx("cherub", [99, pad + Vector3(0.2, 2.5, 0), Vector3.ZERO])
+	var pc = main.cherubs.get(99)
+	var pc_peak := 0.0
+	for k in 150:
+		await frames(1)
+		if is_instance_valid(pc):
+			pc_peak = maxf(pc_peak, pc.global_position.y - pad.y)
+	var pc_off := 0.0
+	if is_instance_valid(pc):
+		pc_off = Vector2(pc.global_position.x - pad.x, pc.global_position.z - pad.z).length()
+	check(pc_peak > 4.0, "a cherub that lands on a bouncy is flung up (%.1f m)" % pc_peak)
+	check(pc_off > 2.0, "...and off the pad, not bouncing in place forever (%.1f m away)" % pc_off)
+	if is_instance_valid(pc):
+		pc.queue_free()
+	main._auth_cherubs.erase(99)
+	# A Vacuum Orb that hits a bouncy bounces off and goes off somewhere else.
+	var orb_hits := []
+	var orb_from: Vector3 = pad + Vector3(-3.0, 3.0, 0.0)
+	var orb_dir: Vector3 = (pad + Vector3(0, 0.25, 0) - orb_from).normalized()
+	var orb = main._spawn_orb(orb_from - orb_dir * 0.6, orb_dir, false)
+	orb.on_impact = func(p): orb_hits.append(p)
+	var orb_peak := 0.0
+	for k in 360:
+		await frames(1)
+		if is_instance_valid(orb):
+			orb_peak = maxf(orb_peak, orb.global_position.y - pad.y)
+		if not orb_hits.is_empty():
+			break
+	check(orb_peak > 4.0, "a Vacuum Orb that hits a bouncy flies back up (%.1f m)" % orb_peak)
+	var orb_off := -1.0
+	if not orb_hits.is_empty():
+		orb_off = Vector2(orb_hits[0].x - pad.x, orb_hits[0].z - pad.z).length()
+	check(orb_off > 1.5, "...and the vacuum goes off where it comes down, not on the pad (%.1f m away)" % orb_off)
+	# Ordinary blessings still just pop on a bouncy.
+	var plain_hit := []
+	var plain = preload("res://scripts/projectile.gd").new()
+	plain.on_impact = func(p): plain_hit.append(p)
+	main.add_child(plain)
+	plain.global_position = pad + Vector3(0, 2.0, 0)
+	plain.velocity = Vector3(0, -20, 0)
+	await frames(30)
+	check(plain_hit.size() == 1 and plain_hit[0].distance_to(pad) < 0.6, "...ordinary blessings don't bounce")
 	# One-use bouncies: the first bounce uses it up for the round.
 	var one: Node3D = main.bouncies.get(0)
 	check(one != null, "one-use bouncies are out each round")

@@ -12,6 +12,8 @@ const Sfx = preload("res://scripts/sfx.gd")
 const Blessings = preload("res://scripts/blessings.gd")
 const Taunts = preload("res://scripts/taunts.gd")
 const NetGame = preload("res://scripts/net_game.gd")
+const EffectIcons = preload("res://scripts/effect_icons.gd")
+const Aura = preload("res://scripts/aura.gd")
 const RelayProtocol = preload("res://relay/relay_protocol.gd")
 # Drew's relay server. (relay_protocol.gd names it saucer.drewburr.com, after his
 # game; it's the same server, and Drew asked games to use this name.)
@@ -103,6 +105,8 @@ var _loadout_buttons: Array = []   # [team, slot, OptionButton]
 var skill_label: Label
 var bonus_label: Label
 var powerup_label: Label
+var effect_icons                 # the top-right row of effect icons (effect_icons.gd)
+var my_aura: Node3D              # our own power-up aura, as others see it (aura.gd)
 var _sense_bubble: MeshInstance3D
 var _sense_cherub: Node3D          # Cherub Sense: the little cherub dangling above our head
 var _sense_sound_time := 0.0
@@ -155,6 +159,7 @@ var _toast_time := 0.0
 var _hitmarker_time := 0.0
 var _hurt_time := 0.0
 var _sounds := {}             # name -> AudioStreamPlayer
+var _fly_sound: AudioStreamPlayer
 var bar_fills := {}           # HUD stamina bars: name -> [fill ColorRect, Label]
 var taunt_label: Label
 var hud_layer: CanvasLayer
@@ -676,6 +681,7 @@ func _build_map() -> void:
 				structures.append([Vector2(pos.x, pos.z), 1.6])   # (made fresh each round)
 
 
+const CHERUB_PAD_SIDEWAYS := 3.0  # m/s a cherub at least drifts off a bouncy pad (first guess)
 const DASH_TRAIL := 4.5          # length of the sparkle trail others see behind a dash
 const WORLD_LAYER := 1         # everything real you can see and hit
 const BOUNDS_LAYER := 2        # invisible map walls and ceiling
@@ -1627,8 +1633,10 @@ func online_count(n: int) -> void:
 
 
 func online_you_hit(health_fraction: float) -> void:
+	if health_fraction < my_health - 0.001:   # (Unholy Mending also lands here: no "ouch" for a heal)
+		_hurt_time = 0.25
+		_play("hurt")
 	my_health = health_fraction
-	_hurt_time = 0.25
 
 
 # The angels yanked us (vacuum orb, kick).
@@ -1788,8 +1796,8 @@ func _ray(from: Vector3, to: Vector3, exclude: Array) -> Dictionary:
 	return get_world_3d().direct_space_state.intersect_ray(q)
 
 
-func ground_below(point: Vector3) -> Vector3:
-	var hit := _ray(point + Vector3.UP * 0.5, point + Vector3.DOWN * 40.0, [])
+func ground_below(point: Vector3, exclude: Array = []) -> Vector3:
+	var hit := _ray(point + Vector3.UP * 0.5, point + Vector3.DOWN * 40.0, exclude)
 	return hit["position"] if not hit.is_empty() else Vector3(point.x, 0.0, point.z)
 
 
@@ -1897,7 +1905,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 			broadcast_fx("stomp", [origin])
 			print("[decider] cloud stomp hit %d demon(s) (from %.1f m up)" % [hurt, drop])
 		"vacuum":
-			var orb := _spawn_orb(origin, dir, false)
+			var orb := _spawn_orb(origin, dir, false)   # (it bounces off bouncy pads: see _spawn_orb)
 			orb.shooter = user
 			orb.on_impact = _vacuum_at
 			broadcast_fx("orb", [origin, dir], user_key)
@@ -1976,6 +1984,7 @@ func _spawn_orb(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
 	orb.size = 0.22
 	orb.gravity = 9.0
 	orb.damage = 0
+	orb.bounces_on_pads = true
 	orb.visual_only = visual_only
 	_fx_parent().add_child(orb)
 	orb.global_position = origin + dir * 0.6
@@ -2066,6 +2075,36 @@ func kick_cherub(cid: int, shot_velocity: Vector3) -> void:
 	_auth_cherubs[cid]["rested"] = false
 	broadcast_fx("cherub_kick", [cid, pos, vel])
 	print("[decider] cherub kicked")
+
+
+# A cherub landed on a bouncy pad: it flies up and off, away from the pad's middle.
+func bounce_cherub(cid: int, pad_position: Vector3, up_speed: float) -> void:
+	if not _auth_cherubs.has(cid) or not cherubs.has(cid) or not is_instance_valid(cherubs[cid]):
+		return
+	var c: Node3D = cherubs[cid]
+	var flat := Vector3(c.velocity.x, 0, c.velocity.z)
+	if flat.length() < CHERUB_PAD_SIDEWAYS:
+		var away := Vector3(c.global_position.x - pad_position.x, 0, c.global_position.z - pad_position.z)
+		if away.length() < 0.05:
+			away = Vector3.RIGHT.rotated(Vector3.UP, randf() * TAU)
+		flat = away.normalized() * CHERUB_PAD_SIDEWAYS
+	var pos: Vector3 = c.global_position + Vector3.UP * 0.05
+	_auth_cherubs[cid]["rested"] = false
+	broadcast_fx("cherub_kick", [cid, pos, flat + Vector3.UP * up_speed])
+	print("[decider] cherub bounced off a bouncy")
+
+
+# What the top-right icons show: every effect on us right now -> seconds left.
+func _my_effects() -> Dictionary:
+	var out := {}
+	for k in player.powerups:
+		if k != "vanish" and k != "heal":
+			out[k] = player.powerups[k]
+	out["vanish"] = player.vanish_time
+	out["burning"] = player.burning
+	out["feared"] = player.feared
+	out["skill_lock"] = player.skill_lock
+	return out
 
 
 func _now() -> float:
@@ -2338,7 +2377,7 @@ func fx(kind: String, args: Array) -> void:
 				bouncies[args[0]].use_up()
 			bouncies.erase(args[0])
 		"powerup":
-			powerups.show_item(args[0], args[1], args[2])
+			powerups.show_item(args[0], args[1], args[2], args[3] if args.size() > 3 else args[2])
 		"powerup_gone":
 			powerups.hide_item(args[0], args[1])
 		"fire_burst":
@@ -2354,6 +2393,7 @@ func fx(kind: String, args: Array) -> void:
 			cherubs[args[0]] = c
 			if mode != "online" or (net and net.is_host):
 				c.on_kick = kick_cherub
+				c.on_bounce = bounce_cherub
 		"cherub_kick":
 			if cherubs.has(args[0]) and is_instance_valid(cherubs[args[0]]):
 				cherubs[args[0]].launch(args[1], args[2])
@@ -2662,6 +2702,10 @@ func _build_hud() -> void:
 	ping_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	ping_label.position += Vector2(-16, 14)
 	hud.add_child(ping_label)
+	# Everything you're under right now (Hellfire, Fear, power-ups...), just below the ping.
+	effect_icons = EffectIcons.new()
+	effect_icons.position += Vector2(-16, 46)
+	hud.add_child(effect_icons)
 
 	_build_scoreboard(hud)
 
@@ -2894,6 +2938,8 @@ func _build_sounds() -> void:
 		"powerup": Sfx.voice([[660, 990, 0.12, 0.8, 0.0], [990, 1320, 0.18, 0.7, 0.0]], 0.2, 0.0, 0.02, 0.02),
 		# Fear: a hellish shriek.
 		"fear": Sfx.voice([[260, 880, 0.12, 1.0, 0.0], [880, 640, 0.25, 1.0, 0.0], [640, 150, 0.45, 0.9, 0.0]], 0.28, 0.7, 0.08, 0.06),
+		# We got hit (as a demon): a gravelly grunt.
+		"hurt": Sfx.voice([[240, 150, 0.16, 1.0, 0.0], [150, 120, 0.08, 0.6, 0.0]], 0.3, 0.75, 0.06, 0.04),
 	}
 	for kind in Blessings.names():
 		streams["throw_" + kind] = Sfx.throw_sound(kind)
@@ -2906,6 +2952,23 @@ func _build_sounds() -> void:
 			asp.volume_db = -4.0   # throws happen constantly: keep them in the background
 		add_child(asp)
 		_sounds[sound_name] = asp
+	# Flying: a wing-beat loop that plays while the Fly skill is on (in the air or not).
+	_fly_sound = AudioStreamPlayer.new()
+	_fly_sound.stream = Sfx.fly_loop()
+	_fly_sound.bus = Sfx.BUS
+	_fly_sound.volume_db = -80.0
+	add_child(_fly_sound)
+
+
+# Fade the flying loop in while we fly, and out when we stop.
+func _update_fly_sound(delta: float) -> void:
+	var on: bool = player.flying and mode != "menu"
+	if on and not _fly_sound.playing:
+		_fly_sound.play()
+	var target := -6.0 if on else -60.0
+	_fly_sound.volume_db = move_toward(_fly_sound.volume_db, target, delta * (90.0 if on else 60.0))
+	if not on and _fly_sound.playing and _fly_sound.volume_db <= -59.0:
+		_fly_sound.stop()
 
 
 func _play(sound_name: String) -> void:
@@ -3014,10 +3077,17 @@ func _update_hud(delta: float) -> void:
 	_bonus_time -= delta
 	bonus_label.modulate.a = clampf(_bonus_time, 0.0, 1.0)
 	# Power-ups we have going, and Cherub Sense's alarm around us.
-	var active := []
-	for k in player.powerups:
-		active.append("%s %ds" % [PowerUps.LABELS.get(k, k), int(ceil(player.powerups[k]))])
-	powerup_label.text = "   ".join(active)
+	effect_icons.visible = in_game
+	effect_icons.show_effects(_my_effects())
+	_update_fly_sound(delta)
+	# Our own aura, the same as everyone else sees on us (not in first person: it'd
+	# be in our face; and never while disguised or invisible, like for everyone).
+	if my_aura == null:
+		my_aura = Aura.new()
+		player.add_child(my_aura)
+	var show_aura: bool = in_game and not player.first_person[player.role] and player.possessed_type == "" and player.vanish_time <= 0.0
+	my_aura.set_kind(Aura.shown_kind(player.powerups) if show_aura else "")
+	powerup_label.text = ""   # (power-ups show as icons in the top-right now)
 	_update_sense_bubble(delta)
 	skill_label.visible = in_game
 	skill_label.text = _skill_text()

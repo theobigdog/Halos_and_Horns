@@ -139,6 +139,10 @@ fi
 if [ -n "$RELAY_PID" ]; then
 	check "the match went through the relay (room $JOIN)" "grep -q 'halos-and-horns room $JOIN opened' '$OUT/relay.log'"
 fi
+if grep -q 'picked up sense\|picked up quick' "$OUT/host.log"; then
+	check "a power-up aura shows on other players' screens" "grep -q '\[aura\] angel (own body) shows' '$OUT'/*.log"
+fi
+check "never an aura on a disguised demon" "! grep '\[aura\]' '$OUT'/*.log | grep -v 'own body'"
 check "no player script errors" "! grep -q 'SCRIPT ERROR' '$OUT'/*.log"
 
 if [ $fail -eq 0 ]; then echo "ALL PASSED"; else echo "FAILED (logs in $OUT)"; fi

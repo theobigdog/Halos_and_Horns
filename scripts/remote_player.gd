@@ -10,6 +10,7 @@ const PropLib = preload("res://scripts/prop_library.gd")
 const Bodies = preload("res://scripts/bodies.gd")
 const Sfx = preload("res://scripts/sfx.gd")
 const Taunts = preload("res://scripts/taunts.gd")
+const Aura = preload("res://scripts/aura.gd")
 
 var eid := 0                  # entity id for this round (not the player's network id)
 var role := ""
@@ -32,6 +33,7 @@ var _has_state := false
 const INTERP_DELAY := 0.1
 var _snaps := []          # [time received, position, yaw], oldest first
 var _plate_h := 2.0       # nameplate height above the feet
+var _aura: Node3D         # power-up particles (aura.gd); the host says which
 
 
 func _ready() -> void:
@@ -57,7 +59,18 @@ func _ready() -> void:
 	_nameplate.font_size = 28
 	_nameplate.outline_size = 8
 	add_child(_nameplate)
+	_aura = Aura.new()
+	add_child(_aura)
 	_rebuild()
+
+
+# Which power-up's aura to show ("" for none). Never anything while it's vanished.
+func set_aura(kind: String) -> void:
+	if _aura:
+		var k := "" if _vanished else kind
+		if k != _aura.kind and k != "":
+			print("[aura] %s (%s) shows %s" % [role, form if form != "" else "own body", k])
+		_aura.set_kind(k)
 
 
 func set_name_for_teammate(n: String) -> void:
@@ -75,6 +88,8 @@ var _vanish_left := 0.0
 func vanish(seconds := 7.0) -> void:
 	_vanished = true
 	_vanish_left = seconds
+	if _aura:
+		_aura.set_kind("")
 	if _visual:
 		_visual.visible = false
 	_nameplate.visible = false

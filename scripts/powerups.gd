@@ -37,6 +37,8 @@ const DEMON_DROP_BASE := 35.0     # seconds between demon drops (2 players, demo
 const DEMON_DROP_MIN := 12.0
 const ANGEL_HELP_AFTER := 30.0    # no catch, hit or angel power-up for this long: help the angels
 const FIRE_BURST_RADIUS := 7.0
+const REST_HEIGHT := 0.45         # a dropped pickup comes to rest (bobbing) this high off the ground
+const FALL_GRAVITY := 18.0
 
 var main                          # the game (decider helpers, effects)
 var items := {}                   # everyone: id -> pickup node
@@ -156,11 +158,17 @@ func _count(team: String) -> int:
 	return _auth.values().filter(func(it): return it["team"] == team).size()
 
 
+# It falls from about hand height where it was dropped, down to the ground (the
+# ray skips players, or it would land on the dropping angel's head and float there).
 func _drop(team: String, kind: String, near: Vector3) -> void:
 	_counter += 1
-	var pos: Vector3 = main.ground_below(near + Vector3.UP * 1.5) + Vector3.UP * 0.9
+	var people: Array = main.team_entries().map(func(e): return e[1])
+	var pos: Vector3 = main.ground_below(near + Vector3.UP * 1.5, people) + Vector3.UP * REST_HEIGHT
+	var from := near + Vector3.UP * 1.0
+	if from.y < pos.y:
+		from = pos
 	_auth[_counter] = {"kind": kind, "team": team, "pos": pos, "until": _now() + LIFETIME}
-	main.team_fx(team, "powerup", [_counter, kind, pos])
+	main.team_fx(team, "powerup", [_counter, kind, pos, from])
 	print("[decider] %s power-up dropped: %s" % [team, kind])
 
 
@@ -171,7 +179,8 @@ func _remove(id: int, taken: bool) -> void:
 
 # ---------------- everyone: what the pickups look like ----------------
 
-func show_item(id: int, kind: String, pos: Vector3) -> void:
+# `pos` is where it comes to rest; `from` is where it starts falling from.
+func show_item(id: int, kind: String, pos: Vector3, from: Vector3 = pos) -> void:
 	var n := Node3D.new()
 	var angel := kind in ANGEL_KINDS
 	var color: Color = Color(1.0, 0.88, 0.35) if angel else {"heal": Color(0.3, 0.9, 0.35), "vanish": Color(0.6, 0.35, 0.95)}.get(kind, Color(0.9, 0.15, 0.1))
@@ -206,8 +215,10 @@ func show_item(id: int, kind: String, pos: Vector3) -> void:
 	n.set_meta("t", randf() * 10.0)
 	n.set_meta("kind", kind)
 	main.fx_parent().add_child(n)
-	n.global_position = pos
+	n.global_position = Vector3(pos.x, maxf(from.y, pos.y), pos.z)
 	n.set_meta("base_y", pos.y)
+	n.set_meta("falling", from.y > pos.y + 0.05)
+	n.set_meta("vy", 0.0)   # upward speed while falling
 	items[id] = n
 
 
@@ -228,4 +239,17 @@ func _process(delta: float) -> void:
 		var t: float = n.get_meta("t") + delta
 		n.set_meta("t", t)
 		n.rotation.y += delta * 1.6
-		n.global_position.y = n.get_meta("base_y") + sin(t * 2.2) * 0.12
+		var base: float = n.get_meta("base_y")
+		if n.get_meta("falling"):
+			# Falling to the ground, with a little bounce or two, then it settles and bobs.
+			var vy: float = n.get_meta("vy") - FALL_GRAVITY * delta
+			n.global_position.y += vy * delta
+			if n.global_position.y <= base:
+				n.global_position.y = base
+				vy = -vy * 0.35
+				if vy < 1.0:
+					n.set_meta("falling", false)
+					n.set_meta("t", 0.0)
+			n.set_meta("vy", vy)
+			continue
+		n.global_position.y = base + sin(t * 2.2) * 0.12

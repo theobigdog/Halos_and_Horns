@@ -103,6 +103,38 @@ static func possess_sound() -> AudioStreamWAV:
 	return tone([[98.0, 0.7], [147.0, 0.3]], 0.5, 0.22, 0.04, 12.0, 0.35, 0.75)
 
 
+# Flying (demons): a loop of leathery wing beats over a low rush of air.
+# The beats sit at the very start and end of the loop, so it repeats seamlessly.
+static func fly_loop() -> AudioStreamWAV:
+	var seconds := 1.2
+	var beats := 3.0                  # wing beats per loop (2.5 a second)
+	var n := int(RATE * seconds)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var noise := 0.0
+	var noise2 := 0.0
+	var phase := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var u := float(i) / n
+		# Each beat: a quick swell of air ("fwump") that falls away again.
+		var b := fmod(u * beats, 1.0)
+		var beat := pow(sin(b * PI), 6.0)
+		noise = lerpf(noise, randf_range(-1.0, 1.0), 0.08)
+		noise2 = lerpf(noise2, noise, 0.08)
+		phase += TAU * 55.0 / RATE  # a low hum under it
+		var s := noise2 * (3.0 + beat * 14.0) + sin(phase) * 0.12 * (0.4 + beat)
+		data.encode_s16(i * 2, int(clampf(s * 0.22, -1.0, 1.0) * 32767.0))
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = RATE
+	wav.data = data
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_begin = 0
+	wav.loop_end = n
+	return wav
+
+
 # ---------- Placeholder voices for taunts ----------
 # syllables: [[pitch_start_Hz, pitch_end_Hz, seconds, loudness, gap_after_seconds], ...]
 # Pitches are the voice's fundamental; harmonics on top make it sound vocal.

@@ -19,6 +19,7 @@ var cherub_id := 0
 var alarmed := false
 var creep := Vector3.ZERO    # the slow drift toward a noticed demon (flat, m/s); zero when calm
 var on_kick: Callable        # set only where kicks are decided (host / practice)
+var on_bounce: Callable      # the same, for landing on a bouncy pad
 var _life := Skills.CHERUB_LIFETIME
 var _phase := 0.0
 var _bubble: MeshInstance3D
@@ -87,6 +88,15 @@ func _ready() -> void:
 func kick(projectile_velocity: Vector3) -> void:
 	if on_kick.is_valid():
 		on_kick.call(cherub_id, projectile_velocity)
+
+
+# It landed on a bouncy pad. Like a kick, only the decider acts on it (and tells
+# everyone); on other screens it waits a moment for that.
+func bounce_from(pad_position: Vector3, up_speed: float) -> bool:
+	if not on_bounce.is_valid():
+		return false
+	on_bounce.call(cherub_id, pad_position, up_speed)
+	return true
 
 
 func launch(pos: Vector3, vel: Vector3) -> void:

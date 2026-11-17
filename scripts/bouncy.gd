@@ -1,5 +1,6 @@
 # A bouncy: step on it and it flings you high into the air (angels, demons,
-# minions, everyone). Permanent ones are part of the map; one-use ones vanish
+# minions, everyone). Alarm Cherubs and Vacuum Orbs that land on one go
+# bouncing off too (cherub.gd's bounce_from, projectile.gd's bounces_on_pads). Permanent ones are part of the map; one-use ones vanish
 # after their first bounce for the rest of the round.
 #
 # Each player's own game bounces them (movement is theirs to report); using up a
@@ -27,6 +28,7 @@ func _ready() -> void:
 	shape.shape = cyl
 	shape.position.y = 0.125
 	base.add_child(shape)
+	base.add_to_group("bouncy_pad")   # thrown things that hit it bounce (projectile.gd)
 	add_child(base)
 	var spring_color := Color(0.75, 0.75, 0.8)
 	for i in 3:                    # the coil
@@ -73,7 +75,13 @@ func _mat(color: Color, glow: bool) -> StandardMaterial3D:
 
 
 func _on_body_entered(body: Node) -> void:
-	if _used or not body.has_method("bounce"):
+	if _used:
+		return
+	if body.has_method("bounce_from"):   # an Alarm Cherub: it flies off, away from the middle
+		if body.bounce_from(global_position, BOUNCE_VELOCITY):
+			squish()
+		return
+	if not body.has_method("bounce"):
 		return
 	if not body.bounce(BOUNCE_VELOCITY):
 		return
@@ -83,6 +91,10 @@ func _on_body_entered(body: Node) -> void:
 		_used = true
 		if on_used.is_valid():
 			on_used.call(bouncy_id)
+
+
+func squish() -> void:
+	_squish = 0.25
 
 
 func use_up() -> void:
