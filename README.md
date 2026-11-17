@@ -1,5 +1,7 @@
 # Halos & Horns
 
+<img src="icon.png" width="128" alt="Halos & Horns icon: a trident threaded through a halo">
+
 A free, non-commercial prop-hunt game: demons possess everyday objects to hide, angels hunt them down.
 Passion project, inspired by Witch It.
 
@@ -80,6 +82,8 @@ Room codes work through [game-relay](https://github.com/drewburr-labs/game-relay
 
 Both builds are also made automatically: publishing a release on GitHub runs [the release builds workflow](.github/workflows/release-builds.yml), which attaches `HalosAndHorns.exe` and `HalosAndHorns.x86_64` to that release a few minutes later.
 
+
+The icon is `icon.svg`. After changing it, run `godot --headless -s res://tools/make_icon.gd` to remake `icon.ico` (the Windows .exe and taskbar icon) and `icon.png`.
 ## Controls
 
 | Key | Angel | Demon |
