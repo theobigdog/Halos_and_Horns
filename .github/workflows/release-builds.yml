@@ -3,6 +3,11 @@
 # - When a release is published, both builds are attached to it:
 #   HalosAndHorns.exe (Windows) and HalosAndHorns.x86_64 (Linux).
 #   A file with the same name that is already on the release is replaced.
+# - Each build is signed for the in-game updater (scripts/updater.gd), and
+#   the signature attached next to it as HalosAndHorns.exe.sig and so on. The
+#   key is the UPDATE_SIGNING_KEY secret (tools/make_update_key.sh makes it).
+#   Without that secret the release still works; players just get the
+#   download page instead of an automatic update.
 # - It can also be run by hand from the Actions tab; the builds are then
 #   available as downloadable artifacts on the run page.
 name: Release builds
@@ -87,6 +92,33 @@ jobs:
         if: matrix.preset == 'Linux'
         run: timeout 60 "builds/${{ matrix.file }}" --headless --quit-after 10
 
+      # The statement signed here must match updater.gd's statement() exactly.
+      # The signature is then checked against the public key built into the
+      # game (scripts/update_key.gd), so a key mix-up fails here, not on
+      # players' computers.
+      - name: Sign the build for the in-game updater
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          FILE: ${{ matrix.file }}
+        run: |
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "::warning::No UPDATE_SIGNING_KEY secret: this release won't update itself in players' games (they get the download page). See tools/make_update_key.sh."
+            exit 0
+          fi
+          sed -n '/-----BEGIN PUBLIC KEY-----/,/-----END PUBLIC KEY-----/p' scripts/update_key.gd \
+            | sed 's/^.*-----BEGIN/-----BEGIN/' > "$RUNNER_TEMP/public.pem"
+          if ! [ -s "$RUNNER_TEMP/public.pem" ]; then
+            echo "::error::UPDATE_SIGNING_KEY is set but scripts/update_key.gd has no public key. Run tools/make_update_key.sh and commit it."
+            exit 1
+          fi
+          printf 'Halos & Horns update\nversion %s\nfile %s\nsha256 %s\n' \
+            "${TAG#v}" "$FILE" "$(sha256sum "builds/$FILE" | cut -d' ' -f1)" > "$RUNNER_TEMP/statement.txt"
+          cat "$RUNNER_TEMP/statement.txt"
+          openssl dgst -sha256 -sign <(printf '%s\n' "$SIGNING_KEY") -out "builds/$FILE.sig" "$RUNNER_TEMP/statement.txt"
+          openssl dgst -sha256 -verify "$RUNNER_TEMP/public.pem" -signature "builds/$FILE.sig" "$RUNNER_TEMP/statement.txt"
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: HalosAndHorns-${{ matrix.preset }}
@@ -96,4 +128,7 @@ jobs:
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" "builds/${{ matrix.file }}" --clobber
+        run: |
+          files=("builds/${{ matrix.file }}")
+          [ -f "builds/${{ matrix.file }}.sig" ] && files+=("builds/${{ matrix.file }}.sig")
+          gh release upload "${{ github.event.release.tag_name }}" "${files[@]}" --clobber

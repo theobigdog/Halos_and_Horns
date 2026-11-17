@@ -45,11 +45,13 @@ Windows and Linux players can play together.
 
 ## Updating
 
-When a newer version is out, the main menu shows a **Version ... is out** button. It opens the download page in your browser; download the new file there and replace your old one with it.
+When a newer version is out, the main menu shows an **Update to version ...** button. Click it and the game downloads the new version, checks it, replaces itself and restarts. If the update can't be checked or installed (say, the game sits in a folder it isn't allowed to change), the button opens the download page instead: download the new file there and replace your old one with it.
 
-The game only checks whether a newer version exists. It never downloads, replaces or runs anything by itself. (Versions 0.4 to 0.5.2 installed updates themselves; that was taken out because the only check on a download was a fingerprint that came from the same place as the file. It may come back once releases are signed with a key that never leaves the developer's computer.)
+**How updates are checked:** every release is signed. The release workflow signs each build with a private key kept as a GitHub secret, and the game carries the matching public key. The signature covers the version number, the file name and the file's exact fingerprint, so the game only installs the very file that was signed for that version: not a swapped or damaged file, and not an older build passed off as a newer one. Anything that doesn't check out is never run. (Versions 0.4 to 0.5.2 checked downloads only against a fingerprint that came from the same place as the file; that's why self-updating was off from 0.5.3 until signing came in.)
 
-Making a release (developers): publish a GitHub release tagged like `v0.4.1`. The tag is the version: the build stamps it into the game, so there is no version number to change in the source. Run from source, the game calls itself version "dev".
+What signing doesn't cover: someone who takes over the GitHub account could change the workflow and have it sign their file too. Keeping that account safe (two-factor login) is what keeps updates safe.
+
+Making a release (developers): publish a GitHub release tagged like `v0.4.1`. The tag is the version: the build stamps it into the game, so there is no version number to change in the source. Run from source, the game calls itself version "dev". The workflow signs the builds a few minutes later; that needs the `UPDATE_SIGNING_KEY` secret, made once with `bash tools/make_update_key.sh` (which also writes the public key into `scripts/update_key.gd`, to commit). Without it, releases still work, but games only offer the download page.
 
 ## Hosting and joining
 
@@ -110,7 +112,7 @@ The host is the referee. It decides every hit (other players' throws are only vi
 - `godot --headless -s res://tests/test_gameplay.gd`: practice mode, movement, stamina, taunts.
 - `godot --headless -s res://tests/test_skills.gd`: flying, possess vs transform, per-form health and speed, every angel tool.
 - `GODOT=godot tests/test_multiplayer.sh`: plays a whole 5-player online match with bots, including a cheater, and checks the results and that no names leak. With `RELAY=1` it plays the same match through a relay server it runs on this computer.
-- `GODOT=godot tests/test_updater.sh`: exports a build and checks it notices a newer version and offers the download page, without ever downloading or touching a file (Linux only).
+- `GODOT=godot tests/test_updater.sh`: exports builds with a test key and checks the updater only installs a properly signed newer version, restarting into it, and refuses (without touching the game file) downloads signed with another key, changed after signing, or signed for another version; unsigned releases and builds without a key only get the download page (Linux only).
 
 ## License
 
