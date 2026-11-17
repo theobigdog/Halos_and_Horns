@@ -56,6 +56,11 @@ var _download: HTTPRequest
 var _percent := -1
 var _testing := false   # a test pointed us at a stand-in for GitHub
 var _auto := false      # a test asked us to press the button
+var _api := ""
+var _current := ""
+var _rechecks := 0      # times we've looked again for a release's files (see _read_release)
+const RECHECK_EVERY := 60.0
+const MAX_RECHECKS := 15
 
 
 # "v0.4.1" or "0.4.1 (Hellfire)" -> [0, 4, 1]
@@ -127,14 +132,20 @@ func check(current_version: String) -> void:
 				_testing = true
 			elif a == "--update-click":
 				_auto = true
+	_api = api
+	_current = current_version
+	_ask()
+
+
+func _ask() -> void:
 	var req := HTTPRequest.new()
 	req.timeout = 15
 	add_child(req)
 	req.request_completed.connect(func(result, code, _headers, body):
 		req.queue_free()
 		if result == HTTPRequest.RESULT_SUCCESS and code == 200:
-			_read_release(body.get_string_from_utf8(), current_version))
-	req.request(api, ["Accept: application/vnd.github+json", AGENT])
+			_read_release(body.get_string_from_utf8(), _current))
+	req.request(_api, ["Accept: application/vnd.github+json", AGENT])
 
 
 # The last update's ".old" file. Right after an update the old game may still be
@@ -151,6 +162,8 @@ func _read_release(json: String, current_version: String) -> void:
 		return
 	latest = ".".join(version_numbers(str(release["tag_name"])).map(func(n): return str(n)))
 	var file_name: String = ASSETS[OS.get_name()]
+	_url = ""
+	_sig_url = ""
 	for asset in release.get("assets", []):
 		if not asset is Dictionary:
 			continue
@@ -164,6 +177,14 @@ func _read_release(json: String, current_version: String) -> void:
 	# its signature are both there, all we can offer is the download page.
 	var from_github := _url.begins_with(DOWNLOAD_PREFIX) and _sig_url.begins_with(DOWNLOAD_PREFIX)
 	signed = _key != null and _url != "" and _sig_url != "" and (from_github or _testing)
+	# A brand-new release goes public a minute or two before the build attaches
+	# its files. If we looked in that gap, look again in a minute (only while the
+	# button is still just the download page and nobody has clicked it).
+	if not signed and _key != null and (_url == "" or _sig_url == "") and _rechecks < MAX_RECHECKS:
+		_rechecks += 1
+		get_tree().create_timer(RECHECK_EVERY).timeout.connect(func():
+			if state == "available" and not signed:
+				_ask())
 	if signed:
 		_show("available", "Update to version %s" % latest)
 	else:
