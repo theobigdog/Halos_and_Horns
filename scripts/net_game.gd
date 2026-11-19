@@ -1480,6 +1480,26 @@ func s_healed() -> void:
 	main.player.powerup_taken.emit("heal")
 
 
+# Holy Word struck this flier down: they drop, can't fly till they land, and are stunned a moment.
+func strike_down(id: int, seconds: float) -> void:
+	if id == 1:
+		main.player.strike_down(seconds)
+		return
+	if not peers.has(id):
+		return
+	var rec: Dictionary = peers[id]
+	rec["grace_until"] = now() + 2.0                    # (dropping fast is fine)
+	rec["locked_until"] = maxf(rec["locked_until"], now() + seconds)
+	s_struck.rpc_id(id, seconds)
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_struck(seconds: float) -> void:
+	print("[net] struck down!")
+	main.player.strike_down(seconds)
+	main.online_struck()
+
+
 func scare_player(id: int, from: Vector3, seconds: float) -> void:
 	if id == 1:
 		main.player.scare(from, seconds)

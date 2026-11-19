@@ -1805,6 +1805,13 @@ func online_you_hit(health_fraction: float) -> void:
 	my_health = health_fraction
 
 
+# Holy Word knocked us out of the sky.
+func online_struck() -> void:
+	_hurt_time = 0.25
+	if state != State.ENDED:
+		_toast("STRUCK DOWN!", 1.2)
+
+
 # The angels yanked us (vacuum orb, kick).
 func online_affected(target: Vector3, hatred_drain: float, lockout: float, label: String) -> void:
 	if label == "":   # bumped into: a short shove, no fuss
@@ -2046,6 +2053,41 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 				elif net:
 					net.scare_player(e[0], from, Skills.FEAR_TIME)
 			print("[decider] fear: %d angel(s) scattered" % n)
+		"word":
+			# Holy Word: a shout down the crosshair. Fliers it catches high enough up are struck out of the sky.
+			var aim := dir.normalized()
+			var reach := Skills.WORD_RANGE
+			var q := PhysicsRayQueryParameters3D.create(origin, origin + aim * reach)
+			q.collision_mask = WORLD_LAYER
+			if user is CollisionObject3D:
+				q.exclude = [user.get_rid()]
+			var n := 0
+			for e in team_entries():
+				if e[2] != "demon":
+					continue
+				var d: Node3D = e[1]
+				if d == user:
+					continue
+				var mid: Vector3 = d.global_position + Vector3.UP * 0.6
+				var along := (mid - origin).dot(aim)
+				if along < 0.0 or along > reach or (origin + aim * along).distance_to(mid) > Skills.WORD_WIDTH:
+					continue
+				if not _can_see(user, d):
+					continue
+				var high: float = d.global_position.y - ground_below(d.global_position, [d]).y
+				if not _is_flying(e[0], d) or high < Skills.WORD_MIN_HEIGHT:
+					continue
+				n += 1
+				if d == player:
+					player.strike_down(Skills.WORD_STUN)
+					online_struck()
+				elif net:
+					net.strike_down(e[0], Skills.WORD_STUN)
+				broadcast_fx("struck", [d.global_position])
+			if n > 0 and user.has_method("confirm_hit"):
+				user.confirm_hit()
+			broadcast_fx("word", [origin, aim * reach])
+			print("[decider] holy word struck down %d flier(s)" % n)
 		"scripture":
 			var book := _spawn_scripture(origin, dir, false)
 			book.shooter = user
@@ -2147,6 +2189,40 @@ func _fly_until_hit(from: Vector3, vel: Vector3, g: float, skip: Array) -> Array
 			return [hit["position"], t]
 		prev = p
 	return [prev, t]
+
+
+# Is this demon flying right now (as far as the host / practice game knows)?
+func _is_flying(key: int, node: Node) -> bool:
+	if node == player:
+		return player.flying
+	if net and net.peers.has(key):
+		return net.peers[key].get("flying", false)
+	return false
+
+
+static var _word_voice: AudioStreamWAV
+
+
+# Everyone: Holy Word's shout. A golden ripple races down the line, and a choir booms one chord.
+func _word_fx(from: Vector3, span: Vector3) -> void:
+	var parent := _fx_parent()
+	var steps := 14
+	for i in steps:
+		var at := from + span * (float(i + 1) / steps)
+		get_tree().create_timer(i * 0.018).timeout.connect(func():
+			Effects.puff(parent, at, Color(1.0, 0.95, 0.65, 0.55), 0.9 + i * 0.05))
+	if _word_voice == null:
+		# A short, bright "HAH!" of a choir: a few voices on a major chord, a quick swell and decay.
+		_word_voice = Sfx.voice([[392, 392, 0.32, 1.0, 0.0]], 0.3, 0.5, 0.01, 0.15)
+	var v := AudioStreamPlayer3D.new()
+	v.bus = Sfx.BUS
+	v.stream = _word_voice
+	v.unit_size = 10.0
+	v.max_distance = 80.0
+	parent.add_child(v)
+	v.global_position = from
+	v.play()
+	v.finished.connect(v.queue_free)
 
 
 # Host / practice: the Holy Scripture landed. Every demon close by is hurt (most in the middle), shoved
@@ -2799,6 +2875,11 @@ func fx(kind: String, args: Array) -> void:
 			_shake_near(args[0], 0.5, 18.0)
 		"smite":
 			_smite_fx(args[0])
+		"word":
+			_word_fx(args[0], args[1])
+		"struck":
+			Effects.burst(_fx_parent(), args[0] + Vector3.UP * 0.6, Color(1.0, 0.95, 0.6), 30, 7.0, 0.6)
+			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.6, Color(1.0, 1.0, 0.85, 0.8), 1.6)
 		"book_steer":
 			# The host's book turned toward a demon: our copy follows the same curve.
 			var b = _books.get(str(args[0]))

@@ -1119,6 +1119,42 @@ func _run() -> void:
 	check(player.feared <= 0.0, "...nor angels behind a wall")
 	fear_wall.queue_free()
 
+	# Holy Word: a flier high enough up, on the crosshair line, is struck out of the sky and stunned.
+	main.role = "demon"
+	player.set_role("demon")
+	player.loadout["demon"] = ["possess", "fly"]
+	player.global_position = fear_at + Vector3(8, 0.1, 0)
+	player.velocity = Vector3.ZERO
+	player.hatred = player.HATRED_MAX
+	await frames(5)
+	var word_ground: float = player.global_position.y
+	player.test_input = {"fly": true}
+	await frames(70)
+	check(player.flying and player.global_position.y - word_ground > Skills.WORD_MIN_HEIGHT,
+			"(a demon flying %.1f m up)" % (player.global_position.y - word_ground))
+	var word_from: Vector3 = shrieker.global_position + Vector3.UP * 1.4
+	var word_dir: Vector3 = (player.global_position + Vector3.UP * 0.6 - word_from).normalized()
+	main.authority_skill(shrieker, 7, "word", word_from, word_dir, Vector3.ZERO, -1)
+	check(player.stunned > 0.0 and not player.flying, "Holy Word strikes a flier out of the sky, stunned")
+	await frames(10)
+	check(not player.flying and player.velocity.y < 0.0, "...it drops, and can't fly while the key is still held")
+	for i in 120:
+		if player.is_on_floor():
+			break
+		await frames(1)
+	player.test_input = {}
+	await frames(5)
+	player.test_input = {"fly": true}
+	await frames(10)
+	check(player.flying, "...and once it's landed it can fly again")
+	player.test_input = {}
+	await frames(60)
+	# On the ground (not flying): Holy Word does nothing to it.
+	main.authority_skill(shrieker, 7, "word", word_from, (player.global_position + Vector3.UP * 0.6 - word_from).normalized(), Vector3.ZERO, -1)
+	check(player.stunned <= 0.0, "...but a demon on the ground isn't stunned")
+	main.role = "angel"
+	player.set_role("angel")
+
 	# The shrine: the only place to swap skills mid-round, and it takes 3 s in total.
 	main.state = main.State.HUNTING
 	main.role = "demon"          # (the Hellfire check above switched only the player to demon)

@@ -394,6 +394,15 @@ func _physics_process(delta: float) -> void:
 		want_run = Input.is_action_pressed("run")
 		want_jump = Input.is_action_just_pressed("jump")
 		want_fly = _hold_key_down("fly")
+	if stunned > 0.0:
+		# Stunned stiff (Holy Word): no moving, jumping or flying.
+		stunned -= delta
+		input_dir = Vector2.ZERO
+		want_run = false
+		want_jump = false
+		want_fly = false
+	if _struck_down and on_floor:
+		_struck_down = false   # back on the ground: free to fly again
 	if burning > 0.0 and input_dir != Vector2.ZERO:
 		# On fire: flailing about trying to cool off, you can't walk a straight line.
 		var tt := Time.get_ticks_msec() / 1000.0
@@ -425,7 +434,7 @@ func _physics_process(delta: float) -> void:
 
 	# Hatred always refills; flying spends it faster than it refills (unless boosted).
 	if role == "demon":
-		flying = want_fly and "fly" in loadout["demon"] and not frozen and hatred > 0.5 and skill_lock <= 0.0
+		flying = want_fly and "fly" in loadout["demon"] and not frozen and hatred > 0.5 and skill_lock <= 0.0 and not _struck_down
 		hatred += HATRED_REGEN * hatred_regen_multiplier * delta
 		if flying:
 			hatred -= HATRED_FLY_DRAIN * delta
@@ -723,7 +732,7 @@ func dash_momentum() -> float:
 # everything else is decided by the host / practice game via skill_used.
 func use_skill(slot: int) -> bool:
 	var id: String = loadout[role][slot]
-	if id == "" or frozen or skill_cd.get(id, 0.0) > 0.0 or Skills.SKILLS[id].get("hold", false):
+	if id == "" or frozen or stunned > 0.0 or skill_cd.get(id, 0.0) > 0.0 or Skills.SKILLS[id].get("hold", false):
 		return false
 	if role == "demon" and skill_lock > 0.0:
 		return false
@@ -875,6 +884,22 @@ func _is_leaper() -> bool:
 
 
 # A demon's Fear caught us: panic for a few seconds.
+# Holy Word struck us out of the sky: slammed down, can't fly again until we land, frozen stiff for a moment.
+var stunned := 0.0
+var _struck_down := false
+
+
+func strike_down(seconds: float) -> void:
+	if role != "demon":
+		return
+	stunned = maxf(stunned, clampf(seconds, 0.0, 1.0))
+	_struck_down = true
+	flying = false
+	clear_dash()
+	velocity = Vector3(0.0, -Skills.WORD_DROP_SPEED, 0.0)
+	shake(0.35)
+
+
 func scare(from: Vector3, seconds: float) -> void:
 	if role != "angel":
 		return

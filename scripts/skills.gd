@@ -16,6 +16,8 @@ const SKILLS := {
 		"desc": "Having it picked makes all your jumps MUCH higher, and you steer hard in the air. Press its key while you're in the air to Cloud Stomp: slam straight down wherever you are and hurt every demon around where you land (most in the middle, more the higher you came from)."},
 	"scripture": {"team": "angel", "label": "Holy Scripture", "cooldown": 5.0,
 		"desc": "Hurl a heavy holy book that heat-seeks the nearest demon ahead of it (a Minion fools it too). Wherever it lands it SMITES: a pillar of holy light that hurts every demon within 4 m, knocks them back, locks their skills for a moment and scatters the props. Lob it into a suspicious pile! A direct hit hurts even more."},
+	"word": {"team": "angel", "label": "Holy Word", "cooldown": 8.0,
+		"desc": "Shout a holy word down your crosshair. Any demon it hits while flying (more than 2 m up) is struck out of the sky: it drops like a stone, can't fly again until it lands, and is stunned stiff for half a second."},
 	"kick": {"team": "angel", "label": "Holy Kick", "cooldown": 4.0,
 		"desc": "Boot a demon (or a demon-possessed prop) away from you, so it can't rush you up close."},
 	# Not pickable: the second half of Holy Leap.
@@ -50,6 +52,11 @@ const CHERUB_CREEP_STOP := 1.2  # ...and it stops this close, rather than bumpin
 const CHERUB_FRICTION := 9.0     # m/s lost per second while sliding on the ground (~14 m per kick)
 const LEAP_AIR_ACCEL := 40.0      # steering while leaping (normal air steering is much weaker)
 const SCRIPTURE_DAMAGE := 40       # a direct hit (a blessing does 25)...
+const WORD_RANGE := 45.0           # Holy Word reaches this far down the crosshair... (first guesses, Nov 19)
+const WORD_WIDTH := 1.6            # ...and catches anyone within this of the line (a shout, not a sniper shot)
+const WORD_MIN_HEIGHT := 2.0       # only fliers this high off the ground get struck down
+const WORD_STUN := 0.5             # seconds they're frozen stiff
+const WORD_DROP_SPEED := 12.0      # they get slammed downward this fast
 const SEEK_RANGE := 14.0           # Holy Scripture heat-seeks the nearest demon (or Minion!) this close to the book...
 const SEEK_CONE := 1.2             # ...and within this many radians (~70 degrees) of where it's heading
 const SMITE_RADIUS := 4.0          # ...and wherever it lands, a holy blast hurts every demon this close (first guesses, Nov 18)
