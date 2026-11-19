@@ -155,6 +155,30 @@ func _run() -> void:
 	await frames(30)
 	check(not upright(crate2) and crate2.global_position.distance_to(lying.origin) < 0.05, "a joiner's copy puts a knocked prop in its exact pose")
 
+	# ---- Running into things shoves them: a loose prop, and a demon disguised as one, alike ----
+	player.unpossess()
+	var bump_crate := place("crate", Vector3(-14, 0, -6))
+	var c0 := bump_crate.global_position
+	player.global_position = Vector3(-17.5, c0.y + 0.1, -6)
+	player.velocity = Vector3.ZERO
+	player.rotation = Vector3(0, -PI / 2, 0)   # facing +x, at the crate
+	await frames(5)
+	player.test_input = {"dir": Vector2(0, -1), "run": true}
+	await frames(70)
+	player.test_input = {}
+	await wait_rest(bump_crate)
+	check(bump_crate.global_position.distance_to(c0) > 0.3, "running into a crate shoves it (%.2f m)" % bump_crate.global_position.distance_to(c0))
+	var bot = null
+	for b in get_nodes_in_group("demon"):
+		if b.get("prop_type") != null and b.prop_type != "":
+			bot = b
+			break
+	if bot:
+		var bot0: Vector3 = bot.global_position
+		main.bump(bot, Vector3(6, 0, 0), player)
+		await frames(30)
+		check(bot.global_position.distance_to(bot0) > 0.2, "...and bumping a demon disguised as a %s shoves it too (%.2f m)" % [bot.prop_type, bot.global_position.distance_to(bot0)])
+
 	# ---- Graphics settings and music ----
 	for q in [0, 2, 1]:
 		main.graphics.apply(q)

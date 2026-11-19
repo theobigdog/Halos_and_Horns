@@ -28,13 +28,16 @@ const LABELS := {
 }
 const DURATION := {"sense": 15.0, "quick_throw": 12.0, "quick_skills": 15.0, "quick_run": 15.0, "fast_hatred": 15.0}
 
+const FAST_HATRED_MULT := 8.0     # Hatred Surge: Hatred refills 8x as fast, 32/s, beating flying's 22/s drain (Ted, Nov 18)
 const HEAL_AMOUNT := 0.5          # Unholy Mending: +50% of starting health...
 const MAX_HEALTH := 1.5           # ...up to 150% of it
 const LIFETIME := 40.0            # a pickup nobody takes disappears after this
-const MAX_EACH_TEAM := 3          # at most this many lying around per team
+const MAX_EACH_TEAM := 2          # at most this many lying around per team (was 3; Ted, Nov 18: too many)
 const PICKUP_RANGE := 1.4
-const DEMON_DROP_BASE := 35.0     # seconds between demon drops (2 players, demons standing still)
-const DEMON_DROP_MIN := 12.0
+const DEMON_DROP_BASE := 50.0     # seconds between demon drops (2 players, demons standing still; was 35)
+const DEMON_DROP_MIN := 20.0      # (was 12)
+const FIRST_DEMON_DROP := 35.0    # the first one of a round (was 20)
+const COUNTDOWN_FROM := 8.0       # a pickup about to disappear counts down its last seconds
 const ANGEL_HELP_AFTER := 55.0    # no catch, hit or angel power-up for this long: help the angels (was 30)
 const ANGEL_CATCH_DROP := 0.5     # a caught demon drops an angel power-up this often (was every time; Ted, Nov 18)
 const MAX_ANGEL_PICKUPS := 2      # and at most this many angel ones lying around
@@ -46,7 +49,7 @@ var main                          # the game (decider helpers, effects)
 var items := {}                   # everyone: id -> pickup node
 var _auth := {}                   # decider: id -> {kind, team, pos, until}
 var _counter := 0
-var _demon_timer := 20.0
+var _demon_timer := FIRST_DEMON_DROP
 var _last_angel_help := 0.0       # when an angel power-up last appeared (or a demon was hit/caught)
 var _movement := 0.0              # how much the demons have been moving lately (m/s, smoothed)
 var _last_demon_pos := {}
@@ -59,7 +62,7 @@ func reset() -> void:
 			n.queue_free()
 	items.clear()
 	_auth.clear()
-	_demon_timer = 20.0
+	_demon_timer = FIRST_DEMON_DROP
 	_last_angel_help = _now()
 	_movement = 0.0
 	_last_demon_pos.clear()
@@ -140,7 +143,8 @@ func lying_around(team: String) -> Array:
 	var out := []
 	for id in _auth:
 		if _auth[id]["team"] == team:
-			out.append([id, _auth[id]["kind"], _auth[id]["pos"]])
+			var p: Vector3 = _auth[id]["pos"]
+			out.append([id, _auth[id]["kind"], p, p, _auth[id]["until"] - _now()])
 	return out
 
 
@@ -171,7 +175,7 @@ func _drop(team: String, kind: String, near: Vector3) -> void:
 	if from.y < pos.y:
 		from = pos
 	_auth[_counter] = {"kind": kind, "team": team, "pos": pos, "until": _now() + LIFETIME}
-	main.team_fx(team, "powerup", [_counter, kind, pos, from])
+	main.team_fx(team, "powerup", [_counter, kind, pos, from, LIFETIME])
 	print("[decider] %s power-up dropped: %s" % [team, kind])
 
 
@@ -183,7 +187,7 @@ func _remove(id: int, taken: bool) -> void:
 # ---------------- everyone: what the pickups look like ----------------
 
 # `pos` is where it comes to rest; `from` is where it starts falling from.
-func show_item(id: int, kind: String, pos: Vector3, from: Vector3 = pos) -> void:
+func show_item(id: int, kind: String, pos: Vector3, from: Vector3 = pos, left := LIFETIME) -> void:
 	var n := Node3D.new()
 	var angel := kind in ANGEL_KINDS
 	var color: Color = Color(1.0, 0.88, 0.35) if angel else {"heal": Color(0.3, 0.9, 0.35), "vanish": Color(0.6, 0.35, 0.95)}.get(kind, Color(0.9, 0.15, 0.1))
@@ -217,6 +221,8 @@ func show_item(id: int, kind: String, pos: Vector3, from: Vector3 = pos) -> void
 	n.add_child(tag)
 	n.set_meta("t", randf() * 10.0)
 	n.set_meta("kind", kind)
+	n.set_meta("expires", _now() + clampf(left, 0.0, LIFETIME))
+	n.set_meta("tag", tag)
 	main.fx_parent().add_child(n)
 	n.global_position = Vector3(pos.x, maxf(from.y, pos.y), pos.z)
 	n.set_meta("base_y", pos.y)
@@ -242,6 +248,13 @@ func _process(delta: float) -> void:
 		var t: float = n.get_meta("t") + delta
 		n.set_meta("t", t)
 		n.rotation.y += delta * 1.6
+		# About to disappear: count down the last seconds, and blink for the last three.
+		var left: float = n.get_meta("expires") - _now()
+		if left <= COUNTDOWN_FROM:
+			var tag: Label3D = n.get_meta("tag")
+			tag.text = "%s  %d" % [LABELS.get(n.get_meta("kind"), ""), ceili(maxf(left, 0.0))]
+			tag.modulate = Color(1.0, 0.45, 0.35) if left <= 3.0 else Color(1.0, 0.85, 0.5)
+			n.get_child(0).visible = left > 3.0 or fmod(left, 0.4) > 0.15
 		var base: float = n.get_meta("base_y")
 		if n.get_meta("falling"):
 			# Falling to the ground, with a little bounce or two, then it settles and bobs.

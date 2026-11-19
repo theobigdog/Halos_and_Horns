@@ -100,8 +100,8 @@ for n in Ava Ben Cal Dee; do
 	# (any roster line: the very first can come before the first ping is back, more so through a relay)
 	check "$n's ping is measured" "grep 'roster:' '$OUT/$n.log' | grep -qE 'my ping [0-9]+'"
 done
-check "global chat reaches the other team" "grep -q 'Ava: hello_everyone' '$OUT/Dee.log'"
-check "team chat reaches teammates" "grep -q '\[TEAM\] Ben: demons_only_secret' '$OUT/host.log'"
+check "global chat reaches the other team" "grep -q '(All) Ava: hello_everyone' '$OUT/Dee.log'"
+check "team chat reaches teammates" "grep -q '(Team Only) Ben: demons_only_secret' '$OUT/host.log'"
 check "team chat never reaches the other team" "! grep -q 'demons_only_secret' '$OUT/Ava.log' '$OUT/Cal.log'"
 # (Whether a hit is counted by the host's own copy of a throw or by the thrower's
 # claim depends on timing, so this only checks that real claims aren't refused for
@@ -124,7 +124,7 @@ if grep -q 'BOT Abe: used fear' "$OUT/host.log"; then
 	check "...and a scared angel was told" "grep -q 'scared!' '$OUT/Ava.log' '$OUT/Cal.log' '$OUT/Ben.log' '$OUT/Dee.log'"
 fi
 if grep -qE 'picked up sense' "$OUT/host.log"; then
-	check "Cherub Sense: teammates see the cherub over the angel's head" "grep -q \"cherub over a teammate\" '$OUT'/*.log"
+	check "Cherub Sense: others see the cherub over the angel's head" "grep -q \"cherub over an angel\" '$OUT'/*.log"
 fi
 if grep -qE 'picked up vanish' "$OUT/host.log"; then
 	check "Invisibility power-up: the host hid the demon from the angels" "grep -q ' vanished' '$OUT/host.log'"

@@ -125,6 +125,12 @@ var _was_at_shrine := false   # just walked up to the shrine: show how to use it
 var chat_box: VBoxContainer     # recent chat lines, bottom left
 var chat_edit: LineEdit
 var chat_team_only := false
+var chat_font_size := 22         # Settings: how big chat text is (each player picks their own; was 17)
+var _chat_size_pick: SpinBox
+var lobby_chat: PanelContainer   # the lobby's own chat: a log and a box to type in
+var _lobby_chat_log: VBoxContainer
+var _lobby_chat_scroll: ScrollContainer
+var _lobby_chat_edit: LineEdit
 var _chat_lines := []           # [Label, seconds left on screen]
 var lobby_times: VBoxContainer   # host's round-length pickers
 var lobby_map_label: Label
@@ -254,6 +260,7 @@ func _ready() -> void:
 		bonus_label.text = "+%d Hatred: %s" % [int(round(amount)), reason]
 		_bonus_time = 2.5)
 	player.launched.connect(_on_player_launched)
+	player.bumped.connect(_on_player_bumped)
 	player.hit_taken.connect(_on_player_hit_taken)
 	player.skill_used.connect(_on_player_skill)
 	player.pick_minion_form = random_map_prop_type
@@ -269,6 +276,7 @@ func _ready() -> void:
 	_build_lobby()
 	_build_shrine_panel()
 	_build_chat()
+	_build_lobby_chat()
 	_load_settings()
 	_show_menu("")
 	_handle_command_line()
@@ -499,6 +507,72 @@ func _build_chat() -> void:
 	hud_layer.add_child(chat_edit)
 
 
+# The lobby's chat (Ted, Nov 18): everything said, and a box to type in, while you wait for a round.
+func _build_lobby_chat() -> void:
+	lobby_chat = PanelContainer.new()
+	lobby_chat.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	lobby_chat.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	lobby_chat.position += Vector2(16, -16)
+	hud_layer.add_child(lobby_chat)
+	var margin := MarginContainer.new()
+	for side in ["left", "right", "top", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 12)
+	lobby_chat.add_child(margin)
+	var box := VBoxContainer.new()
+	box.custom_minimum_size = Vector2(440, 0)
+	margin.add_child(box)
+	var title := Label.new()
+	title.text = "Chat"
+	title.add_theme_font_size_override("font_size", 22)
+	box.add_child(title)
+	_lobby_chat_scroll = ScrollContainer.new()
+	_lobby_chat_scroll.custom_minimum_size = Vector2(440, 260)
+	_lobby_chat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	box.add_child(_lobby_chat_scroll)
+	_lobby_chat_log = VBoxContainer.new()
+	_lobby_chat_log.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_lobby_chat_scroll.add_child(_lobby_chat_log)
+	_lobby_chat_edit = LineEdit.new()
+	_lobby_chat_edit.placeholder_text = "Say something to everyone (Enter sends)"
+	_lobby_chat_edit.max_length = 120
+	_lobby_chat_edit.text_submitted.connect(func(text: String):
+		text = text.strip_edges()
+		_lobby_chat_edit.text = ""
+		if text != "" and net:
+			net.send_chat(text, false))
+	box.add_child(_lobby_chat_edit)
+	lobby_chat.visible = false
+
+
+func _lobby_chat_line(text: String, color: Color) -> void:
+	if _lobby_chat_log == null:
+		return
+	var l := Label.new()
+	l.text = text
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = 420
+	l.add_theme_font_size_override("font_size", chat_font_size)
+	l.add_theme_color_override("font_color", color)
+	_lobby_chat_log.add_child(l)
+	while _lobby_chat_log.get_child_count() > 60:
+		_lobby_chat_log.get_child(0).free()
+	await get_tree().process_frame
+	_lobby_chat_scroll.scroll_vertical = int(_lobby_chat_scroll.get_v_scroll_bar().max_value)
+
+
+# Settings: chat text size. Changes the lines already showing too.
+func _set_chat_size(size: int) -> void:
+	chat_font_size = size
+	for n in chat_box.get_children():
+		(n as Label).add_theme_font_size_override("font_size", size)
+	if _lobby_chat_log:
+		for n in _lobby_chat_log.get_children():
+			(n as Label).add_theme_font_size_override("font_size", size)
+	chat_edit.add_theme_font_size_override("font_size", size)
+	if _lobby_chat_edit:
+		_lobby_chat_edit.add_theme_font_size_override("font_size", size)
+
+
 func _open_chat(team_only: bool) -> void:
 	chat_team_only = team_only
 	chat_edit.placeholder_text = ("Team chat (%ss only)" % role) if team_only else "Chat to everyone"
@@ -531,7 +605,7 @@ func _send_chat(text: String) -> void:
 
 # Big news for everyone (who redeemed whom): shown in gold in the chat area.
 func announce(text: String) -> void:
-	var lbl := _make_label(19)
+	var lbl := _make_label(chat_font_size + 2)
 	lbl.text = "*** %s ***" % text
 	lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
 	chat_box.add_child(lbl)
@@ -544,10 +618,10 @@ func announce(text: String) -> void:
 
 # Called by the network for every chat line we're allowed to see.
 func show_chat(sender: String, sender_role: String, text: String, team_only: bool) -> void:
-	var lbl := _make_label(17)
+	var lbl := _make_label(chat_font_size)
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lbl.custom_minimum_size.x = 520
-	lbl.text = "%s%s: %s" % ["[TEAM] " if team_only else "", sender, text]
+	lbl.text = "%s %s: %s" % ["(Team Only)" if team_only else "(All)", sender, text]
 	var color := Color(1, 1, 1)
 	if sender_role == "angel":
 		color = Color(1.0, 0.92, 0.6)
@@ -555,6 +629,7 @@ func show_chat(sender: String, sender_role: String, text: String, team_only: boo
 		color = Color(1.0, 0.55, 0.5)
 	lbl.add_theme_color_override("font_color", color)
 	chat_box.add_child(lbl)
+	_lobby_chat_line(lbl.text, color)
 	print("[chat] " + lbl.text)
 	_chat_lines.append([lbl, 12.0])
 	while _chat_lines.size() > 8:
@@ -563,6 +638,9 @@ func show_chat(sender: String, sender_role: String, text: String, team_only: boo
 
 
 func _update_chat(delta: float) -> void:
+	if lobby_chat:
+		lobby_chat.visible = lobby_panel.visible and mode == "online"
+		chat_box.visible = not lobby_chat.visible   # (the lobby shows its own)
 	for entry in _chat_lines:
 		if not chat_edit.visible:
 			entry[1] -= delta
@@ -1007,6 +1085,15 @@ Online, the host's setting is the one that counts."
 	_splash_pick.tooltip_text = sl.tooltip_text
 	_splash_pick.value_changed.connect(func(v): hellfire_splashes = int(v))
 	grid.add_child(_splash_pick)
+	var cl := Label.new()
+	cl.text = "Chat text size"
+	grid.add_child(cl)
+	_chat_size_pick = SpinBox.new()
+	_chat_size_pick.min_value = 12
+	_chat_size_pick.max_value = 40
+	_chat_size_pick.step = 1
+	_chat_size_pick.value_changed.connect(func(v): _set_chat_size(int(v)))
+	grid.add_child(_chat_size_pick)
 
 
 func _volume_row(grid: GridContainer, text: String, on_change: Callable) -> HSlider:
@@ -1246,6 +1333,8 @@ func _load_settings() -> void:
 	graphics.apply(q)
 	hellfire_splashes = clampi(int(_settings.get_value("options", "hellfire_splashes", 3)), 0, 8)
 	_splash_pick.set_value_no_signal(hellfire_splashes)
+	_chat_size_pick.set_value_no_signal(clampi(int(_settings.get_value("options", "chat_size", 22)), 12, 40))
+	_set_chat_size(int(_chat_size_pick.value))
 
 
 func _save_settings() -> void:
@@ -1261,6 +1350,7 @@ func _save_settings() -> void:
 	_settings.set_value("options", "sound", _sound_volume)
 	_settings.set_value("options", "graphics", Graphics.quality)
 	_settings.set_value("options", "hellfire_splashes", hellfire_splashes)
+	_settings.set_value("options", "chat_size", chat_font_size)
 	_settings.save(SETTINGS_PATH)
 
 
@@ -1717,6 +1807,9 @@ func online_you_hit(health_fraction: float) -> void:
 
 # The angels yanked us (vacuum orb, kick).
 func online_affected(target: Vector3, hatred_drain: float, lockout: float, label: String) -> void:
+	if label == "":   # bumped into: a short shove, no fuss
+		player.pull_to(target, 0.4)
+		return
 	player.pull_to(target, 1.0)
 	player.hatred = maxf(player.hatred - hatred_drain, 0.0)
 	player.skill_lock = maxf(player.skill_lock, lockout)
@@ -1957,6 +2050,9 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 			var book := _spawn_scripture(origin, dir, false)
 			book.shooter = user
 			book.on_impact = func(at: Vector3): _smite(user, at)
+			book.homing = func(at: Vector3, vel: Vector3): return _book_target(user, at, vel)
+			var key := _book_key(origin)
+			book.on_steer = func(p: Vector3, v: Vector3): broadcast_fx("book_steer", [key, p, v])
 			broadcast_fx("scripture", [origin, dir], user_key)
 		"kick":
 			var c = _close_demon(user, dir, Skills.KICK_RANGE)
@@ -2126,6 +2222,31 @@ func _smite_fx(at: Vector3) -> void:
 	bell.finished.connect(bell.queue_free)
 
 
+# Host / practice: what a heat-seeking book flies at: the nearest demon or Minion ahead of it.
+func _book_target(user: Node3D, at: Vector3, vel: Vector3):
+	if state != State.HUNTING:
+		return null
+	var best = null
+	var best_d := Skills.SEEK_RANGE
+	for d in demon_targets():
+		if not is_instance_valid(d) or d == user:
+			continue
+		var mid: Vector3 = d.global_position + Vector3.UP * 0.5
+		var dist := at.distance_to(mid)
+		if dist < best_d and vel.angle_to(mid - at) < Skills.SEEK_CONE:
+			best_d = dist
+			best = mid
+	return best
+
+
+# Every copy of a book (the thrower's, the host's, everyone else's) is known by where it was thrown from.
+var _books := {}
+
+
+func _book_key(origin: Vector3) -> String:
+	return str(origin.snapped(Vector3.ONE * 0.01))
+
+
 func _spawn_scripture(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
 	var book := Projectile.new()
 	book.book = true
@@ -2135,6 +2256,10 @@ func _spawn_scripture(origin: Vector3, dir: Vector3, visual_only: bool) -> Proje
 	_fx_parent().add_child(book)
 	book.global_position = origin + dir * 0.6
 	book.velocity = dir * Skills.SCRIPTURE_SPEED + Vector3.UP * 3.0
+	for k in _books.keys():
+		if not is_instance_valid(_books[k]):
+			_books.erase(k)
+	_books[_book_key(origin)] = book
 	return book
 
 
@@ -2384,9 +2509,9 @@ func give_powerup(user_key: int, kind: String, where: Vector3) -> void:
 	elif net:
 		net.give_powerup(user_key, kind)
 		if kind == "sense" and net.peers.has(user_key):
-			# Teammates see the little cherub over their head too (demons don't).
+			# Everyone sees the little cherub flapping about over their head (Ted, Nov 18: "it's funny!").
 			var who: int = net.my_eid if user_key == 1 else net.peers[user_key]["eid"]
-			team_fx("angel", "sense_cherub", [who, PowerUps.DURATION["sense"]])
+			broadcast_fx("sense_cherub", [who, PowerUps.DURATION["sense"]])
 
 
 # Cherub Sense: a red bubble pulses around you and the horn blares while a demon is close.
@@ -2589,7 +2714,8 @@ func fx(kind: String, args: Array) -> void:
 				bouncies[args[0]].use_up()
 			bouncies.erase(args[0])
 		"powerup":
-			powerups.show_item(args[0], args[1], args[2], args[3] if args.size() > 3 else args[2])
+			powerups.show_item(args[0], args[1], args[2], args[3] if args.size() > 3 else args[2],
+					float(args[4]) if args.size() > 4 else PowerUps.LIFETIME)
 		"powerup_gone":
 			powerups.hide_item(args[0], args[1])
 		"fire_burst":
@@ -2640,7 +2766,7 @@ func fx(kind: String, args: Array) -> void:
 		"prop_rest":
 			_prop_rest_here(int(args[0]), args[1], float(args[2]))
 		"sense_cherub":
-			# A teammate picked up Cherub Sense: hang a cherub over their head.
+			# An angel picked up Cherub Sense: hang a cherub over their head.
 			if net and net.remotes.has(args[0]):
 				var r: Node3D = net.remotes[args[0]]
 				var old := r.get_node_or_null("SenseCherub")
@@ -2651,7 +2777,7 @@ func fx(kind: String, args: Array) -> void:
 				c.life = clampf(float(args[1]), 0.0, 30.0)
 				r.add_child(c)
 				c.position.y = Bodies.height_for("angel") + SenseCherub.ABOVE_HEAD
-				print("[fx] a cherub over a teammate's head")
+				print("[fx] a cherub over an angel's head")
 		"fear":
 			for i in 12:
 				var a := TAU * i / 12.0
@@ -2673,6 +2799,12 @@ func fx(kind: String, args: Array) -> void:
 			_shake_near(args[0], 0.5, 18.0)
 		"smite":
 			_smite_fx(args[0])
+		"book_steer":
+			# The host's book turned toward a demon: our copy follows the same curve.
+			var b = _books.get(str(args[0]))
+			if b != null and is_instance_valid(b) and b.visual_only:
+				b.global_position = args[1]
+				b.velocity = args[2]
 		"vortex":
 			var v := Vortex.new()
 			v.caught = args[1]
@@ -2769,6 +2901,41 @@ const PROP_SWAT := 3.0          # a melee swing that hits furniture instead of a
 const PROP_KICK := 7.0          # Holy Kick with no demon in reach (first guess)
 const BLESSING_SHOVE := 0.05    # share of a blessing's speed that shoves a prop (first guess)
 const STOMP_PUSH := 2.0         # m a Cloud Stomp shoves the demons it hurts (first guess)
+
+
+# We ran into a loose prop or a disguised demon. Practice: shove it now. Online: ask the host.
+func _on_player_bumped(thing: Node, push: Vector3) -> void:
+	if mode == "practice":
+		bump(thing, push, player)
+	elif net and net.in_round_now():
+		if thing.is_in_group("prop") and thing.has_meta("prop_index"):
+			net.request_bump(int(thing.get_meta("prop_index")), -1, push)
+		elif thing.get("eid") != null:
+			net.request_bump(-1, int(thing.eid), push)
+
+
+# Host / practice: someone ran into something. A prop slides (knock.gd); a demon disguised as that kind of
+# prop gets pushed about as far as that prop would slide, so the two behave alike.
+func bump(thing: Node, push: Vector3, by: Node) -> void:
+	if not is_authority() or not is_instance_valid(thing):
+		return
+	push = push.limit_length(10.0)
+	if thing.is_in_group("prop") and thing.has_meta("prop_index"):
+		knock_prop(int(thing.get_meta("prop_index")), push)
+		return
+	var form := ""
+	for field in ["form", "prop_type", "possessed_type"]:   # (someone else, a practice bot, or us)
+		if thing.get(field) != null:
+			form = str(thing.get(field))
+			break
+	if form in ["", "<null>"] or not PropLib.TYPES.has(form):
+		return
+	var dv := push / PropLib.mass(form)
+	var slide := dv.length() * dv.length() / (2.0 * Knock.FRICTION)
+	if slide < 0.05 or thing == by:
+		return
+	var to := ground_below(thing.global_position + dv.normalized() * slide + Vector3.UP * 1.0)
+	_affect_demon(thing, to, 0.0, 0.0, "")
 
 
 # Host / practice: shove a prop, and tell everyone.

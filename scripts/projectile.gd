@@ -23,6 +23,9 @@ var book := false                # Holy Scripture: a spinning book instead of a 
 var on_impact: Callable          # called with the hit position (vacuum orb); host/practice only
 var on_claim: Callable           # joined player's own throw hit a demon ON THEIR SCREEN: (entity id, hit point)
 var gate: Callable               # host: may this throw still hurt someone? (each throw hurts once)
+var homing: Callable            # Holy Scripture, host/practice only: (where, velocity) -> a Vector3 to seek, or null
+var on_steer: Callable          # ...and told where it went after each turn, to show everyone the same curve
+var _steer_send := 0.0
 var bounces_on_pads := false     # Vacuum Orb: a bouncy pad flings it back up instead of setting it off
 var _pad_bounces := 0
 # Host / practice: main's hook for a blessing hitting a loose prop (it gets shoved).
@@ -116,7 +119,10 @@ func _physics_process(delta: float) -> void:
 	if _life <= 0.0:
 		queue_free()
 		return
-	velocity.y -= gravity * delta
+	if _seek(delta):
+		velocity.y -= gravity * 0.15 * delta   # locked on: it flies at them instead of dropping
+	else:
+		velocity.y -= gravity * delta
 	var from := global_position
 	var to := from + velocity * delta
 	var query := PhysicsRayQueryParameters3D.create(from, to, 1)   # ignore the invisible map bounds
@@ -154,6 +160,29 @@ func _physics_process(delta: float) -> void:
 	if not hit_demon:
 		Effects.debris(get_parent(), hit["position"], hit.get("normal", Vector3.UP), Color(0.75, 0.68, 0.55), 6)
 	queue_free()
+
+
+# Heat-seeking (Holy Scripture): curve toward whatever `homing` picks, a little at a time.
+const SEEK_TURN := 4.0            # radians a second it can turn (first guess)
+const SEEK_AFTER := 0.12          # flies straight out of the hand for this long first
+
+
+func _seek(delta: float) -> bool:
+	if visual_only or not homing.is_valid() or LIFETIME - _life < SEEK_AFTER:
+		return false
+	var target = homing.call(global_position, velocity)
+	if target == null:
+		return false
+	var cur := velocity.normalized()
+	var want: Vector3 = ((target as Vector3) - global_position).normalized()
+	var angle := cur.angle_to(want)
+	if angle > 0.001:
+		velocity = cur.slerp(want, minf(1.0, SEEK_TURN * delta / angle)) * velocity.length()
+	_steer_send -= delta
+	if _steer_send <= 0.0 and on_steer.is_valid():
+		_steer_send = 0.08
+		on_steer.call(global_position, velocity)
+	return true
 
 
 # Off a bouncy pad: up as high as the pad flings players, keeping some of its

@@ -873,7 +873,7 @@ func c_state(pos: Vector3, yaw: float, form: String, flying: bool) -> void:
 # the air for a while without flying (or a dash / pull the host approved) too.
 func _check_flight(id: int, rec: Dictionary, pos: Vector3, flying: bool, dt: float, t: float) -> void:
 	if rec["role"] == "demon":
-		var regen := HATRED_REGEN * (4.0 if now() < rec.get("fast_hatred_until", 0.0) else 1.0)
+		var regen := HATRED_REGEN * (PowerUps.FAST_HATRED_MULT if now() < rec.get("fast_hatred_until", 0.0) else 1.0)
 		rec["hatred"] = clampf(rec["hatred"] + regen * dt - (HATRED_FLY_DRAIN * dt if flying else 0.0), -50.0, 100.0)
 		if flying and rec["hatred"] < -15.0:
 			rec["hatred"] = 0.0
@@ -1911,6 +1911,49 @@ func demon_nodes() -> Array:
 		elif remotes.has(minions[owner]["eid"]):
 			out.append(remotes[minions[owner]["eid"]])
 	return out
+
+
+func in_round_now() -> bool:
+	return phase == "hiding" or phase == "hunting"
+
+
+# A player ran into a loose prop (prop >= 0) or a disguised demon (eid >= 0): the host checks they were
+# really right next to it, then shoves it.
+func request_bump(prop: int, eid: int, push: Vector3) -> void:
+	if is_host:
+		_bump(1, prop, eid, push)
+	else:
+		c_bump.rpc_id(1, prop, eid, push)
+
+
+@rpc("any_peer", "call_remote", "unreliable")
+func c_bump(prop: int, eid: int, push: Vector3) -> void:
+	if is_host:
+		_bump(multiplayer.get_remote_sender_id(), prop, eid, push)
+
+
+func _bump(id: int, prop: int, eid: int, push: Vector3) -> void:
+	if not peers.has(id) or not peers[id]["in_round"] or not in_round_now():
+		return
+	var rec: Dictionary = peers[id]
+	var pos: Vector3 = main.player.global_position if id == 1 else rec["pos"]
+	var t := now()
+	var key := "p%d" % prop if prop >= 0 else "e%d" % eid
+	var ready: Dictionary = rec.get("bump_ready", {})
+	if t < ready.get(key, 0.0):
+		return   # (rate limit: one shove of the same thing every 0.3 s)
+	ready[key] = t + 0.3
+	rec["bump_ready"] = ready
+	var thing: Node = null
+	if prop >= 0 and prop < main.props.size() and is_instance_valid(main.props[prop]):
+		thing = main.props[prop]
+	elif eid >= 0 and remotes.has(eid):
+		thing = remotes[eid]
+	elif eid == my_eid:
+		thing = main.player
+	if thing == null or (thing as Node3D).global_position.distance_to(pos) > 3.5:
+		return   # nowhere near it
+	main.bump(thing, push.limit_length(10.0), main.player if id == 1 else null)
 
 
 # Pull a demon somewhere (vacuum, kick), drain Hatred, lock skills.

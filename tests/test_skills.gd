@@ -829,6 +829,12 @@ func _run() -> void:
 		check(total_before - total_after >= Skills.SCRIPTURE_DAMAGE + Skills.SMITE_MIN_DAMAGE,
 				"...the book hits for holy damage and smites (%d)" % (total_before - total_after))
 		check(not player.use_skill(0), "...then it's on cooldown")
+	# Heat-seeking: the book picks the nearest demon ahead of it, never one behind it or far away.
+	var seek_bot = get_nodes_in_group("demon")[0]
+	var sb: Vector3 = seek_bot.global_position
+	check(main._book_target(player, sb + Vector3(0, 1, 6), Vector3(0, 0, -20)) != null, "Holy Scripture heat-seeks a demon ahead of it")
+	check(main._book_target(player, sb + Vector3(0, 1, 6), Vector3(0, 0, 20)) == null, "...but not one behind it")
+	check(main._book_target(player, sb + Vector3(0, 1, Skills.SEEK_RANGE + 4.0), Vector3(0, 0, -20)) == null, "...or one too far away")
 	# The smite on its own: lands near a demon, hurts it (most in the middle), none past 4 m.
 	var smitten = null
 	for b in get_nodes_in_group("demon"):
@@ -1070,6 +1076,7 @@ func _run() -> void:
 	await frames(3)
 	var sc = main._sense_cherub
 	check(is_instance_valid(sc) and sc.get_parent() == player and sc.position.y > 1.8, "Cherub Sense: a cherub dangles above the angel's head")
+	main._sense_tick = 1.0   # (so the real check doesn't switch it straight back off)
 	player.sense_alarm = true
 	await frames(2)
 	check(sc.alarmed, "...and goes frantic when a demon is close")

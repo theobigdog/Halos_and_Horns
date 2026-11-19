@@ -12,6 +12,7 @@ signal hit_taken(damage, by)              # a counted hit on us as a demon (host
 signal skill_used(skill_id, origin, dir, point, index)   # main decides what actually happens
 signal melee_used(origin, dir)
 signal released_possessed                 # we left a real (possessed) prop behind
+signal bumped(thing, impulse)             # we ran into a loose prop, or a disguised demon: shove it (host decides)
 
 const PropLib = preload("res://scripts/prop_library.gd")
 const Projectile = preload("res://scripts/projectile.gd")
@@ -196,6 +197,7 @@ func _ready() -> void:
 	camera = Camera3D.new()
 	spring.add_child(camera)
 	camera.current = true
+	_warm_ghost()
 	voice = AudioStreamPlayer3D.new()
 	voice.bus = Sfx.BUS
 	voice.unit_size = 6.0
@@ -239,6 +241,7 @@ func set_role(new_role: String) -> void:
 func _apply_form() -> void:
 	for child in visual_root.get_children():
 		child.queue_free()
+	_ghost_on = false   # a new look: (still invisible?) the next frame makes it ghostly again
 	visual_root.rotation.y = 0.0
 	if possessed_type != "":
 		visual_root.add_child(PropLib.make_visual(possessed_type))
@@ -499,7 +502,9 @@ func _physics_process(delta: float) -> void:
 	if _stomping:
 		clear_dash()
 		velocity = Vector3(0.0, -Skills.STOMP_SPEED, 0.0)
+	var before_slide := velocity
 	move_and_slide()
+	_check_bumps(before_slide)
 	_slide_off_heads()
 	if role == "angel" and not is_on_floor() and is_on_wall() and input_dir != Vector2.ZERO and not frozen:
 		_try_ledge_grab()
@@ -830,6 +835,35 @@ func apply_powerup(kind: String) -> void:
 	powerup_taken.emit(kind)
 
 
+# Running into things shoves them (Ted, Nov 18: "everything in the game can collide"). A loose prop, or a
+# demon disguised as one: both get shoved the same way, so a prop that won't budge never gives a demon away.
+const BUMP_MIN := 1.5        # m/s into it before it counts (just leaning on something does nothing)
+const BUMP_SHARE := 0.8      # share of that speed passed on as a shove (first guess)
+var _bump_ready := {}        # thing -> time it can be bumped again
+
+
+func _check_bumps(before: Vector3) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for i in get_slide_collision_count():
+		var col := get_slide_collision(i)
+		var thing := col.get_collider()
+		var n := col.get_normal()
+		if thing == null or absf(n.y) > 0.5:
+			continue   # floors and ceilings don't count
+		var is_prop: bool = thing.is_in_group("prop") and thing.has_meta("prop_index")
+		var disguised: bool = str(thing.get("form")) not in ["", "<null>"] or str(thing.get("prop_type")) not in ["", "<null>"]
+		if not is_prop and not disguised:
+			continue
+		var into := -Vector3(before.x, 0.0, before.z).dot(Vector3(n.x, 0.0, n.z).normalized())
+		if into < BUMP_MIN or t < _bump_ready.get(thing, 0.0):
+			continue
+		_bump_ready[thing] = t + 0.35
+		var push := -Vector3(n.x, 0.0, n.z).normalized() * into * BUMP_SHARE
+		bumped.emit(thing, push)
+	if _bump_ready.size() > 40:
+		_bump_ready.clear()
+
+
 # Jump as if the key was just pressed (bots).
 func queue_jump() -> void:
 	_jump_buffer = tuning["jump_buffer"]
@@ -859,12 +893,47 @@ func powerup_left(kind: String) -> float:
 var _ghost_on := false
 
 
+# Invisible (to the angels): we see ourselves as a faint ghost. One shared see-through material, built
+# while the game starts up (see _warm_ghost), so turning invisible doesn't stall the screen while the
+# graphics card builds see-through versions of every part of the model (Ted, Nov 18: 1.5 s freeze).
+static var _ghost_mat: StandardMaterial3D
+
+
+static func ghost_material() -> StandardMaterial3D:
+	if _ghost_mat == null:
+		_ghost_mat = StandardMaterial3D.new()
+		_ghost_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_ghost_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_ghost_mat.albedo_color = Color(0.7, 0.55, 1.0, 0.25)
+	return _ghost_mat
+
+
+func _warm_ghost() -> void:
+	var dot := MeshInstance3D.new()
+	var s := SphereMesh.new()
+	s.radius = 0.01
+	s.height = 0.02
+	dot.mesh = s
+	dot.material_override = ghost_material()
+	camera.add_child(dot)
+	dot.position = Vector3(0, 0, -0.5)
+	for i in 3:
+		await get_tree().process_frame
+	dot.queue_free()
+
+
 func _ghostly(on: bool) -> void:
 	if on == _ghost_on:
 		return
 	_ghost_on = on
 	for n in visual_root.find_children("*", "GeometryInstance3D", true, false):
-		(n as GeometryInstance3D).transparency = 0.75 if on else 0.0
+		var g := n as GeometryInstance3D
+		if on:
+			g.set_meta("own_material", g.material_override)
+			g.material_override = ghost_material()
+		elif g.has_meta("own_material"):
+			g.material_override = g.get_meta("own_material")
+			g.remove_meta("own_material")
 
 
 func _tick_powerups(delta: float) -> void:
@@ -875,7 +944,7 @@ func _tick_powerups(delta: float) -> void:
 			if k == "sense":
 				sense_alarm = false
 	throw_regen_multiplier = 6.0 if powerup_left("quick_throw") > 0.0 else 1.0
-	hatred_regen_multiplier = 4.0 if powerup_left("fast_hatred") > 0.0 else 1.0
+	hatred_regen_multiplier = PowerUps.FAST_HATRED_MULT if powerup_left("fast_hatred") > 0.0 else 1.0
 	if powerup_left("quick_run") > 0.0:
 		sprint_stamina = SPRINT_MAX
 		_sprint_exhausted = false
