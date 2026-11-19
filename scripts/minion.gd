@@ -52,6 +52,15 @@ func bounce(up_speed: float) -> bool:
 	return true
 
 
+# The owner pressed the Minion jump key (Left Alt): hop now, if it's standing on something.
+func jump() -> bool:
+	if not is_on_floor():
+		return false
+	velocity.y = jump_velocity
+	_hop_timer = randf_range(2.5, 6.0)
+	return true
+
+
 func walk_to(point: Vector3) -> void:
 	target = point
 	_has_target = true

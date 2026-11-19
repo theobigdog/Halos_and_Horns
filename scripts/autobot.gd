@@ -279,9 +279,10 @@ func _play_angel(delta: float, p) -> void:
 	if p.frozen or options.has("lazy"):
 		p.test_input = {}
 		return
-	# Mid-leap and coming down: Cloud Stomp.
+	# Jumped and coming down: Cloud Stomp.
 	var leap_slot: int = p.loadout["angel"].find("leap")
-	if leap_slot >= 0 and p._leaping and not p._stomping and p.velocity.y < 0.0 and p.use_skill(leap_slot):
+	if leap_slot >= 0 and not p.is_on_floor() and not p._stomping and p.velocity.y < 0.0 and p.use_skill(leap_slot):
+		_log_once("leap")
 		_log_once("stomp")
 	var target = null
 	var best := INF
@@ -297,8 +298,8 @@ func _play_angel(delta: float, p) -> void:
 		return
 	var to: Vector3 = target.global_position - p.global_position
 	p.rotation.y = atan2(-to.x, -to.z)   # face it (-Z is forward)
-	if leap_slot >= 0 and best < 14.0 and p.is_on_floor() and p.use_skill(leap_slot):
-		_log_once("leap")
+	if leap_slot >= 0 and best < 14.0 and p.is_on_floor() and p.skill_cd.get("leap", 0.0) <= 0.0:
+		p.queue_jump()   # a Holy Leap jump: the stomp comes on the way down (above)
 	# Cherub and vacuum don't need a clear shot: use them as soon as a demon is fairly close.
 	if best < 30.0:
 		for slot in 2:

@@ -6,6 +6,7 @@
 # A disguised demon seen by an angel is just an id, a position and a prop type.
 extends AnimatableBody3D
 
+const Effects = preload("res://scripts/effects.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const Bodies = preload("res://scripts/bodies.gd")
 const Sfx = preload("res://scripts/sfx.gd")
@@ -26,6 +27,9 @@ var _visual: Node3D
 var _shape: CollisionShape3D
 var _nameplate: Label3D
 var _voice: AudioStreamPlayer3D
+var _wings: AudioStreamPlayer3D   # flying: wing beats everyone around can hear
+var _flames: CPUParticles3D        # ...and hellfire licking out from under it
+static var _wing_loop: AudioStreamWAV
 var _has_state := false
 # Smooth movement: we show other players a tenth of a second in the past, sliding
 # between the last two positions we got, instead of chasing the newest one (which
@@ -62,6 +66,31 @@ func _ready() -> void:
 	_aura = Aura.new()
 	add_child(_aura)
 	_rebuild()
+
+
+# Flying (the host says): loud wing beats from wherever it is, disguised or not.
+func set_flying(on: bool) -> void:
+	on = on and not _vanished
+	if on and _wings == null:
+		if _wing_loop == null:
+			_wing_loop = Sfx.fly_loop()
+		_wings = AudioStreamPlayer3D.new()
+		_wings.bus = Sfx.BUS
+		_wings.stream = _wing_loop
+		_wings.unit_size = 10.0       # (first guess) loud enough to hear across a room
+		_wings.max_distance = 60.0
+		_wings.volume_db = 3.0
+		add_child(_wings)
+		_flames = Effects.fly_flames()
+		add_child(_flames)
+		_flames.position.y = 0.1
+	if _flames:
+		_flames.emitting = on
+	if _wings:
+		if on and not _wings.playing:
+			_wings.play()
+		elif not on and _wings.playing:
+			_wings.stop()
 
 
 # Which power-up's aura to show ("" for none). Never anything while it's vanished.

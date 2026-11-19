@@ -100,6 +100,55 @@ static func _cyl(top_r: float, bottom_r: float, h: float) -> CylinderMesh:
 	return c
 
 
+# The pickle's shape: u runs 0..1 from end to end (along z), ang around it (0 = to the side, PI/2 = on top).
+const PICKLE_LENGTH := 1.45
+const PICKLE_RADIUS := 0.2
+
+
+static func _pickle_center(u: float) -> Vector3:
+	var v := u - 0.5
+	# A banana curve to one side, and the ends droop a little (floppy).
+	return Vector3(0.1 * (1.0 - 4.0 * v * v), PICKLE_RADIUS - 0.05 * 4.0 * v * v + 0.01, v * PICKLE_LENGTH)
+
+
+static func _pickle_radius(u: float, ang: float) -> float:
+	var r := PICKLE_RADIUS * pow(sin(PI * u), 0.42)   # rounded ends, not points
+	r *= 1.0 + 0.05 * sin(u * 19.0) + 0.025 * sin(ang * 5.0 + u * 11.0)   # lumpy, like the real thing
+	return r
+
+
+static func _pickle_point(u: float, ang: float, out := 1.0) -> Vector3:
+	return _pickle_center(u) + Vector3(cos(ang), sin(ang), 0.0) * _pickle_radius(u, ang) * out
+
+
+static func _pickle_mesh() -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rings := 40
+	var around := 28
+	var dark := Color(0.17, 0.3, 0.07)
+	var light := Color(0.36, 0.52, 0.14)
+	var grid := []
+	for i in rings + 1:
+		var u := float(i) / rings
+		var row := []
+		for j in around + 1:
+			var ang := TAU * j / around
+			var stripe := pow(0.5 + 0.5 * cos(ang * 9.0), 3.0)            # faint dark stripes down its length
+			var c := light.lerp(dark, 0.35 + 0.45 * stripe)
+			c = c.lerp(Color(0.5, 0.52, 0.2), 0.35 * pow(absf(u - 0.5) * 2.0, 4.0))   # yellowish ends
+			row.append([_pickle_point(u, ang), c])
+		grid.append(row)
+	for i in rings:
+		for j in around:
+			var q := [grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]]
+			for k in [0, 2, 1, 0, 3, 2]:
+				st.set_color(q[k][1])
+				st.add_vertex(q[k][0])
+	st.generate_normals()
+	return st.commit()
+
+
 static func _box(size: Vector3) -> BoxMesh:
 	var b := BoxMesh.new()
 	b.size = size
@@ -151,18 +200,19 @@ static func make_visual(type_name: String) -> Node3D:
 			var leaf := _add_mesh(root, _box(Vector3(0.07, 0.01, 0.035)), Color(0.25, 0.6, 0.2), Vector3(0.035, 0.265, 0))
 			leaf.rotation.z = 0.4
 		"pickle":
-			# A big, floppy pickle lying on its side: three segments that sag in the
-			# middle, with a few warty bumps.
-			var green := Color(0.35, 0.5, 0.15)
-			for i in 3:
-				var seg := CapsuleMesh.new()
-				seg.radius = 0.2
-				seg.height = 0.75
-				var mi := _add_mesh(root, seg, green, Vector3(0, 0.2 - (0.05 if i == 1 else 0.0), (i - 1) * 0.42), "glossy")
-				mi.rotation.x = PI / 2 + (i - 1) * 0.18
-			for b in [Vector3(0.17, 0.3, -0.3), Vector3(-0.16, 0.28, 0.1), Vector3(0.12, 0.33, 0.45), Vector3(-0.1, 0.34, -0.55)]:
-				var bump := SphereMesh.new()
-				bump.radius = 0.045
-				bump.height = 0.09
-				_add_mesh(root, bump, Color(0.45, 0.6, 0.2), b, "plant")
+			# A big, floppy pickle lying on its side (Ted, Nov 18: the old one was three capsules and looked like
+			# something else entirely): one smooth body with rounded ends, a gentle banana curve, slightly lumpy,
+			# faint darker stripes down its length, and little warts all over.
+			var body := _add_mesh(root, _pickle_mesh(), Color(1, 1, 1), Vector3.ZERO, "glossy")
+			(body.material_override as StandardMaterial3D).vertex_color_use_as_albedo = true
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 7   # the same warts on every screen
+			for i in 22:
+				var u := rng.randf_range(0.12, 0.88)
+				var ang := rng.randf_range(-0.2, PI + 0.2)   # the top and sides (nobody sees its belly)
+				var wart := SphereMesh.new()
+				wart.radius = rng.randf_range(0.022, 0.038)
+				wart.height = wart.radius * 1.6
+				var at := _pickle_point(u, ang, 0.98)
+				_add_mesh(root, wart, Color(0.26, 0.42, 0.1), at, "plant")
 	return root

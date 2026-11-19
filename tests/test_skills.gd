@@ -498,13 +498,16 @@ func _run() -> void:
 	check(player.dash_momentum() == 0.0, "...and running into it ends the momentum")
 	check(Skills.clean_loadout("angel", ["grapple", "leap"]) == ["dash", "leap"], "a saved Grappling Hook pick becomes the Flying Dash")
 
-	# Holy Leap
+	# Holy Leap: picked, every jump goes MUCH higher; its key on the ground does nothing.
 	player.global_position = Vector3(-20, 0.1, -20)
 	player.velocity = Vector3.ZERO
 	await frames(20)
 	player.skill_cd.clear()
 	var y0: float = player.global_position.y
-	check(player.use_skill(1), "Holy Leap")
+	check(not player.use_skill(1), "Holy Leap's key does nothing on the ground")
+	player.test_input = {"jump": true}
+	await frames(2)
+	player.test_input = {}
 	var peak := y0
 	for i in 90:
 		await frames(1)
@@ -514,16 +517,14 @@ func _run() -> void:
 		if player.is_on_floor():
 			break
 		await frames(1)
-	check(not player.use_skill(1), "skills have cooldowns")
 
-	# Steering a leap: holding a direction carries you that way.
-	player.skill_cd.clear()
+	# Steering a jump: holding a direction carries you that way.
 	player.rotation = Vector3.ZERO
 	await frames(5)
 	var x0: float = player.global_position.x
-	player.test_input = {"dir": Vector2(1, 0)}
+	player.test_input = {"dir": Vector2(1, 0), "jump": true}
 	await frames(2)
-	player.use_skill(1)
+	player.test_input = {"dir": Vector2(1, 0)}
 	await frames(50)
 	check(player.global_position.x - x0 > 4.0, "a leap goes where you steer it (%.1f m sideways)" % (player.global_position.x - x0))
 	player.test_input = {}
@@ -533,11 +534,11 @@ func _run() -> void:
 	var pu = main.powerups
 	pu.reset()
 	main.state = main.State.HUNTING
-	# A struggling angel (nobody found or hit for 30 s) gets one dropped nearby...
+	# A struggling angel (nobody found or hit for a while) gets one dropped nearby...
 	player.global_position = clear_spot(Vector3(-12, 0.1, 18))
 	player.velocity = Vector3.ZERO
 	await frames(5)
-	pu._last_angel_help -= 31.0
+	pu._last_angel_help -= pu.ANGEL_HELP_AFTER + 1.0
 	await frames(15)
 	var angel_items: Array = pu._auth.values().filter(func(it): return it["team"] == "angel")
 	check(angel_items.size() == 1, "a struggling angel gets a power-up dropped nearby")
@@ -554,7 +555,9 @@ func _run() -> void:
 	player.sprint_stamina = 0.0
 	await frames(3)
 	check(player.sprint_stamina >= player.SPRINT_MAX - 0.1, "Endless Sprint: running stamina stays full")
+	player.skill_cd["leap"] = 6.0
 	player.apply_powerup("quick_skills")
+	check(player.skill_cd.is_empty(), "Quick Skills: picking it up resets every cooldown to zero")
 	player.skill_cd["leap"] = 6.0
 	await frames(60)
 	check(player.skill_cd["leap"] < 3.5, "Quick Skills: cooldowns run 3x faster (%.1f s left of 6 after 1 s)" % player.skill_cd["leap"])
@@ -594,11 +597,18 @@ func _run() -> void:
 		await frames(30)
 		check(not player.sense_alarm, "...and quiet down away from them")
 	player.powerups.clear()
-	# Every redeemed demon drops an angel power-up where it was caught.
+	# About half the redeemed demons drop an angel power-up where they were caught, two at most lying around.
+	var drops := 0
+	for i in 40:
+		pu.reset()
+		pu.demon_caught(Vector3(5, 0, 20))
+		drops += pu._auth.size()
+	check(drops > 8 and drops < 32, "a redeemed demon drops an angel power-up about half the time (%d of 40)" % drops)
 	pu.reset()
-	pu.demon_caught(Vector3(5, 0, 20))
+	for i in 12:
+		pu.demon_caught(Vector3(5, 0, 20 + i))
 	await frames(2)
-	check(pu._auth.size() == 1 and pu.items.size() == 1, "a redeemed demon drops an angel power-up")
+	check(pu._auth.size() <= 2 and pu.items.size() == pu._auth.size(), "...and no more than 2 lie around (%d)" % pu._auth.size())
 	# Demons' power-ups are dropped by the angels over time.
 	pu.reset()
 	pu._demon_timer = 0.1
@@ -760,9 +770,11 @@ func _run() -> void:
 		player.skill_cd.clear()
 		var hp_before: int = victim.health
 		var victim_at: Vector3 = victim.global_position   # (the stomp shoves it away, so remember where it was)
-		check(player.use_skill(1), "leap again")
+		player.test_input = {"jump": true}
+		await frames(2)
+		player.test_input = {}
 		await frames(12)
-		check(player.use_skill(1), "...press it again mid-air: Cloud Stomp")
+		check(player.use_skill(1), "jump, then press Holy Leap's key mid-air: Cloud Stomp")
 		var t_stomp := 0
 		while not player.is_on_floor() and t_stomp < 60:
 			await frames(1)
@@ -775,7 +787,12 @@ func _run() -> void:
 		await frames(30)
 		var pushed := Vector2(victim.global_position.x - player.global_position.x, victim.global_position.z - player.global_position.z).length()
 		check(pushed > Vector2(st_off.x, st_off.z).length() + 1.0, "...and the shockwave shoves it away (%.1f m -> %.1f m)" % [Vector2(st_off.x, st_off.z).length(), pushed])
-		check(not player.use_skill(1), "...one stomp per leap (the cooldown is still running)")
+		player.test_input = {"jump": true}
+		await frames(2)
+		player.test_input = {}
+		await frames(10)
+		check(not player.use_skill(1), "...and the stomp has a cooldown")
+		await frames(90)
 
 	# Holy Scripture: a heavy book that hits hard.
 	var reader = null
@@ -808,8 +825,26 @@ func _run() -> void:
 			for b in get_nodes_in_group("demon"):
 				total_after += b.health
 		# (It may hit a different demon standing in the way; any demon counts.)
-		check(total_before - total_after == Skills.SCRIPTURE_DAMAGE, "...the book hits for holy damage (%d)" % (total_before - total_after))
+		# A direct hit, plus the smite where it lands (the demon it hit, and any others close by).
+		check(total_before - total_after >= Skills.SCRIPTURE_DAMAGE + Skills.SMITE_MIN_DAMAGE,
+				"...the book hits for holy damage and smites (%d)" % (total_before - total_after))
 		check(not player.use_skill(0), "...then it's on cooldown")
+	# The smite on its own: lands near a demon, hurts it (most in the middle), none past 4 m.
+	var smitten = null
+	for b in get_nodes_in_group("demon"):
+		if b.health > Skills.SMITE_DAMAGE:
+			smitten = b
+	if smitten:
+		var hp0: int = smitten.health
+		main._smite(player, smitten.global_position + Vector3(1.0, 0, 0))
+		await frames(2)
+		check(hp0 - smitten.health > Skills.SMITE_MIN_DAMAGE and hp0 - smitten.health < Skills.SMITE_DAMAGE,
+				"Holy Scripture smites demons near where it lands (%d damage from 1 m)" % (hp0 - smitten.health))
+		var hp1: int = smitten.health
+		await frames(20)
+		main._smite(player, smitten.global_position + Vector3(Skills.SMITE_RADIUS + 1.0, 0, 0))
+		await frames(2)
+		check(smitten.health == hp1, "...but not ones further than 4 m away")
 
 	# Holy Kick: boots a demon away.
 	var kicked = null
@@ -1109,6 +1144,25 @@ func _run() -> void:
 	main._confirm_shrine()
 	await frames(3)
 	check(player.loadout["demon"] == ["possess", "fire"], "taking longer than 3 s: no extra wait after confirming")
+	main._close_shrine()
+
+	# Angels waiting out the hiding period: swap anywhere, straight away, and the new skills are ready to use.
+	main.state = main.State.HIDING
+	main.role = "angel"
+	player.role = "angel"
+	player.frozen = true
+	player.loadout["angel"] = ["cherub", "dash"]
+	main.loadout["angel"] = ["cherub", "dash"]
+	player.global_position = main.SHRINE_POS + Vector3(15, 0.5, 0)
+	await frames(5)
+	main._try_open_shrine()
+	check(main.shrine_panel.visible, "a waiting angel can open the skill swap anywhere")
+	main._on_shrine_pick(0, "vacuum")
+	main._confirm_shrine()
+	await frames(3)
+	check(player.loadout["angel"] == ["vacuum", "dash"], "...it goes through straight away (%s)" % "+".join(player.loadout["angel"]))
+	check(player.skill_cd.get("vacuum", 0.0) <= 0.0, "...and the new skill has no cooldown")
+	player.frozen = false
 
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "FAILED", failures])
 	quit(1 if failures else 0)

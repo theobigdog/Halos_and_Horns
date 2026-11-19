@@ -282,16 +282,16 @@ func _run() -> void:
 	main.start_round()
 	main.time_left = 0.0
 	await frames(3)
-	# Hold the button for 4 seconds (try every frame), count throws per second.
+	# Click as fast as possible for 4 seconds (try every frame), count throws per second.
 	var per_second := [0, 0, 0, 0]
 	for i in 240:
 		if player.try_throw():
 			per_second[i / 60] += 1
 		await frames(1)
-	check(per_second[0] >= 8, "throws rapidly from full stamina (%d in the 1st second)" % per_second[0])
-	check(per_second[3] < per_second[0] and per_second[3] >= 3,
+	check(per_second[0] >= 7, "throws rapidly from full stamina (%d in the 1st second)" % per_second[0])
+	check(per_second[3] < per_second[0] and per_second[3] >= 1 and per_second[3] <= 2,
 			"stamina slows spam to a steady rate (%d/s at first, %d/s after 3 s)" % [per_second[0], per_second[3]])
-	await frames(240)
+	await frames(400)
 	check(player.throw_stamina >= player.THROW_STAMINA_MAX - 1.0,
 			"blessing stamina refills (%.0f)" % player.throw_stamina)
 	player.apply_powerup("quick_throw")   # the Quick Blessings power-up
@@ -302,6 +302,25 @@ func _run() -> void:
 			boosted += 1
 		await frames(1)
 	check(boosted >= 8, "Quick Blessings power-up allows near-nonstop throwing (%d in 1 s from empty)" % boosted)
+	player.powerups.clear()
+	# Holding the button down only throws slowly; Quick Blessings makes it a machine gun.
+	var held := [0]
+	var count_held := func(_kind): held[0] += 1
+	player.threw.connect(count_held)
+	for quick in [false, true]:
+		if quick:
+			player.apply_powerup("quick_throw")
+		player.throw_stamina = player.THROW_STAMINA_MAX
+		held[0] = 0
+		player.test_input = {"shoot": true}
+		await frames(120)
+		player.test_input = {}
+		await frames(2)
+		if quick:
+			check(held[0] >= 12, "Quick Blessings: holding the button fires like a machine gun (%d in 2 s)" % held[0])
+		else:
+			check(held[0] >= 2 and held[0] <= 5, "holding the button throws slowly (%d in 2 s)" % held[0])
+	player.threw.disconnect(count_held)
 	player.powerups.clear()
 
 	player.global_position = Vector3(0, 0.05, 20)

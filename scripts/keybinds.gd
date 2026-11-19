@@ -17,6 +17,7 @@ const ACTIONS := [
 	["melee", "Melee (angels)", "key:%d" % KEY_F],
 	["shrine", "Swap skills at the shrine", "key:%d" % KEY_G],
 	["free_look", "Look around without turning (angels)", "key:%d" % KEY_ALT],
+	["minion_jump", "Make your Minion jump (demons)", "key:%d" % KEY_ALT],
 	["toggle_view", "First / third person", "key:%d" % KEY_T],
 	["taunt_random", "Random taunt", "key:%d" % KEY_1],
 	["taunt_signature", "Signature taunt", "key:%d" % KEY_2],

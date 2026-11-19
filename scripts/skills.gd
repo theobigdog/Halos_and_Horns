@@ -11,11 +11,11 @@ const SKILLS := {
 	"cherub": {"team": "angel", "label": "Alarm Cherub", "cooldown": 10.0,
 		"desc": "Throw a cherub that stays for 9 seconds. It hovers there tooting its little horn; if a demon comes close it blasts the horn and shows its detection bubble. Hit it with a blessing to send it flying off to check further away."},
 	"vacuum": {"team": "angel", "label": "Vacuum Orb", "cooldown": 8.0,
-		"desc": "Throw into a pile of props: sucks them in, yanks hidden demons hard, drains their Hatred and locks their skills for 2 seconds."},
+		"desc": "Throw into a pile of props: a vortex that sucks for 5 seconds, dragging props in and yanking any hidden demon back to its middle again and again, draining Hatred. Caught demons can't use skills until 2 seconds after it ends."},
 	"leap": {"team": "angel", "label": "Holy Leap", "cooldown": 8.0,
-		"desc": "A magnificent jump you can steer in the air. Press the key again mid-air to Cloud Stomp: slam down and hurt every demon around where you land (most in the middle, more the higher you came from). Having it picked also makes all your ordinary jumps higher and easier to steer."},
+		"desc": "Having it picked makes all your jumps MUCH higher, and you steer hard in the air. Press its key while you're in the air to Cloud Stomp: slam straight down wherever you are and hurt every demon around where you land (most in the middle, more the higher you came from)."},
 	"scripture": {"team": "angel", "label": "Holy Scripture", "cooldown": 5.0,
-		"desc": "Hurl a heavy holy book. Slow and arcing, but it hits a demon far harder than a blessing."},
+		"desc": "Hurl a heavy holy book. Wherever it lands it SMITES: a pillar of holy light that hurts every demon within 4 m, knocks them back, locks their skills for a moment and scatters the props. Lob it into a suspicious pile! A direct hit hurts even more."},
 	"kick": {"team": "angel", "label": "Holy Kick", "cooldown": 4.0,
 		"desc": "Boot a demon (or a demon-possessed prop) away from you, so it can't rush you up close."},
 	# Not pickable: the second half of Holy Leap.
@@ -25,11 +25,11 @@ const SKILLS := {
 		"desc": "Hold the key to rise, spending Hatred (about 5-6 seconds from full). Let go and you fall. No fall damage."},
 	"minion": {"team": "demon", "label": "Minion", "cooldown": 2.0, "hatred": 30.0,
 		"desc": "Press to quietly make a decoy of yourself (or the prop you're disguised as) where your crosshair is. Hold the key to steer it: it walks to the ground under your crosshair. It moves like a real player and bumps into things; hits on it look and sound like hits on a demon, but it's flimsy and pops after a hit or two (or 20 seconds). One at a time."},
-	"teleport": {"team": "demon", "label": "Teleport", "cooldown": 25.0, "hatred": 60.0,
+	"teleport": {"team": "demon", "label": "Teleport", "cooldown": 12.5, "hatred": 60.0,
 		"desc": "Blink to where your crosshair points, up to 20 m away (further than that: as far as you can go that way). Very expensive."},
 	"fire": {"team": "demon", "label": "Hellfire", "cooldown": 2.0, "hatred": 35.0,
-		"desc": "Fling a fireball from your hands; where it lands, fire burns for 6 seconds. Angels caught in it are slowed, stagger about, can barely see straight and their blessings burn away. Costs Hatred, and the fireball shows where it came from."},
-	"fear": {"team": "demon", "label": "Fear", "cooldown": 15.0, "hatred": 55.0,
+		"desc": "Fling a fireball from your hands; where it lands, fire burns for 6 seconds and splashes out into a few more pools around it. Angels caught in it are slowed, stagger about, can barely see straight and their blessings burn away. Costs Hatred, and the fireball shows where it came from."},
+	"fear": {"team": "demon", "label": "Fear", "cooldown": 7.5, "hatred": 55.0,
 		"desc": "Let out a hellish shriek. Every angel within 10 m who can see you panics for 2 seconds: they run off in a blind scatter, away from you, and their aim shakes all over the place (they can still throw, swing and use skills, good luck hitting anything)."},
 	"possess": {"team": "demon", "label": "Possess", "cooldown": 1.5,
 		"desc": "Become a real prop instead of a copy (press its key while aiming at the prop). The one you leave behind slowly dissolves."},
@@ -48,9 +48,13 @@ const CHERUB_KICK_UP := 3.5
 const CHERUB_CREEP_SPEED := 0.4 # m/s it drifts toward a demon it has noticed (very slowly: ~3 m in its whole life)
 const CHERUB_CREEP_STOP := 1.2  # ...and it stops this close, rather than bumping into them
 const CHERUB_FRICTION := 9.0     # m/s lost per second while sliding on the ground (~14 m per kick)
-const LEAP_PUSH := 7.0            # sideways speed in the direction you're holding when you leap
 const LEAP_AIR_ACCEL := 40.0      # steering while leaping (normal air steering is much weaker)
-const SCRIPTURE_DAMAGE := 40       # a blessing does 25
+const SCRIPTURE_DAMAGE := 40       # a direct hit (a blessing does 25)...
+const SMITE_RADIUS := 4.0          # ...and wherever it lands, a holy blast hurts every demon this close (first guesses, Nov 18)
+const SMITE_DAMAGE := 30           # ...this much in the middle
+const SMITE_MIN_DAMAGE := 10       # ...at least this much at the edge
+const SMITE_LOCKOUT := 1.5         # ...and their skills (and flying) are locked this long
+const SMITE_PUSH := 2.5            # m it shoves them outward
 const SCRIPTURE_SPEED := 24.0
 const SCRIPTURE_GRAVITY := 14.0
 const KICK_RANGE := 2.8
@@ -65,8 +69,8 @@ const STOMP_DAMAGE := 25          # ...this much right in the middle, from an or
 const STOMP_MIN_DAMAGE := 5       # ...at least this much at the very edge
 const STOMP_BASE_HEIGHT := 5.0    # an ordinary leap comes down from about this high
 const STOMP_FULL_HEIGHT := 15.0   # from this high up (or more): double damage
-const LEAPER_JUMP := 8.0          # ordinary jumps with Holy Leap picked (normal: 5.6)
-const LEAPER_AIR_ACCEL := 24.0    # ...and steering in the air (normal: 12)
+const LEAPER_JUMP := 12.0         # every jump with Holy Leap picked (normal: 5.6; Ted, Nov 18: "MUCH higher")
+const LEAPER_AIR_ACCEL := 40.0    # ...and steering in the air (normal: 12)
 # Hatred for naughtiness (handed out by the host)
 const NAUGHTY_FIRE_PER_SEC := 4.0   # per angel standing in your fire
 const NAUGHTY_MINION_HIT := 8.0     # an angel wasted a hit on your minion
@@ -83,13 +87,17 @@ const FIRE_GRAVITY := 14.0        # ...in an arc: lands roughly 8-15 m away
 const FIRE_LINGER := 2.0          # seconds you keep burning (and staggering) after stepping out
 const FIRE_RADIUS := 1.8
 const FIRE_LIFETIME := 6.0
+const FIRE_SPLASH_MIN := 2.5      # Hellfire splashes into extra pools (how many: Settings) this far out...
+const FIRE_SPLASH_MAX := 5.0
+const FIRE_SPLASH_HOP := 0.5      # ...each blob takes this long to hop there
 const FIRE_SLOW := 0.6            # angels in fire move at 60% speed
 const FIRE_BLESSING_BURN := 45.0  # blessing stamina burned per second while standing in fire
-const VACUUM_RADIUS := 6.0
-const VACUUM_TIME := 2.5
-const VACUUM_HATRED_DRAIN := 35.0
-const VACUUM_LOCKOUT := 2.0       # seconds a vacuumed demon can't use skills or fly
-const LEAP_VELOCITY := 12.0
+const VACUUM_RADIUS := 8.0         # (first guess, Nov 18: was 6 and "does very little")
+const VACUUM_TIME := 5.0           # the vortex keeps sucking this long (was a single tug at impact)
+const VACUUM_PULSE := 0.8          # how often it yanks every demon in range back to its middle
+const VACUUM_HATRED_DRAIN := 40.0  # the first time it catches a demon...
+const VACUUM_PULSE_DRAIN := 10.0   # ...and every yank after that
+const VACUUM_LOCKOUT := 2.0        # seconds a vacuumed demon can't use skills or fly, after the vortex lets go
 const MELEE_RANGE := 2.6
 const MELEE_DAMAGE := 34          # three hits on a full-health demon
 const MELEE_COOLDOWN := 0.6

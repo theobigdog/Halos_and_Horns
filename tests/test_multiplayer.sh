@@ -113,7 +113,8 @@ if [ $(grep -c 'was caught' "$OUT/host.log") -ge 2 ]; then
 	check "everyone hears who the last demon is" "grep -q 'LAST demon standing' '$OUT/Cal.log'"
 fi
 if grep -q 'used minion' "$OUT/Ben.log"; then
-	check "a demon sent out a minion and the host showed it to everyone" "grep -q 'Ben sent out a minion' '$OUT/host.log'"
+	# (A Vacuum Orb or a smite can lock Ben's skills just as he sends it: then the host refuses it, and says so.)
+	check "a demon sent out a minion and the host showed it to everyone (or refused it: skills locked)" 		"grep -q -e 'Ben sent out a minion' -e \"refused Ben's minion: skills locked\" '$OUT/host.log'"
 fi
 if grep -qE '(Ava|Ben|Cal|Dee) sat still too long' "$OUT/host.log"; then
 	check "...and that player's game was told" "grep -q 'forced to taunt' '$OUT/Ava.log' '$OUT/Ben.log' '$OUT/Cal.log' '$OUT/Dee.log'"

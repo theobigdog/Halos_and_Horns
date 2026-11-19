@@ -196,6 +196,8 @@ var music: Music               # the soundtrack (music.gd)
 var _music_volume := 0.6
 var _sound_volume := 1.0
 var _quality_pick: OptionButton
+var _splash_pick: SpinBox
+var hellfire_splashes := 3     # Hellfire: extra pools it splashes into around the first (Settings; the host's counts)
 var _music_slider: HSlider
 var _sound_slider: HSlider
 
@@ -383,10 +385,15 @@ func near_shrine(pos: Vector3) -> bool:
 	return Vector2(pos.x - SHRINE_POS.x, pos.z - SHRINE_POS.z).length() <= Shrine.RADIUS and absf(pos.y - SHRINE_POS.y) < 2.0
 
 
+# Angels waiting out the hiding period can swap skills anywhere, instantly, with no cooldowns (Ted, Nov 18).
+func waiting_angel() -> bool:
+	return state == State.HIDING and role == "angel"
+
+
 func _try_open_shrine() -> void:
-	if not (state == State.HIDING or state == State.HUNTING) or player.frozen:
+	if not (state == State.HIDING or state == State.HUNTING) or (player.frozen and not waiting_angel()):
 		return
-	if not near_shrine(player.global_position):
+	if not near_shrine(player.global_position) and not waiting_angel():
 		_toast("The shrine is the only place to swap skills.", 1.5)
 		return
 	if player.possessed_type != "":
@@ -410,7 +417,9 @@ func _try_open_shrine() -> void:
 	shrine_panel.visible = true
 	player.velocity = Vector3.ZERO
 	_refresh_mouse()
-	if mode == "practice":
+	if waiting_angel():
+		_shrine_elapsed = Shrine.SWAP_TIME   # no waiting at the shrine: you're waiting anyway
+	elif mode == "practice":
 		if shrine:
 			shrine.flare()
 	elif net:
@@ -442,16 +451,17 @@ func _update_shrine(delta: float) -> void:
 	if not shrine_panel.visible:
 		return
 	_shrine_elapsed += delta
-	if not (state == State.HIDING or state == State.HUNTING) or player.frozen or player.possessed_type != "":
+	var waiting := waiting_angel()
+	if not (state == State.HIDING or state == State.HUNTING) or (player.frozen and not waiting) or player.possessed_type != "":
 		_close_shrine()
 		return
 	var left := Shrine.SWAP_TIME - _shrine_elapsed
 	if _shrine_done and left <= 0.0:
 		loadout[role] = Skills.clean_loadout(role, _shrine_pick)
 		player.loadout = loadout.duplicate(true)
-		for id in loadout[role]:   # fresh skills start on cooldown (no swap-dancing)
+		for id in loadout[role]:   # fresh skills start on cooldown at the shrine (no swap-dancing)...
 			if id != "":
-				player.skill_cd[id] = Skills.cooldown(id)
+				player.skill_cd[id] = 0.0 if waiting else Skills.cooldown(id)   # ...but ready to go after the wait
 		_sync_loadout_buttons()
 		_save_settings()
 		if net:
@@ -985,6 +995,18 @@ func _build_options(box: VBoxContainer) -> void:
 	_quality_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_quality_pick.item_selected.connect(func(i): graphics.apply(i))
 	grid.add_child(_quality_pick)
+	var sl := Label.new()
+	sl.text = "Hellfire splash pools"
+	sl.tooltip_text = "How many extra pools of fire a Hellfire splashes into around where it lands.
+Online, the host's setting is the one that counts."
+	grid.add_child(sl)
+	_splash_pick = SpinBox.new()
+	_splash_pick.min_value = 0
+	_splash_pick.max_value = 8
+	_splash_pick.step = 1
+	_splash_pick.tooltip_text = sl.tooltip_text
+	_splash_pick.value_changed.connect(func(v): hellfire_splashes = int(v))
+	grid.add_child(_splash_pick)
 
 
 func _volume_row(grid: GridContainer, text: String, on_change: Callable) -> HSlider:
@@ -1222,6 +1244,8 @@ func _load_settings() -> void:
 	var q := clampi(int(_settings.get_value("options", "graphics", 1)), 0, 2)
 	_quality_pick.select(q)
 	graphics.apply(q)
+	hellfire_splashes = clampi(int(_settings.get_value("options", "hellfire_splashes", 3)), 0, 8)
+	_splash_pick.set_value_no_signal(hellfire_splashes)
 
 
 func _save_settings() -> void:
@@ -1236,6 +1260,7 @@ func _save_settings() -> void:
 	_settings.set_value("options", "music", _music_volume)
 	_settings.set_value("options", "sound", _sound_volume)
 	_settings.set_value("options", "graphics", Graphics.quality)
+	_settings.set_value("options", "hellfire_splashes", hellfire_splashes)
 	_settings.save(SETTINGS_PATH)
 
 
@@ -1664,7 +1689,7 @@ func online_round_start(seed_value: int, new_role: String, pos: Vector3, phase: 
 	pause_panel.visible = false
 	_refresh_mouse()
 	if new_role == "angel":
-		_toast("You're an ANGEL.\nThe demons are hiding..." if state == State.HIDING else "You're an ANGEL. Find the demons!", 4.0)
+		_toast("You're an ANGEL.\nThe demons are hiding...\n(%s: change your skills while you wait)" % Keybinds.key_name("shrine") if state == State.HIDING else "You're an ANGEL. Find the demons!", 4.0)
 	else:
 		_toast("You're a DEMON! Hide!\nClick a prop to possess it.", 4.0)
 
@@ -1909,6 +1934,8 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 			_auth_fires[_fire_counter] = {"owner": user_key, "pos": spot, "lit_at": _now() + flight[1],
 				"until": _now() + flight[1] + Skills.FIRE_LIFETIME}
 			print("[decider] hellfire lit")
+			if hellfire_splashes > 0:
+				get_tree().create_timer(flight[1]).timeout.connect(func(): _fire_splash(user_key, spot))
 		"fear":
 			# Every angel close by who can see the demon panics.
 			var from: Vector3 = user.global_position
@@ -1929,6 +1956,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 		"scripture":
 			var book := _spawn_scripture(origin, dir, false)
 			book.shooter = user
+			book.on_impact = func(at: Vector3): _smite(user, at)
 			broadcast_fx("scripture", [origin, dir], user_key)
 		"kick":
 			var c = _close_demon(user, dir, Skills.KICK_RANGE)
@@ -2025,6 +2053,79 @@ func _fly_until_hit(from: Vector3, vel: Vector3, g: float, skip: Array) -> Array
 	return [prev, t]
 
 
+# Host / practice: the Holy Scripture landed. Every demon close by is hurt (most in the middle), shoved
+# outward, and can't use skills for a moment; everyone sees the pillar of light and hears the bell.
+func _smite(user: Node3D, at: Vector3) -> void:
+	if not is_inside_tree() or state != State.HUNTING:
+		return
+	var hurt := 0
+	for d in demon_targets():
+		if not is_instance_valid(d):
+			continue
+		var off: Vector3 = d.global_position - at
+		var dist := Vector2(off.x, off.z).length()
+		if dist > Skills.SMITE_RADIUS or absf(off.y) > 3.0:
+			continue
+		var dmg := roundi(lerpf(Skills.SMITE_DAMAGE, Skills.SMITE_MIN_DAMAGE, dist / Skills.SMITE_RADIUS))
+		if d.has_method("take_hit") and d.take_hit(dmg, user):
+			hurt += 1
+			var out := Vector3(off.x, 0.0, off.z)
+			out = out.normalized() if out.length() > 0.1 else Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
+			_affect_demon(d, ground_below(d.global_position + out * Skills.SMITE_PUSH + Vector3.UP * 1.0), 0.0,
+				Skills.SMITE_LOCKOUT, "SMITTEN!")
+	if hurt > 0 and is_instance_valid(user) and user.has_method("confirm_hit"):
+		user.confirm_hit()
+	broadcast_fx("smite", [at])
+	print("[decider] holy scripture smote %d demon(s)" % hurt)
+
+
+static var _smite_bell: AudioStreamWAV
+
+
+# Everyone: the smite's pillar of light, a golden shockwave, props flying, and a deep church-bell BONG.
+func _smite_fx(at: Vector3) -> void:
+	var parent := _fx_parent()
+	var pillar := MeshInstance3D.new()
+	var cyl := CylinderMesh.new()
+	cyl.top_radius = 0.5
+	cyl.bottom_radius = 1.1
+	cyl.height = 16.0
+	pillar.mesh = cyl
+	var m := StandardMaterial3D.new()
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.albedo_color = Color(1.0, 0.92, 0.55, 0.75)
+	m.emission_enabled = true
+	m.emission = Color(1.0, 0.85, 0.4)
+	m.emission_energy_multiplier = 2.0
+	pillar.material_override = m
+	parent.add_child(pillar)
+	pillar.global_position = at + Vector3.UP * 8.0
+	var tw := pillar.create_tween()
+	tw.set_parallel(true)
+	tw.tween_property(pillar, "scale", Vector3(2.2, 1.0, 2.2), 0.7).set_ease(Tween.EASE_OUT)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.7)
+	tw.chain().tween_callback(pillar.queue_free)
+	for i in 12:   # a golden ring out to the edge of where it hurts
+		var a := TAU * i / 12.0
+		Effects.puff(parent, at + Vector3(cos(a), 0.3, sin(a)) * Skills.SMITE_RADIUS * 0.8, Color(1.0, 0.9, 0.5, 0.7), 1.4)
+	Effects.burst(parent, at + Vector3.UP * 0.5, Color(1.0, 0.95, 0.6), 40, 9.0, 0.8)
+	_blast_props(at, Skills.SMITE_RADIUS * 1.2, 6.0)
+	_shake_near(at, 0.4, 16.0)
+	if _smite_bell == null:
+		_smite_bell = Sfx.tone([[131.0, 1.0], [262.0, 0.7], [330.0, 0.35], [392.0, 0.45], [523.0, 0.3], [698.0, 0.15]],
+				2.6, 0.5, 0.004, 4.0, 0.25, 0.985)
+	var bell := AudioStreamPlayer3D.new()
+	bell.bus = Sfx.BUS
+	bell.stream = _smite_bell
+	bell.unit_size = 12.0
+	bell.max_distance = 90.0
+	parent.add_child(bell)
+	bell.global_position = at + Vector3.UP
+	bell.play()
+	bell.finished.connect(bell.queue_free)
+
+
 func _spawn_scripture(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
 	var book := Projectile.new()
 	book.book = true
@@ -2051,15 +2152,65 @@ func _spawn_orb(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
 	return orb
 
 
+# The vortex evaporates any Minion in reach, whatever it looks like (Ted, Nov 18).
+func _vacuum_minions(center: Vector3) -> void:
+	if mode == "practice":
+		if is_instance_valid(player.minion) and player.minion.global_position.distance_to(center) <= Skills.VACUUM_RADIUS:
+			player.minion.pop()
+		return
+	if net and net.is_host:
+		for owner in net.minions.keys():
+			if (net.minions[owner]["pos"] as Vector3).distance_to(center) <= Skills.VACUUM_RADIUS:
+				net._minion_gone(owner, true)
+
+
+# Host / practice: a Hellfire hit the ground and splashes: smaller blobs of fire hop out of the first pool
+# and light their own pools nearby (Ted, Nov 18). How many is a setting.
+func _fire_splash(owner: int, spot: Vector3) -> void:
+	if not is_inside_tree() or state == State.ENDED:
+		return
+	var n := hellfire_splashes
+	var turn := randf() * TAU
+	for i in n:
+		var a := turn + TAU * i / n + randf_range(-0.3, 0.3)
+		var reach := randf_range(Skills.FIRE_SPLASH_MIN, Skills.FIRE_SPLASH_MAX)
+		var to := ground_below(spot + Vector3(cos(a), 0.0, sin(a)) * reach + Vector3.UP * 3.0)
+		if absf(to.y - spot.y) > 3.0:
+			continue   # over a ledge or up a wall: skip that one
+		var from := spot + Vector3.UP * 0.4
+		var hop := Skills.FIRE_SPLASH_HOP
+		var vel := (to - from) / hop + Vector3.UP * 0.5 * Skills.FIRE_GRAVITY * hop
+		_fire_counter += 1
+		broadcast_fx("fire", [_fire_counter, from, vel, to, hop])
+		_auth_fires[_fire_counter] = {"owner": owner, "pos": to, "lit_at": _now() + hop,
+			"until": _now() + hop + Skills.FIRE_LIFETIME}
+
+
 func _vacuum_at(center: Vector3) -> void:
+	var caught := _vacuum_pulse(center, {}, Skills.VACUUM_TIME)
+	broadcast_fx("vortex", [center, caught])
+	print("[decider] vacuum orb %s" % ("CAUGHT a demon" if caught else "found nothing"))
+
+
+# Host / practice: the vortex yanks every demon in range back to its middle, every VACUUM_PULSE seconds until it
+# dies, so running away doesn't work. 'seen' keeps track of who it already caught (they get the smaller drain).
+func _vacuum_pulse(center: Vector3, seen: Dictionary, left: float) -> bool:
+	if not is_inside_tree() or state == State.ENDED:
+		return false
 	var caught := false
 	for d in demon_targets():
 		if d.global_position.distance_to(center) <= Skills.VACUUM_RADIUS:
 			caught = true
 			var offset := Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))
-			_affect_demon(d, center + offset, Skills.VACUUM_HATRED_DRAIN, Skills.VACUUM_LOCKOUT, "VACUUMED!")
-	broadcast_fx("vortex", [center, caught])
-	print("[decider] vacuum orb %s" % ("CAUGHT a demon" if caught else "found nothing"))
+			var first := not seen.has(d)
+			seen[d] = true
+			_affect_demon(d, center + offset, Skills.VACUUM_HATRED_DRAIN if first else Skills.VACUUM_PULSE_DRAIN,
+				left + Skills.VACUUM_LOCKOUT, "VACUUMED!")
+	_vacuum_minions(center)
+	left -= Skills.VACUUM_PULSE
+	if left > 0.05:
+		get_tree().create_timer(Skills.VACUUM_PULSE).timeout.connect(func(): _vacuum_pulse(center, seen, left))
+	return caught
 
 
 # Yank a demon somewhere, drain Hatred, lock their skills.
@@ -2520,6 +2671,8 @@ func fx(kind: String, args: Array) -> void:
 			Effects.dust(_fx_parent(), args[0], Skills.STOMP_RADIUS * 0.5, 24)
 			_blast_props(args[0], Skills.STOMP_RADIUS * 1.2, 7.0)
 			_shake_near(args[0], 0.5, 18.0)
+		"smite":
+			_smite_fx(args[0])
 		"vortex":
 			var v := Vortex.new()
 			v.caught = args[1]
@@ -2604,9 +2757,9 @@ func _pull_props(center: Vector3) -> void:
 		var d := flat.length()
 		if d >= Skills.VACUUM_RADIUS or d < 0.01:
 			continue
-		var target := Vector3(center.x, prop.global_position.y, center.z) + flat / d * maxf(1.2, d * 0.45)
+		var target := Vector3(center.x, prop.global_position.y, center.z) + flat / d * maxf(0.9, d * 0.2)
 		var tw: Tween = prop.create_tween()
-		tw.tween_property(prop, "global_position", target, 1.2).set_ease(Tween.EASE_IN)
+		tw.tween_property(prop, "global_position", target, 2.0).set_ease(Tween.EASE_IN)
 		prop.set_meta("moved_to", target)   # (for anyone joining later)
 
 

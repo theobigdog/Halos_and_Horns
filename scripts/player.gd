@@ -38,11 +38,15 @@ const OUTLINE_COLOR := Color(1.0, 0.35, 0.1)
 const RUN_MULTIPLIER := 1.6       # Shift
 const SNEAK_MULTIPLIER := 0.45    # Ctrl
 
-# Throwing: fast, limited by blessing stamina rather than a long cooldown.
-const THROW_COOLDOWN := 0.1       # up to 10 throws per second
+# Throwing: click as fast as you like until blessing stamina runs out; holding the button only throws slowly
+# (Ted, Nov 18: "too easy to kill a demon once you get your hands on them"). Quick Blessings turns the hold
+# into a machine gun. All first guesses.
+const THROW_COOLDOWN := 0.1       # clicking: up to 10 throws per second
+const HOLD_THROW_EVERY := 0.6     # holding the button down: one throw this often...
+const QUICK_HOLD_THROW_EVERY := 0.1   # ...or a machine gun with Quick Blessings
 const THROW_STAMINA_MAX := 100.0
-const THROW_COST := 7.0           # ~14 throws from full
-const THROW_REGEN := 30.0         # per second (a future power-up multiplies this)
+const THROW_COST := 12.0          # ~8 throws from full (was 7, ~14)
+const THROW_REGEN := 18.0         # per second, ~1.5 throws a second once empty (was 30; Quick Blessings: x6)
 const THROW_REGEN_DELAY := 0.0    # pause after a throw before regen starts (0 = always regenerating)
 
 # Sprinting: its own stamina pool, separate from throwing.
@@ -116,6 +120,7 @@ var test_input := {}          # automated tests only: {"dir": Vector2, "sneak", 
 
 var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
 var _throw_cooldown := 0.0
+var _since_throw := 99.0         # seconds since our last throw (holding the button throws slowly)
 var _throw_strength := 1.0
 var _throw_regen_wait := 0.0
 var _sprint_regen_wait := 0.0
@@ -147,10 +152,9 @@ var _fear_from := Vector3.ZERO
 var _fear_dir := Vector3.ZERO
 var _fear_turn := 0.0
 var _move_dir := Vector2.ZERO # last movement keys held (Holy Leap launches that way)
-var _leaping := false         # in the air from Holy Leap: strong steering, Cloud Stomp ready
+var _leaping := false         # in the air from a Holy Leap jump (strong steering; the camera widens a little)
 var _stomping := false
-var _leap_left := 0.0          # a stomp only counts this soon after the leap (the host allows 6 s)
-var _leap_peak := 0.0          # the highest we got since leaping (a stomp from higher hurts more)
+var _leap_peak := 0.0          # the highest we got since leaving the ground (a stomp from higher hurts more)
 var _fear_phase := Vector2.ZERO
 # Camera juice (only on your own screen; nothing here changes how you actually move)
 const BASE_FOV := 75.0
@@ -163,6 +167,7 @@ var _cam_y := 0.0              # smoothed camera height in third person (steps a
 
 var shape_node: CollisionShape3D
 var visual_root: Node3D
+var _flames: CPUParticles3D
 var pivot: Node3D
 var spring: SpringArm3D
 var camera: Camera3D
@@ -179,6 +184,9 @@ func _ready() -> void:
 	add_child(shape_node)
 	visual_root = Node3D.new()
 	add_child(visual_root)
+	_flames = Effects.fly_flames()   # flying: flames from under you (you see them in third person)
+	add_child(_flames)
+	_flames.position.y = 0.1
 	pivot = Node3D.new()
 	add_child(pivot)
 	spring = SpringArm3D.new()
@@ -320,6 +328,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if frozen:
 		return
+	if event.is_action_pressed("minion_jump") and role == "demon" and is_instance_valid(minion):
+		minion.jump()   # (no return: the same key is the angels' free look)
 	if event.is_action_pressed("skill_1"):
 		use_skill(0)
 		return
@@ -348,6 +358,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	_throw_cooldown = maxf(_throw_cooldown - delta, 0.0)
+	if _flames.emitting != flying:
+		_flames.emitting = flying
+	_since_throw += delta
 	_taunt_cooldown = maxf(_taunt_cooldown - delta, 0.0)
 	melee_cd = maxf(melee_cd - delta, 0.0)
 	skill_lock = maxf(skill_lock - delta, 0.0)
@@ -450,6 +463,7 @@ func _physics_process(delta: float) -> void:
 		_jump_buffer = tuning["jump_buffer"] if want_jump else _jump_buffer - delta
 		if _jump_buffer > 0.0 and (on_floor or (_coyote > 0.0 and velocity.y <= 0.0)) and not flying:
 			velocity.y = Skills.LEAPER_JUMP if _is_leaper() else tuning["jump_velocity"]
+			_leaping = _is_leaper()
 			_jump_buffer = 0.0
 			_coyote = 0.0
 
@@ -481,9 +495,7 @@ func _physics_process(delta: float) -> void:
 		_update_dash_momentum(delta, input_dir, on_floor)
 		velocity.x = current.x + _momentum.x
 		velocity.z = current.y + _momentum.y
-	_leap_left = maxf(_leap_left - delta, 0.0)
-	if _leaping:
-		_leap_peak = maxf(_leap_peak, global_position.y)
+	_leap_peak = global_position.y if is_on_floor() else maxf(_leap_peak, global_position.y)
 	if _stomping:
 		clear_dash()
 		velocity = Vector3(0.0, -Skills.STOMP_SPEED, 0.0)
@@ -513,8 +525,9 @@ func _physics_process(delta: float) -> void:
 	_update_throw_stamina(delta)
 
 	if role == "angel":
-		# Holding the button keeps throwing as fast as cooldown and stamina allow.
-		if controls_active and Input.is_action_pressed("shoot"):
+		# Holding the button keeps throwing, but slowly (each click throws straight away, in _unhandled_input).
+		var shoot_held: bool = test_input.get("shoot", false) if not test_input.is_empty() 				else controls_active and Input.is_action_pressed("shoot")
+		if shoot_held and _since_throw >= hold_throw_every():
 			try_throw()
 		return
 
@@ -705,10 +718,6 @@ func dash_momentum() -> float:
 # everything else is decided by the host / practice game via skill_used.
 func use_skill(slot: int) -> bool:
 	var id: String = loadout[role][slot]
-	# Holy Leap's key again, mid-leap: Cloud Stomp (its cooldown is already running).
-	if id == "leap" and _leaping and not _stomping and not is_on_floor() and not frozen and _leap_left > 0.0:
-		_stomping = true
-		return true
 	if id == "" or frozen or skill_cd.get(id, 0.0) > 0.0 or Skills.SKILLS[id].get("hold", false):
 		return false
 	if role == "demon" and skill_lock > 0.0:
@@ -760,20 +769,12 @@ func use_skill(slot: int) -> bool:
 		"vacuum":
 			point = origin + dir
 		"leap":
-			if not is_on_floor():
+			# Holy Leap's key: only works in the air (its jumps are just your ordinary jump, much higher).
+			# Cloud Stomp: slam straight down from right where you are; the stomp lands in _physics_process.
+			if is_on_floor() or _stomping or _pull_time > 0.0:
 				return false
-			# Launch the way you're holding (or forward), then steer hard in the air.
-			var push := move_basis() * Vector3(_move_dir.x, 0.0, _move_dir.y)
-			push.y = 0.0
-			if push.length() < 0.1:
-				push = -global_transform.basis.z
-			velocity.y = Skills.LEAP_VELOCITY
-			var flat := push.normalized() * Skills.LEAP_PUSH
-			velocity.x = flat.x
-			velocity.z = flat.z
-			_leaping = true
-			_leap_left = 5.5
-			_leap_peak = global_position.y
+			_stomping = true
+			point = Vector3(global_position.x, _leap_peak, global_position.z)
 		"kick":
 			origin = pivot.global_position     # reach is measured from us, not the camera
 			Effects.swing(get_parent(), origin - Vector3.UP * 0.8, dir)
@@ -823,8 +824,15 @@ signal powerup_taken(kind)
 func apply_powerup(kind: String) -> void:
 	if kind == "vanish":
 		vanish_time = Skills.VANISH_TIME
+	if kind == "quick_skills":
+		skill_cd.clear()   # all your skills ready right now, so none of the power-up is wasted on a cooldown
 	powerups[kind] = PowerUps.DURATION.get(kind, 0.0)
 	powerup_taken.emit(kind)
+
+
+# Jump as if the key was just pressed (bots).
+func queue_jump() -> void:
+	_jump_buffer = tuning["jump_buffer"]
 
 
 # Holy Leap picked: every ordinary jump is higher and easier to steer.
@@ -1072,6 +1080,10 @@ var throw_seq := 0               # numbers our throws so the host can match up h
 var on_claim: Callable           # set by the network code for joined players
 
 
+func hold_throw_every() -> float:
+	return QUICK_HOLD_THROW_EVERY if powerup_left("quick_throw") > 0.0 else HOLD_THROW_EVERY
+
+
 func try_throw() -> bool:
 	if _throw_cooldown > 0.0 or throw_stamina < THROW_COST:
 		return false
@@ -1107,6 +1119,7 @@ func _shoot() -> void:
 		var seq := throw_seq
 		p.on_claim = func(eid, point): on_claim.call(seq, eid, point)
 	_throw_cooldown = THROW_COOLDOWN
+	_since_throw = 0.0
 	threw.emit(blessing)
 	launched.emit(start, p.velocity, blessing, p.gravity, throw_seq)
 

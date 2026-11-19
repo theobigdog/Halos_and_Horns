@@ -33,9 +33,9 @@ const RELAY_RATE := 20.0         # host sends everyone's positions this many tim
 const MAX_MOVE_SPEED := 14.0     # m/s; sprinting is ~10.4, the rest is slack for lag
 const DEMON_HEALTH := 100
 const END_SCREEN_TIME := 8.0
-const THROW_COST := 7.0
+const THROW_COST := 12.0          # (must match player.gd)
 const THROW_STAMINA_MAX := 100.0
-const THROW_REGEN := 30.0
+const THROW_REGEN := 18.0
 const SCOREBOARD_RATE := 1.0     # roster (Tab) updates per second
 const DASH_MOVE_SPEED := 46.0     # allowed speed for a while after a dash the host approved (covers the F1 sliders' top end)
 const DASH_WINDOW := 4.0          # seconds that allowance lasts: the burst, then the momentum fading out
@@ -694,20 +694,28 @@ func _relay_states() -> void:
 				continue
 			if peers[viewer]["role"] == "angel" and _is_vanished(id):
 				continue   # invisible: angels get nothing about this demon
-			states.append([rec["eid"], rec["pos"], rec["yaw"], rec["form"], rec["role"], _shown_aura(id)])
+			states.append([rec["eid"], rec["pos"], rec["yaw"], rec["form"], rec["role"], _shown_aura(id), _is_flying(id)])
 		for owner in minions:
 			if owner != viewer:
 				var m: Dictionary = minions[owner]
-				states.append([m["eid"], m["pos"], m["yaw"], m["form"], "demon", _minion_aura(owner)])
+				states.append([m["eid"], m["pos"], m["yaw"], m["form"], "demon", _minion_aura(owner), false])
 		s_states.rpc_id(viewer, states)
 	# The host's own screen.
 	for id in peers:
 		var rec: Dictionary = peers[id]
 		if id != 1 and rec["in_round"] and remotes.has(rec["eid"]):
 			remotes[rec["eid"]].set_aura(_shown_aura(id))
+			remotes[rec["eid"]].set_flying(_is_flying(id))
 	for owner in minions:
 		if owner != 1 and remotes.has(minions[owner]["eid"]):
 			remotes[minions[owner]["eid"]].set_aura(_minion_aura(owner))
+
+
+# Flying makes a racket of wing beats that everyone nearby hears, even from a demon in disguise.
+func _is_flying(id: int) -> bool:
+	if id == 1:
+		return main.player.flying and main.player.role == "demon"
+	return peers[id].get("flying", false) and peers[id]["role"] == "demon"
 
 
 # The power-up aura everyone may see on this player: only in their own body,
@@ -780,6 +788,7 @@ func s_states(states: Array) -> void:
 		var r := _get_or_make_remote(st[0])
 		r.apply_state(st[1], st[2], st[3], st[4])
 		r.set_aura(st[5] if st.size() > 5 else "")
+		r.set_flying(st.size() > 6 and st[6])
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -843,6 +852,7 @@ func c_state(pos: Vector3, yaw: float, form: String, flying: bool) -> void:
 		_note_cheat(id, "flying without the Fly skill")
 		_drop_to_ground(id, rec, pos)
 		return
+	rec["flying"] = flying   # everyone hears the wings (Ted, Nov 18: flying is a giveaway, on purpose)
 	if pos.distance_to(rec["pos"]) > 0.05 or absf(wrapf(yaw - rec["yaw"], -PI, PI)) > 0.02:
 		_mark_active(id)
 	rec["pos"] = pos
@@ -1416,7 +1426,9 @@ func give_powerup(id: int, kind: String) -> void:
 	match kind:
 		"fast_hatred": rec["fast_hatred_until"] = until
 		"quick_throw": rec["quick_throw_until"] = until
-		"quick_skills": rec["quick_skills_until"] = until
+		"quick_skills":
+			rec["quick_skills_until"] = until
+			rec["skill_ready"].clear()   # every cooldown starts over at zero (Ted, Nov 18)
 		"sense": rec["sense_until"] = until
 	if Aura.KINDS.has(kind):
 		rec["aura"] = kind
@@ -1677,6 +1689,13 @@ func _shrine_swap(id: int, skills: Array) -> void:
 		return
 	var rec: Dictionary = peers[id]
 	var pos: Vector3 = main.player.global_position if id == 1 else rec["pos"]
+	# Angels waiting out the hiding period swap anywhere, straight away, and their skills are ready.
+	if rec["role"] == "angel" and phase == "hiding":
+		rec["loadout"]["angel"] = Skills.clean_loadout("angel", skills)
+		for skill in rec["loadout"]["angel"]:
+			rec["skill_ready"].erase(skill)
+		print("[host] %s picked skills while waiting: %s" % [rec["name"], "+".join(rec["loadout"]["angel"])])
+		return
 	# The full swap time has to have passed (a little slack for lag), standing at the shrine.
 	if now() - rec.get("shrine_at", -100.0) < 2.7 or not main.near_shrine(pos):
 		if id != 1:
@@ -1757,7 +1776,10 @@ func _skill_allowed(id: int, skill: String, origin: Vector3) -> bool:
 		rec["leap_at"] = -100.0
 	if rec["role"] == "angel" and phase != "hunting":
 		return false
-	if rec["role"] == "demon" and (phase != "hiding" and phase != "hunting" or t < rec["locked_until"]):
+	if rec["role"] == "demon" and phase != "hiding" and phase != "hunting":
+		return false
+	if rec["role"] == "demon" and t < rec["locked_until"]:
+		print("[host] refused %s's %s: skills locked (vacuumed or smitten)" % [rec["name"], skill])
 		return false
 	if t + 0.3 < rec["skill_ready"].get(skill, 0.0):   # a little slack for lag
 		return false
@@ -1770,9 +1792,13 @@ func _skill_allowed(id: int, skill: String, origin: Vector3) -> bool:
 			_note_cheat(id, "casting %s without enough Hatred" % skill)
 			return false
 		rec["hatred"] -= cost
-	if skill == "leap":
+	if skill == "leap":   # (pressed mid-air: the Cloud Stomp is on its way down; count the jump before it too)
 		rec["leap_at"] = t
-		rec["leap_peak"] = origin.y
+		var peak: float = origin.y
+		for h in rec.get("hist", []):
+			if t - h[0] < 2.5:
+				peak = maxf(peak, h[1].y)
+		rec["leap_peak"] = peak
 	var cd := Skills.cooldown(skill) / (3.0 if t < rec.get("quick_skills_until", 0.0) else 1.0)
 	rec["skill_ready"][skill] = t + cd
 	return true

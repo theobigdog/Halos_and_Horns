@@ -103,28 +103,42 @@ static func possess_sound() -> AudioStreamWAV:
 	return tone([[98.0, 0.7], [147.0, 0.3]], 0.5, 0.22, 0.04, 12.0, 0.35, 0.75)
 
 
-# Flying (demons): a loop of leathery wing beats over a low rush of air.
-# The beats sit at the very start and end of the loop, so it repeats seamlessly.
+# Flying (demons): an eerie musical-saw wail (Ted, Nov 18), swooping up and down with a wide wobbly
+# vibrato, over faint wing whooshes. The pitch curve and the vibrato both repeat exactly once per loop,
+# and the wave's phase is nudged to end on a whole cycle, so it loops seamlessly.
 static func fly_loop() -> AudioStreamWAV:
-	var seconds := 1.2
-	var beats := 3.0                  # wing beats per loop (2.5 a second)
+	var seconds := 2.5
 	var n := int(RATE * seconds)
+	var center := 560.0                # Hz: the saw's middle note
+	var steps := PackedFloat32Array()
+	steps.resize(n)
+	var total := 0.0
+	for i in n:
+		var u := float(i) / n
+		# A slow swoop (up a fourth and back down, then a smaller dip) plus a 6-a-second wobble.
+		var swoop := 0.22 * sin(TAU * u) + 0.08 * sin(TAU * 2.0 * u + 1.0)
+		var wobble := 0.035 * sin(TAU * 15.0 * u)
+		steps[i] = TAU * center * pow(2.0, swoop + wobble) / RATE
+		total += steps[i]
+	var fix := roundf(total / TAU) * TAU / total
 	var data := PackedByteArray()
 	data.resize(n * 2)
+	var phase := 0.0
 	var noise := 0.0
 	var noise2 := 0.0
-	var phase := 0.0
+	var rng := RandomNumberGenerator.new()   # its own dice: building a sound mustn't shift the game's random numbers
+	rng.seed = 666
 	for i in n:
-		var t := float(i) / RATE
 		var u := float(i) / n
-		# Each beat: a quick swell of air ("fwump") that falls away again.
-		var b := fmod(u * beats, 1.0)
-		var beat := pow(sin(b * PI), 6.0)
-		noise = lerpf(noise, randf_range(-1.0, 1.0), 0.08)
+		phase += steps[i] * fix
+		# Mostly a pure, singing tone; a touch of 2nd and 3rd harmonic makes it hollow and metallic.
+		var saw := sin(phase) + 0.18 * sin(2.0 * phase) + 0.07 * sin(3.0 * phase)
+		var swell := 0.75 + 0.25 * sin(TAU * 2.0 * u)   # breathes louder and softer as the bow moves
+		var beat := pow(sin(fmod(u * 5.0, 1.0) * PI), 6.0)   # wing whooshes, 2 a second
+		noise = lerpf(noise, rng.randf_range(-1.0, 1.0), 0.08)
 		noise2 = lerpf(noise2, noise, 0.08)
-		phase += TAU * 55.0 / RATE  # a low hum under it
-		var s := noise2 * (3.0 + beat * 14.0) + sin(phase) * 0.12 * (0.4 + beat)
-		data.encode_s16(i * 2, int(clampf(s * 0.22, -1.0, 1.0) * 32767.0))
+		var s := saw * 0.42 * swell + noise2 * beat * 2.2
+		data.encode_s16(i * 2, int(clampf(s * 0.6, -1.0, 1.0) * 32767.0))
 	var wav := AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
 	wav.mix_rate = RATE

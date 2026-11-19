@@ -35,7 +35,9 @@ const MAX_EACH_TEAM := 3          # at most this many lying around per team
 const PICKUP_RANGE := 1.4
 const DEMON_DROP_BASE := 35.0     # seconds between demon drops (2 players, demons standing still)
 const DEMON_DROP_MIN := 12.0
-const ANGEL_HELP_AFTER := 30.0    # no catch, hit or angel power-up for this long: help the angels
+const ANGEL_HELP_AFTER := 55.0    # no catch, hit or angel power-up for this long: help the angels (was 30)
+const ANGEL_CATCH_DROP := 0.5     # a caught demon drops an angel power-up this often (was every time; Ted, Nov 18)
+const MAX_ANGEL_PICKUPS := 2      # and at most this many angel ones lying around
 const FIRE_BURST_RADIUS := 7.0
 const REST_HEIGHT := 0.45         # a dropped pickup comes to rest (bobbing) this high off the ground
 const FALL_GRAVITY := 18.0
@@ -75,7 +77,8 @@ func angels_made_progress() -> void:
 
 
 func demon_caught(where: Vector3) -> void:
-	_drop("angel", ANGEL_KINDS.pick_random(), where)
+	if randf() < ANGEL_CATCH_DROP and _count("angel") < MAX_ANGEL_PICKUPS:
+		_drop("angel", ANGEL_KINDS.pick_random(), where)
 	_last_angel_help = _now()
 
 
@@ -110,7 +113,7 @@ func decider_tick(delta: float) -> void:
 			_demon_timer = maxf(interval, DEMON_DROP_MIN)
 
 	# Struggling angels get a hand.
-	if not angels.is_empty() and t - _last_angel_help > ANGEL_HELP_AFTER and _count("angel") < MAX_EACH_TEAM:
+	if not angels.is_empty() and t - _last_angel_help > ANGEL_HELP_AFTER and _count("angel") < MAX_ANGEL_PICKUPS:
 		var a = angels.pick_random()[1]
 		var ang := randf() * TAU
 		_drop("angel", ANGEL_KINDS.pick_random(), a.global_position + Vector3(cos(ang), 0, sin(ang)) * randf_range(3.0, 5.0))

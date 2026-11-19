@@ -80,6 +80,34 @@ static func _mote_mesh(radius: float, glow: bool, color := Color.WHITE) -> Mesh:
 	return s
 
 
+# A flying demon's flames (Ted, Nov 18): hellfire licking down from under it and trailing behind as it goes.
+# Continuous: switch it on and off with `emitting`. Add it as a child of the flier, at its feet.
+static func fly_flames() -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = _count(70)
+	p.lifetime = 0.5
+	p.local_coords = false          # flames left behind in the air as it moves: a trail
+	p.emitting = false
+	p.mesh = _mote_mesh(0.13, true, Color(1.0, 0.45, 0.1))
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.3
+	p.direction = Vector3.DOWN
+	p.spread = 25.0
+	p.initial_velocity_min = 2.0
+	p.initial_velocity_max = 4.0
+	p.gravity = Vector3(0, 3.0, 0)   # flames rise as they burn out
+	p.damping_min = 3.0
+	p.damping_max = 5.0
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
+	g.colors = PackedColorArray([Color(1.0, 0.9, 0.35, 1.0), Color(1.0, 0.4, 0.05, 0.9), Color(0.35, 0.02, 0.02, 0.0)])
+	p.color_ramp = g
+	p.scale_amount_min = 0.7
+	p.scale_amount_max = 1.4
+	p.scale_amount_curve = _shrinking()
+	return p
+
+
 # Glowing motes bursting out from a point, drifting a little up as they fade.
 static func burst(parent: Node, pos: Vector3, color: Color, amount: int, speed: float, lifetime: float) -> void:
 	var p := _particles(parent, pos, amount, lifetime)
