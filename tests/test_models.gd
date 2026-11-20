@@ -175,27 +175,42 @@ func _run() -> void:
 	check(shown.size() >= 2 and shown.all(func(t): return "coffin" in t.to_lower()), "the palette search finds coffins %s" % [shown])
 	ed._filter_palette("")
 	check(ed._palette_buttons.all(func(e): return e[0].visible), "...and clearing it shows everything again")
-	# Extending a fence: dragging adds whole copies end to end (posts and all), either way.
+	# Pull tabs: dragging a fence's end tab adds whole copies end to end (posts and all), either end.
 	var fi: int = ed.place("model:halloween/fence", Vector3(0, 0, 10))
 	ed.select(fi)
 	var step: float = Models.row_step("halloween/fence").length()
 	var f0 := Vector3(0, 0, 10)
-	ed.begin("extend")
-	ed._drag_t0 = 0.0
-	ed.drag_update(f0 + Vector3(step * 2.6, 30, 0), Vector3.DOWN, Vector2.ZERO)
+	check(ed._tabs().size() == 2, "a selected fence has a pull tab at each end (%d)" % ed._tabs().size())
+	ed.pull_tab(0, 1)
+	ed.drag_update(f0 + Vector3(step * 3.7, 30, 0), Vector3.DOWN, Vector2.ZERO)
 	ed._end_drag(true)
 	var fp: Dictionary = ed.map["pieces"][fi]
-	check(int(fp.get("repeat", 1)) == 4 and fp["pos"] == [0.0, 0.0, 10.0], "dragging a fence longer repeats it end to end (%s in a row)" % fp.get("repeat", 1))
+	check(int(fp.get("repeat", 1)) == 4 and fp["pos"] == [0.0, 0.0, 10.0], "pulling its far tab repeats it end to end (%s in a row)" % fp.get("repeat", 1))
 	var posts: int = ed.nodes[fi].find_children("*", "StaticBody3D", true, false).size()
 	check(posts == 4, "...each copy whole and solid (%d)" % posts)
-	ed.begin("extend")
-	ed._drag_t0 = 0.0
-	ed.drag_update(f0 + Vector3(-step * 5.0, 30, 0), Vector3.DOWN, Vector2.ZERO)
+	ed.pull_tab(0, -1)
+	ed.drag_update(f0 + Vector3(-step * 2.4, 30, 0), Vector3.DOWN, Vector2.ZERO)
 	ed._end_drag(true)
 	fp = ed.map["pieces"][fi]
-	check(int(fp.get("repeat", 1)) == 3 and fp["pos"][0] < -step * 1.5, "...and dragging back past the start grows it the other way (%s, from x %.1f)" % [fp.get("repeat", 1), fp["pos"][0]])
-	ed.undo()
-	ed.undo()
+	check(int(fp.get("repeat", 1)) == 6 and is_equal_approx(fp["pos"][0], -step * 2.0), "...and pulling the near tab grows it the other way, the far end staying put (%s, from x %.2f)" % [fp.get("repeat", 1), fp["pos"][0]])
+	# Floors pull out both ways, into a grid
+	var fl: int = ed.place("model:dungeon/floor_wood_large", Vector3(-20, 0, -12))
+	ed.select(fl)
+	var fw: float = Models.row_step2("dungeon/floor_wood_large").length()
+	check(ed._tabs().size() == 4, "a selected floor has tabs on all four sides (%d)" % ed._tabs().size())
+	ed.pull_tab(1, 1)
+	ed.drag_update(Vector3(-20, 30, -12) + Models.row_step2("dungeon/floor_wood_large").normalized() * fw * 2.7, Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	ed.pull_tab(0, 1)
+	ed.drag_update(Vector3(-20, 30, -12) + Models.row_step("dungeon/floor_wood_large").normalized() * fw * 1.6, Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	var flp: Dictionary = ed.map["pieces"][fl]
+	var tiles: int = ed.nodes[fl].find_children("*", "StaticBody3D", true, false).size()
+	check(int(flp.get("repeat2", 1)) == 3 and int(flp.get("repeat", 1)) == 2 and tiles == 6, "...pulling two sides makes a 2 x 3 floor (%s x %s, %d tiles)" % [flp.get("repeat", 1), flp.get("repeat2", 1), tiles])
+	check(MapData.clean({"pieces": [{"type": "model", "model": "dungeon/wall", "pos": [0, 0, 0], "repeat2": 5}]})["pieces"][0].get("repeat2", 1) == 1,
+		"...but walls only ever repeat in a row")
+	for u in 5:
+		ed.undo()
 	check(not ed.map["pieces"][fi].has("repeat"), "...undo takes it back")
 	# Shift + wheel turns what you're about to place; arrow keys nudge the selected piece
 	ed.placing = "model:dungeon/wall"

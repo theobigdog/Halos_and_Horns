@@ -124,16 +124,31 @@ static func row_step(id: String, extra_scale := Vector3.ONE) -> Vector3:
 	return Vector3(s.x, 0, 0) if s.x >= s.z else Vector3(0, 0, s.z)
 
 
-# A structure repeated end to end: count copies, each exactly like the first (posts, columns and all).
-static func make_row(id: String, extra_scale := Vector3.ONE, count := 1) -> Node3D:
-	if count <= 1:
+# The other way across (for flat things like floors, which can be pulled out into a grid).
+static func row_step2(id: String, extra_scale := Vector3.ONE) -> Vector3:
+	var s := size(id) * extra_scale
+	return Vector3(0, 0, s.z) if s.x >= s.z else Vector3(s.x, 0, 0)
+
+
+# Flat pieces (floors, rugs, roads, paths) can be repeated both ways; walls and fences just in a row.
+static func is_flat(id: String) -> bool:
+	var s := size(id)
+	return s.y <= 0.35 * minf(s.x, s.z)
+
+
+# A structure repeated end to end (count), and for floors also side by side (count2): each copy
+# exactly like the first, posts, columns and all.
+static func make_row(id: String, extra_scale := Vector3.ONE, count := 1, count2 := 1) -> Node3D:
+	if count <= 1 and count2 <= 1:
 		return make_structure(id, extra_scale)
 	var row := Node3D.new()
 	var step := row_step(id, extra_scale)
-	for i in count:
-		var b := make_structure(id, extra_scale)
-		b.position = step * i
-		row.add_child(b)
+	var step2 := row_step2(id, extra_scale)
+	for j in maxi(count2, 1):
+		for i in maxi(count, 1):
+			var b := make_structure(id, extra_scale)
+			b.position = step * i + step2 * j
+			row.add_child(b)
 	return row
 
 

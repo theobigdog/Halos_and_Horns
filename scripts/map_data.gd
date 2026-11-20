@@ -25,6 +25,7 @@ const MAX_BYTES := 2 * 1024 * 1024
 const MAX_PIECES := 5000
 const MAX_COORD := 500.0
 const MAX_REPEAT := 100
+const MAX_GRID := 400            # copies in one floor, at most
 
 # Piece types and what each one needs.
 #   block / cylinder: solid shapes (size, rot, color)
@@ -177,6 +178,9 @@ static func clean(raw: Dictionary) -> Dictionary:
 			var rep := int(_num(p.get("repeat"), 1, MAX_REPEAT, 1))
 			if rep > 1:
 				c["repeat"] = rep   # copies end to end (a wall dragged longer)
+			var rep2 := int(_num(p.get("repeat2"), 1, MAX_REPEAT, 1))
+			if rep2 > 1 and Models.is_flat(c["model"]):
+				c["repeat2"] = mini(rep2, MAX_GRID / maxi(rep, 1))   # and side by side (a floor pulled out)
 		elif t == "prop":
 			if not PropLib.TYPES.has(p.get("prop")):
 				continue

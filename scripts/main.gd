@@ -781,15 +781,18 @@ func _build_map() -> void:
 			"model":
 				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
 				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
-				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)))
+				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)))
 				body.position = pos
 				body.rotation = MapData.rot_rad(p)
 				world_root.add_child(body)
 				var sz := Models.size(p["model"]) * sc
-				var step := Basis.from_euler(MapData.rot_rad(p)) * Models.row_step(p["model"], sc)
-				for k in int(p.get("repeat", 1)):
-					var at := pos + step * k
-					structures.append([Vector2(at.x, at.z), maxf(sz.x, sz.z) / 2.0 + 1.0])
+				var rb := Basis.from_euler(MapData.rot_rad(p))
+				var step := rb * Models.row_step(p["model"], sc)
+				var step2 := rb * Models.row_step2(p["model"], sc)
+				for k2 in int(p.get("repeat2", 1)):
+					for k in int(p.get("repeat", 1)):
+						var at := pos + step * k + step2 * k2
+						structures.append([Vector2(at.x, at.z), maxf(sz.x, sz.z) / 2.0 + 1.0])
 
 
 const CHERUB_PAD_SIDEWAYS := 3.0  # m/s a cherub at least drifts off a bouncy pad (first guess)

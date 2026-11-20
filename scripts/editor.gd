@@ -6,7 +6,8 @@
 # Click a piece to select it, or press on it and drag to move it around (it slides
 # over whatever's under the cursor: ground, roofs, other pieces). Or, once selected:
 #   G move   R rotate   T resize (blocks, cylinders and structures)
-#   V extend a structure: drag and it repeats end to end (walls, fences), posts and all
+#   Pull tabs (or V): a selected structure has glowing tabs at its ends; drag one and it repeats end
+#   to end (walls, fences), posts and all. Floors have tabs on their sides too, to pull out a grid.
 #     while doing it: X / Y / Z stick to one axis, L local or world axes,
 #     hold Alt for no snapping, click or Enter to finish, Esc or right-click to undo it
 #   Shift + mouse wheel: turn the piece you're about to place (or the selected one) around
@@ -88,6 +89,9 @@ var _id_count := 0
 var _id_prefix := ""
 var _preview: Node3D           # the see-through copy of the armed piece, under the mouse
 var _preview_kind := ""
+var _ext_axis := 0             # pulling a tab: 0 = along the row, 1 = across (floors)
+var _ext_side := 1
+var _tab_balls := []           # the pull tabs you see             # ...from the far end (1) or the near end (-1)
 var place_yaw := 0.0           # degrees: how the next placed piece is turned (Shift + wheel)
 
 # Building together online
@@ -292,7 +296,7 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			body.add_child(cs)
 			n.add_child(body)
 		"model":
-			n.add_child(Models.make_row(p["model"], MapData.vec(p["size"]) if p.has("size") else Vector3.ONE, int(p.get("repeat", 1))))
+			n.add_child(Models.make_row(p["model"], MapData.vec(p["size"]) if p.has("size") else Vector3.ONE, int(p.get("repeat", 1)), int(p.get("repeat2", 1))))
 		"bouncy", "bouncy_once", "bouncy_super":
 			var b := Bouncy.new()
 			b.one_use = t == "bouncy_once"
@@ -652,6 +656,9 @@ func _place_point(screen_pos: Vector2) -> Vector3:
 func begin(kind: String) -> void:
 	if not _may_edit():
 		return
+	if kind == "extend" and drag == "":
+		_ext_axis = 0
+		_ext_side = 1
 	if selected < 0:
 		_say("Select a piece first (click it).", 2.0)
 		return
@@ -675,10 +682,6 @@ func begin(kind: String) -> void:
 	if kind == "move":
 		_start_move_ray()
 	if kind == "extend":
-		var sc := MapData.vec(_drag_piece["size"]) if _drag_piece.has("size") else Vector3.ONE
-		var dir := (Basis.from_euler(MapData.rot_rad(_drag_piece)) * Models.row_step(_drag_piece["model"], sc)).normalized()
-		var r := _mouse_ray(_mouse())
-		_drag_t0 = _along_axis(MapData.vec(_drag_piece["pos"]), dir, r[0], r[1])
 		_say("Extending: move the mouse along it to add copies end to end. Click to finish, Esc to cancel.", 999.0)
 		return
 	_say({"move": "Moving", "rotate": "Rotating", "scale": "Resizing"}[kind] + ": X / Y / Z for one axis, L local/world, Alt no snap. Click to finish, Esc to cancel.", 999.0)
@@ -760,24 +763,37 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 			p["pos"] = [snappedf(pos.x, 0.001), snappedf(pos.y, 0.001), snappedf(pos.z, 0.001)]
 			nodes[selected].position = pos
 		"extend":
-			# The far end follows the mouse: whole copies get added (or taken away), never stretched.
-			var sc := MapData.vec(_drag_piece["size"]) if _drag_piece.has("size") else Vector3.ONE
-			var b0 := Basis.from_euler(MapData.rot_rad(_drag_piece))
-			var step := b0 * Models.row_step(p["model"], sc)
-			var w := maxf(step.length(), 0.05)
-			var dir := step / w
-			var t := _along_axis(start, dir, ray_from, ray_dir) - _drag_t0
-			var r0 := int(_drag_piece.get("repeat", 1))
-			var e := clampi(r0 - 1 + int(round(t / w)), 1 - MapData.MAX_REPEAT, MapData.MAX_REPEAT - 1)
-			var count := e + 1 if e >= 0 else 1 - e
-			var first := start if e >= 0 else start + dir * w * e
+			# The pulled end follows the mouse across the ground: whole copies get added (or taken away),
+			# never stretched. The other end stays put.
+			var ax := _ext_steps(_drag_piece)[_ext_axis] as Vector3
+			var w := maxf(ax.length(), 0.05)
+			var dir := ax / w
+			var key := "repeat" if _ext_axis == 0 else "repeat2"
+			var n0 := int(_drag_piece.get(key, 1))
+			var hit = Plane(Vector3.UP, start.y + 0.01).intersects_ray(ray_from, ray_dir)
+			if hit == null:
+				return
+			var count := 1
+			var first := start
+			if _ext_side > 0:
+				var from_edge: float = (hit - (start - dir * w * 0.5)).dot(dir)
+				count = clampi(roundi(from_edge / w), 1, MapData.MAX_REPEAT)
+			else:
+				var far_edge := start + dir * w * (n0 - 0.5)
+				var back: float = (far_edge - hit).dot(dir)
+				count = clampi(roundi(back / w), 1, MapData.MAX_REPEAT)
+				first = far_edge - dir * w * (count - 0.5)
+			var other := int(_drag_piece.get("repeat2" if _ext_axis == 0 else "repeat", 1))
+			count = mini(count, MapData.MAX_GRID / maxi(other, 1))
 			p["pos"] = [snappedf(first.x, 0.001), snappedf(first.y, 0.001), snappedf(first.z, 0.001)]
 			if count > 1:
-				p["repeat"] = count
+				p[key] = count
 			else:
-				p.erase("repeat")
+				p.erase(key)
 			_refresh_piece(selected)
-			_say("Extending: %d in a row. Click to finish, Esc to cancel." % count, 999.0)
+			var r1 := int(p.get("repeat", 1))
+			var r2 := int(p.get("repeat2", 1))
+			_say(("Extending: %d in a row" % r1 if r2 <= 1 else "Extending: %d x %d" % [r1, r2]) + ". Let go to finish, Esc to cancel.", 999.0)
 		"rotate":
 			var amount := (mouse_pos.x - _drag_mouse.x) * 0.5
 			if snap:
@@ -995,9 +1011,64 @@ func _click(at: Vector2) -> void:
 			placing = ""
 			_say("Placed. (Hold Shift while clicking to place several.)", 3.0)
 		return
+	var tab := _tab_under(at)
+	if not tab.is_empty():
+		pull_tab(tab[0], tab[1])
+		return
 	select(_piece_under(at))
 	_press_piece = selected
 	_press_at = at
+
+
+# A selected structure's pull tabs: [axis, side, where] (axis 0 along the row, 1 across, floors only).
+func _ext_steps(p: Dictionary) -> Array:
+	var sc := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+	var b := Basis.from_euler(MapData.rot_rad(p))
+	return [b * Models.row_step(p["model"], sc), b * Models.row_step2(p["model"], sc)]
+
+
+func _tabs() -> Array:
+	if selected < 0 or drag != "" or not can_edit:
+		return []
+	var p := piece(selected)
+	if p["type"] != "model":
+		return []
+	var steps := _ext_steps(p)
+	var n1 := int(p.get("repeat", 1))
+	var n2 := int(p.get("repeat2", 1))
+	var base := MapData.vec(p["pos"])
+	var sc := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+	var lift := Vector3.UP * clampf(Models.size(p["model"]).y * sc.y * 0.5, 0.3, 1.5)
+	var mid1: Vector3 = steps[0] * (n1 - 1) * 0.5
+	var mid2: Vector3 = steps[1] * (n2 - 1) * 0.5
+	var out := [
+		[0, 1, base + steps[0] * (n1 - 0.5) + mid2 + lift],
+		[0, -1, base - steps[0] * 0.5 + mid2 + lift],
+	]
+	if Models.is_flat(p["model"]):
+		out.append([1, 1, base + steps[1] * (n2 - 0.5) + mid1 + lift])
+		out.append([1, -1, base - steps[1] * 0.5 + mid1 + lift])
+	return out
+
+
+func _tab_under(at: Vector2) -> Array:
+	for t in _tabs():
+		if camera.is_position_behind(t[2]):
+			continue
+		if camera.unproject_position(t[2]).distance_to(at) < 22.0:
+			return [t[0], t[1]]
+	return []
+
+
+# Grab a pull tab: dragging the mouse adds whole copies at that end (or across, for floors).
+func pull_tab(axis_index: int, side: int) -> void:
+	begin("extend")
+	if drag != "extend":
+		return
+	_ext_axis = axis_index
+	_ext_side = side
+	_grabbing = true   # (letting go of the mouse finishes it)
+	_say("Pull it out (or back in). Let go to finish, Esc to cancel.", 999.0)
 
 
 func _toggle_local() -> void:
@@ -1089,6 +1160,34 @@ func _draw_lines() -> void:
 		if drag != "" and axis != "":
 			var d := _axis_dir(axis) if drag == "move" else (x.basis * ({"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}[axis] as Vector3)).normalized()
 			_line(n.global_position - d * 60.0, n.global_position + d * 60.0, AXIS_COLORS[axis])
+	# Pull tabs on a selected structure: glowing balls (seen through walls) with an arrow pointing out
+	var sel_p: Dictionary = piece(selected) if selected >= 0 else {}
+	var tabs := _tabs()
+	while _tab_balls.size() < tabs.size():
+		var ball := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 1.0
+		sm.height = 2.0
+		ball.mesh = sm
+		var m := StandardMaterial3D.new()
+		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		m.no_depth_test = true
+		m.render_priority = 11
+		ball.material_override = m
+		root.add_child(ball)
+		_tab_balls.append(ball)
+	for k in _tab_balls.size():
+		_tab_balls[k].visible = k < tabs.size()
+	for k in tabs.size():
+		var t: Array = tabs[k]
+		var steps := _ext_steps(sel_p)
+		var outward: Vector3 = (steps[t[0]] as Vector3).normalized() * t[1]
+		var c := Color(0.4, 1.0, 0.6) if t[0] == 0 else Color(0.5, 0.8, 1.0)
+		var rr := 0.14 * maxf(1.0, camera.global_position.distance_to(t[2]) / 8.0)
+		_tab_balls[k].position = t[2]
+		_tab_balls[k].scale = Vector3.ONE * rr
+		(_tab_balls[k].material_override as StandardMaterial3D).albedo_color = c
+		_line(t[2], t[2] + outward * rr * 3.0, c)
 	# What the other builders have selected, in their colour
 	for peer in claims:
 		var j := index_of(claims[peer])
@@ -2051,4 +2150,4 @@ func _say(text: String, seconds: float) -> void:
 
 
 func _help_text() -> String:
-	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   V extend   Shift+wheel turn   Arrows nudge   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
+	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend   Shift+wheel turn   Arrows nudge   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
