@@ -5,7 +5,7 @@
 # Pick a piece on the left, then click in the world to put it there.
 # Click a piece to select it, or press on it and drag to move it around (it slides
 # over whatever's under the cursor: ground, roofs, other pieces). Or, once selected:
-#   G move   R rotate   T resize (blocks and cylinders)
+#   G move   R rotate   T resize (blocks, cylinders and structures)
 #     while doing it: X / Y / Z stick to one axis, L local or world axes,
 #     hold Alt for no snapping, click or Enter to finish, Esc or right-click to undo it
 #   Ctrl+D copy   Delete remove   F fly to it   Ctrl+Z / Ctrl+Y undo / redo   Ctrl+S save
@@ -18,14 +18,17 @@ extends Node
 const MapData = preload("res://scripts/map_data.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const Bouncy = preload("res://scripts/bouncy.gd")
+const Models = preload("res://scripts/models.gd")
 const Shrine = preload("res://scripts/shrine.gd")
 
 const PIECES := [
 	["block", "Block"], ["cylinder", "Cylinder"],
-	["bouncy", "Bouncy (stays)"], ["bouncy_once", "Bouncy (one use a round)"],
+	["bouncy", "Bouncy (metal, stays)"], ["bouncy_once", "Bouncy (wooden, one use a round)"],
+	["bouncy_super", "Super bouncy (magic, stays)"],
 	["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
 ]
-const ROTATES := ["block", "cylinder", "prop"]       # the others always sit upright
+const ROTATES := ["block", "cylinder", "prop", "model"]       # the others always sit upright
+const RESIZES := ["block", "cylinder", "model"]       # (a model's "size" is how much it's scaled on each axis)
 const ONLY_ONE := ["shrine", "angel_spawn", "demon_spawn"]
 const GRID_STEPS := [0.25, 0.5, 1.0, 2.0]
 const ANGLE_STEP := 15.0
@@ -38,6 +41,9 @@ var map := {}                  # the map being built (MapData format)
 var path := ""                 # where it was opened from / saved to
 var dirty := false
 var selected := -1
+var _size_title: Label
+var _palette_sections := []    # [header button, VBox of buttons] for each category
+var _palette_buttons := []     # [button, lowercase search text, its section]
 var placing := ""              # armed palette piece: "block", "prop:barrel", ...
 var drag := ""                 # "", "move", "rotate", "scale"
 var axis := ""                 # "", "x", "y", "z"
@@ -230,9 +236,12 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			cs.position.y = PropLib.height(p["prop"]) / 2.0
 			body.add_child(cs)
 			n.add_child(body)
-		"bouncy", "bouncy_once":
+		"model":
+			n.add_child(Models.make_structure(p["model"], MapData.vec(p["size"]) if p.has("size") else Vector3.ONE))
+		"bouncy", "bouncy_once", "bouncy_super":
 			var b := Bouncy.new()
 			b.one_use = t == "bouncy_once"
+			b.super_bouncy = t == "bouncy_super"
 			n.add_child(b)
 		"shrine":
 			n.add_child(Shrine.new())
@@ -331,6 +340,8 @@ func place(kind: String, at: Vector3) -> int:
 	var p := {"type": kind, "pos": [at.x, at.y, at.z]}
 	if kind.begins_with("prop:"):
 		p = {"type": "prop", "prop": kind.substr(5), "pos": [at.x, at.y, at.z]}
+	elif kind.begins_with("model:"):
+		p = {"type": "model", "model": kind.substr(6), "pos": [at.x, at.y, at.z]}
 	elif kind == "block":
 		p["size"] = [4.0, 2.0, 4.0]
 		p["pos"][1] = at.y + 1.0
@@ -520,8 +531,8 @@ func begin(kind: String) -> void:
 	if kind == "rotate" and not t in ROTATES:
 		_say("That always sits upright.", 2.0)
 		return
-	if kind == "scale" and not t in ["block", "cylinder"]:
-		_say("Only blocks and cylinders can be resized.", 2.0)
+	if kind == "scale" and not t in RESIZES:
+		_say("Only blocks, cylinders and structures can be resized.", 2.0)
 		return
 	_end_drag(true)
 	drag = kind
@@ -623,7 +634,8 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 			nodes[selected].rotation = e
 		"scale":
 			var factor := maxf(1.0 + (mouse_pos.x - _drag_mouse.x) * 0.006, 0.02)
-			var s0 := MapData.vec(_drag_piece["size"])
+			var is_model: bool = p["type"] == "model"
+			var s0 := MapData.vec(_drag_piece["size"]) if _drag_piece.has("size") else Vector3.ONE
 			var s := s0
 			var which := ["x", "y", "z"] if axis == "" else [axis]
 			if p["type"] == "cylinder" and ("x" in which or "z" in which):
@@ -631,8 +643,8 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 			for a in which:
 				var v: float = s0[a] * factor
 				if snap:
-					v = maxf(snappedf(v, grid), grid)
-				s[a] = clampf(v, 0.05, 400.0)
+					v = maxf(snappedf(v, 0.05), 0.05) if is_model else maxf(snappedf(v, grid), grid)
+				s[a] = clampf(v, 0.1, 10.0) if is_model else clampf(v, 0.05, 400.0)
 			p["size"] = [s.x, s.y, s.z]
 			_refresh_piece(selected)
 	_sync_inspector()
@@ -1077,14 +1089,29 @@ func _build_ui() -> void:
 	var pal := VBoxContainer.new()
 	pal.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(pal)
-	_label(pal, "  Place")
+	var search := LineEdit.new()
+	search.placeholder_text = "Search props & structures..."
+	search.clear_button_enabled = true
+	search.text_changed.connect(_filter_palette)
+	pal.add_child(search)
+	var special := _palette_section(pal, "Place", true)
 	for p in PIECES:
 		var kind: String = p[0]
-		_small_button(pal, p[1], func(): _arm(kind))
-	_label(pal, "  Props")
-	for t in PropLib.type_names():
-		var kind: String = "prop:" + t
-		_small_button(pal, PropLib.label(t), func(): _arm(kind))
+		_palette_button(special, p[1], kind)
+	# Props (demons can be these), then structures (solid scenery), each by category
+	for group in [["Props", PropLib.type_names(), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
+		_label(pal, "  " + group[0] + " (%d)" % group[1].size())
+		var by_cat := {}
+		for t in group[1]:
+			var cat: String = PropLib.category(t) if group[2] == "prop:" else Models.category(t)
+			if not by_cat.has(cat):
+				by_cat[cat] = []
+			by_cat[cat].append(t)
+		for cat in by_cat:
+			var sec := _palette_section(pal, "%s (%d)" % [cat, by_cat[cat].size()], false)
+			for t in by_cat[cat]:
+				var label_text: String = PropLib.label(t) if group[2] == "prop:" else Models.label(t)
+				_palette_button(sec, label_text, group[2] + t, cat)
 
 	# Right: the selected piece
 	var right := PanelContainer.new()
@@ -1099,7 +1126,9 @@ func _build_ui() -> void:
 	_insp_title = _label(_inspector, "")
 	for row in [["pos", "Position (m)", -500, 500], ["rot", "Rotation (°)", -360, 360], ["size", "Size (m)", 0.05, 400]]:
 		var box := VBoxContainer.new()
-		_label(box, row[1])
+		var title_label := _label(box, row[1])
+		if row[0] == "size":
+			_size_title = title_label
 		var line := HBoxContainer.new()
 		box.add_child(line)
 		for a in 3:
@@ -1158,6 +1187,51 @@ func _build_ui() -> void:
 	_refresh_open_list()
 
 
+# A foldable list in the palette: click its header to open or close it.
+func _palette_section(pal: Control, title: String, open: bool) -> VBoxContainer:
+	var header := Button.new()
+	header.text = ("▼ " if open else "▶ ") + title
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header.flat = true
+	header.focus_mode = Control.FOCUS_NONE
+	pal.add_child(header)
+	var box := VBoxContainer.new()
+	box.visible = open
+	pal.add_child(box)
+	header.pressed.connect(func():
+		box.visible = not box.visible
+		header.text = ("▼ " if box.visible else "▶ ") + title)
+	_palette_sections.append([header, box])
+	return box
+
+
+func _palette_button(sec: VBoxContainer, text: String, kind: String, cat := "") -> void:
+	var b := _small_button(sec, "  " + text, func(): _arm(kind))
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_palette_buttons.append([b, (text + " " + cat + " " + kind).to_lower(), sec])
+
+
+# Typing in the search box shows only what matches (every word has to match), with their lists opened.
+func _filter_palette(text: String) -> void:
+	var words := text.to_lower().split(" ", false)
+	var shown := {}
+	for e in _palette_buttons:
+		var ok := true
+		for w in words:
+			if not w in e[1]:
+				ok = false
+				break
+		e[0].visible = ok
+		if ok:
+			shown[e[2]] = true
+	for sec in _palette_sections:
+		if words.is_empty():
+			sec[0].visible = true
+			continue
+		sec[0].visible = shown.has(sec[1])
+		sec[1].visible = shown.has(sec[1])
+
+
 func _label(parent: Control, text: String) -> Label:
 	var l := Label.new()
 	l.text = text
@@ -1183,6 +1257,8 @@ func _arm(kind: String) -> void:
 			label = p[1]
 	if kind.begins_with("prop:"):
 		label = PropLib.label(kind.substr(5))
+	if kind.begins_with("model:"):
+		label = Models.label(kind.substr(6))
 	_say("Click in the world to place: %s   (Esc cancels, hold Shift to place several)" % label, 999.0)
 
 
@@ -1228,13 +1304,16 @@ func _sync_inspector() -> void:
 			title = q[1]
 	if t == "prop":
 		title = "Prop: " + PropLib.label(p["prop"])
+	if t == "model":
+		title = "%s (%s)" % [Models.label(p["model"]), Models.category(p["model"])]
 	_insp_title.text = title
 	var vals := {"pos": p["pos"], "rot": p.get("rot", [0, 0, 0]), "size": p.get("size", [1, 1, 1])}
 	for k in vals:
 		for a in 3:
 			_spins[k + str(a)].set_value_no_signal(vals[k][a])
 	_rows["rot"].visible = t in ROTATES
-	_rows["size"].visible = t in ["block", "cylinder"]
+	_rows["size"].visible = t in RESIZES
+	_size_title.text = "Scale (× normal)" if t == "model" else "Size (m)"
 	_rows["color"].visible = t in ["block", "cylinder"]
 	_rows["prop"].visible = t == "prop"
 	if t in ["block", "cylinder"]:

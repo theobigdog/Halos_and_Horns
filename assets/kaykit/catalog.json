@@ -1,0 +1,10006 @@
+[
+{
+"id": "city/bench",
+"path": "res://assets/kaykit/city/bench.gltf",
+"label": "Bench",
+"cat": "Town",
+"kind": "prop",
+"scale": 4.5,
+"size": [
+1.8,
+0.45,
+0.675
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "city/box_A",
+"path": "res://assets/kaykit/city/box_A.gltf",
+"label": "Box A",
+"cat": "Town",
+"kind": "prop",
+"scale": 4.5,
+"size": [
+0.9,
+0.794,
+0.914
+],
+"offset": [
+-0.0,
+0.0,
+-0.007
+]
+},
+{
+"id": "city/box_B",
+"path": "res://assets/kaykit/city/box_B.gltf",
+"label": "Box B",
+"cat": "Town",
+"kind": "prop",
+"scale": 4.5,
+"size": [
+0.684,
+0.763,
+0.695
+],
+"offset": [
+0.0,
+0.0,
+-0.005
+]
+},
+{
+"id": "city/building_A_withoutBase",
+"path": "res://assets/kaykit/city/building_A_withoutBase.gltf",
+"label": "Town building A",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+5.43,
+6.975,
+6.525
+],
+"offset": [
+-0.0,
+-0.45,
+-0.338
+]
+},
+{
+"id": "city/building_B_withoutBase",
+"path": "res://assets/kaykit/city/building_B_withoutBase.gltf",
+"label": "Town building B",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+7.23,
+6.975,
+5.85
+],
+"offset": [
+-0.0,
+-0.45,
+0.0
+]
+},
+{
+"id": "city/building_C_withoutBase",
+"path": "res://assets/kaykit/city/building_C_withoutBase.gltf",
+"label": "Town building C",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+5.43,
+10.125,
+5.85
+],
+"offset": [
+-0.0,
+-0.45,
+0.0
+]
+},
+{
+"id": "city/building_D_withoutBase",
+"path": "res://assets/kaykit/city/building_D_withoutBase.gltf",
+"label": "Town building D",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+7.23,
+10.125,
+5.85
+],
+"offset": [
+-0.0,
+-0.45,
+0.0
+]
+},
+{
+"id": "city/building_E_withoutBase",
+"path": "res://assets/kaykit/city/building_E_withoutBase.gltf",
+"label": "Town building E",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.03,
+10.125,
+6.525
+],
+"offset": [
+-0.0,
+-0.45,
+-0.338
+]
+},
+{
+"id": "city/building_F_withoutBase",
+"path": "res://assets/kaykit/city/building_F_withoutBase.gltf",
+"label": "Town building F",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.03,
+10.125,
+5.85
+],
+"offset": [
+-0.0,
+-0.45,
+0.0
+]
+},
+{
+"id": "city/building_G_withoutBase",
+"path": "res://assets/kaykit/city/building_G_withoutBase.gltf",
+"label": "Town building G",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.03,
+10.125,
+6.525
+],
+"offset": [
+-0.0,
+-0.45,
+-0.338
+]
+},
+{
+"id": "city/building_H_withoutBase",
+"path": "res://assets/kaykit/city/building_H_withoutBase.gltf",
+"label": "Town building H",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.03,
+13.275,
+5.85
+],
+"offset": [
+-0.0,
+-0.45,
+0.0
+]
+},
+{
+"id": "city/bush",
+"path": "res://assets/kaykit/city/bush.gltf",
+"label": "Bush",
+"cat": "Town",
+"kind": "prop",
+"scale": 4.5,
+"size": [
+0.852,
+1.712,
+0.896
+],
+"offset": [
+-0.023,
+-0.0,
+0.0
+]
+},
+{
+"id": "city/car_hatchback",
+"path": "res://assets/kaykit/city/car_hatchback.gltf",
+"label": "Car hatchback",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+1.885,
+1.659,
+3.627
+],
+"offset": [
+-0.0,
+0.275,
+-0.035
+]
+},
+{
+"id": "city/car_police",
+"path": "res://assets/kaykit/city/car_police.gltf",
+"label": "Car police",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+1.885,
+1.857,
+4.221
+],
+"offset": [
+-0.0,
+0.275,
+0.015
+]
+},
+{
+"id": "city/car_sedan",
+"path": "res://assets/kaykit/city/car_sedan.gltf",
+"label": "Car sedan",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+1.885,
+1.659,
+4.221
+],
+"offset": [
+-0.0,
+0.275,
+0.015
+]
+},
+{
+"id": "city/car_stationwagon",
+"path": "res://assets/kaykit/city/car_stationwagon.gltf",
+"label": "Car station wagon",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+1.885,
+1.659,
+4.221
+],
+"offset": [
+-0.0,
+0.275,
+0.015
+]
+},
+{
+"id": "city/car_taxi",
+"path": "res://assets/kaykit/city/car_taxi.gltf",
+"label": "Car taxi",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+1.885,
+1.955,
+4.221
+],
+"offset": [
+-0.0,
+0.275,
+0.015
+]
+},
+{
+"id": "city/dumpster",
+"path": "res://assets/kaykit/city/dumpster.gltf",
+"label": "Dumpster",
+"cat": "Town",
+"kind": "prop",
+"scale": 4.5,
+"size": [
+2.547,
+1.428,
+1.588
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "city/firehydrant",
+"path": "res://assets/kaykit/city/firehydrant.gltf",
+"label": "Fire hydrant",
+"cat": "Town",
+"kind": "prop",
+"scale": 4.5,
+"size": [
+0.61,
+1.011,
+0.591
+],
+"offset": [
+-0.0,
+-0.0,
+-0.003
+]
+},
+{
+"id": "city/road_corner",
+"path": "res://assets/kaykit/city/road_corner.gltf",
+"label": "Road corner",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.0,
+0.45,
+9.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "city/road_corner_curved",
+"path": "res://assets/kaykit/city/road_corner_curved.gltf",
+"label": "Road corner curved",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.0,
+0.45,
+9.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "city/road_junction",
+"path": "res://assets/kaykit/city/road_junction.gltf",
+"label": "Road junction",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.0,
+0.45,
+9.0
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "city/road_straight",
+"path": "res://assets/kaykit/city/road_straight.gltf",
+"label": "Road straight",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.0,
+0.45,
+9.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "city/road_straight_crossing",
+"path": "res://assets/kaykit/city/road_straight_crossing.gltf",
+"label": "Road straight crossing",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.0,
+0.45,
+9.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "city/road_tsplit",
+"path": "res://assets/kaykit/city/road_tsplit.gltf",
+"label": "Road tsplit",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.0,
+0.45,
+9.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "city/streetlight",
+"path": "res://assets/kaykit/city/streetlight.gltf",
+"label": "Street light",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+1.212,
+4.32,
+0.311
+],
+"offset": [
+0.471,
+-0.0,
+0.0
+]
+},
+{
+"id": "city/trafficlight_A",
+"path": "res://assets/kaykit/city/trafficlight_A.gltf",
+"label": "Traffic light A",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+0.785,
+3.283,
+0.678
+],
+"offset": [
+0.213,
+-0.0,
+-0.159
+]
+},
+{
+"id": "city/trafficlight_B",
+"path": "res://assets/kaykit/city/trafficlight_B.gltf",
+"label": "Traffic light B",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+1.256,
+4.32,
+0.678
+],
+"offset": [
+0.449,
+-0.0,
+-0.159
+]
+},
+{
+"id": "city/trafficlight_C",
+"path": "res://assets/kaykit/city/trafficlight_C.gltf",
+"label": "Traffic light C",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+3.59,
+4.363,
+1.222
+],
+"offset": [
+1.643,
+-0.0,
+0.005
+]
+},
+{
+"id": "city/trash_A",
+"path": "res://assets/kaykit/city/trash_A.gltf",
+"label": "Trash A",
+"cat": "Town",
+"kind": "prop",
+"scale": 4.5,
+"size": [
+0.57,
+0.236,
+0.6
+],
+"offset": [
+-0.015,
+-0.0,
+0.0
+]
+},
+{
+"id": "city/trash_B",
+"path": "res://assets/kaykit/city/trash_B.gltf",
+"label": "Trash B",
+"cat": "Town",
+"kind": "prop",
+"scale": 4.5,
+"size": [
+0.306,
+0.182,
+0.319
+],
+"offset": [
+-0.034,
+-0.0,
+-0.014
+]
+},
+{
+"id": "city/watertower",
+"path": "res://assets/kaykit/city/watertower.gltf",
+"label": "Water tower",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+2.245,
+3.015,
+2.245
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/banner_blue",
+"path": "res://assets/kaykit/dungeon/banner_blue.gltf",
+"label": "Banner blue",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+2.397,
+0.234
+],
+"offset": [
+-0.0,
+-0.399,
+-0.4
+]
+},
+{
+"id": "dungeon/banner_patternA_blue",
+"path": "res://assets/kaykit/dungeon/banner_patternA_blue.gltf",
+"label": "Banner patternA blue",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+2.397,
+0.234
+],
+"offset": [
+-0.0,
+-0.399,
+-0.4
+]
+},
+{
+"id": "dungeon/banner_patternA_red",
+"path": "res://assets/kaykit/dungeon/banner_patternA_red.gltf",
+"label": "Banner patternA red",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+2.397,
+0.234
+],
+"offset": [
+-0.0,
+-0.399,
+-0.4
+]
+},
+{
+"id": "dungeon/banner_patternB_blue",
+"path": "res://assets/kaykit/dungeon/banner_patternB_blue.gltf",
+"label": "Banner patternB blue",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+2.397,
+0.234
+],
+"offset": [
+-0.0,
+-0.399,
+-0.4
+]
+},
+{
+"id": "dungeon/banner_patternB_red",
+"path": "res://assets/kaykit/dungeon/banner_patternB_red.gltf",
+"label": "Banner patternB red",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+2.397,
+0.234
+],
+"offset": [
+-0.0,
+-0.399,
+-0.4
+]
+},
+{
+"id": "dungeon/banner_patternC_blue",
+"path": "res://assets/kaykit/dungeon/banner_patternC_blue.gltf",
+"label": "Banner patternC blue",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+2.397,
+0.234
+],
+"offset": [
+-0.0,
+-0.399,
+-0.4
+]
+},
+{
+"id": "dungeon/banner_patternC_red",
+"path": "res://assets/kaykit/dungeon/banner_patternC_red.gltf",
+"label": "Banner patternC red",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+2.397,
+0.234
+],
+"offset": [
+-0.0,
+-0.399,
+-0.4
+]
+},
+{
+"id": "dungeon/banner_red",
+"path": "res://assets/kaykit/dungeon/banner_red.gltf",
+"label": "Banner red",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+2.397,
+0.234
+],
+"offset": [
+-0.0,
+-0.399,
+-0.4
+]
+},
+{
+"id": "dungeon/banner_shield_blue",
+"path": "res://assets/kaykit/dungeon/banner_shield_blue.gltf",
+"label": "Banner shield blue",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.674,
+2.397,
+0.281
+],
+"offset": [
+-0.0,
+-0.399,
+-0.377
+]
+},
+{
+"id": "dungeon/banner_shield_red",
+"path": "res://assets/kaykit/dungeon/banner_shield_red.gltf",
+"label": "Banner shield red",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.674,
+2.397,
+0.281
+],
+"offset": [
+-0.0,
+-0.399,
+-0.377
+]
+},
+{
+"id": "dungeon/banner_thin_blue",
+"path": "res://assets/kaykit/dungeon/banner_thin_blue.gltf",
+"label": "Banner thin blue",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.825,
+2.378,
+0.272
+],
+"offset": [
+-0.0,
+-0.417,
+-0.401
+]
+},
+{
+"id": "dungeon/banner_thin_red",
+"path": "res://assets/kaykit/dungeon/banner_thin_red.gltf",
+"label": "Banner thin red",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.825,
+2.378,
+0.272
+],
+"offset": [
+-0.0,
+-0.417,
+-0.401
+]
+},
+{
+"id": "dungeon/banner_triple_blue",
+"path": "res://assets/kaykit/dungeon/banner_triple_blue.gltf",
+"label": "Banner triple blue",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.775,
+2.397,
+0.272
+],
+"offset": [
+-0.0,
+-0.399,
+-0.401
+]
+},
+{
+"id": "dungeon/banner_triple_red",
+"path": "res://assets/kaykit/dungeon/banner_triple_red.gltf",
+"label": "Banner triple red",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.775,
+2.397,
+0.272
+],
+"offset": [
+-0.0,
+-0.399,
+-0.401
+]
+},
+{
+"id": "dungeon/barrel_large",
+"path": "res://assets/kaykit/dungeon/barrel_large.gltf",
+"label": "Barrel large",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.35,
+1.5,
+1.35
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/barrel_large_decorated",
+"path": "res://assets/kaykit/dungeon/barrel_large_decorated.gltf",
+"label": "Barrel large decorated",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.453,
+1.917,
+1.392
+],
+"offset": [
+-0.038,
+0.001,
+-0.007
+]
+},
+{
+"id": "dungeon/barrel_small",
+"path": "res://assets/kaykit/dungeon/barrel_small.gltf",
+"label": "Barrel small",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.751,
+0.763,
+0.751
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/barrel_small_stack",
+"path": "res://assets/kaykit/dungeon/barrel_small_stack.gltf",
+"label": "Barrel small stack",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.388,
+1.328,
+0.75
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/barrier",
+"path": "res://assets/kaykit/dungeon/barrier.gltf",
+"label": "Barrier",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.825,
+0.375
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/barrier_colum_half",
+"path": "res://assets/kaykit/dungeon/barrier_colum_half.gltf",
+"label": "Barrier column half",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.762,
+1.05,
+0.525
+],
+"offset": [
+-0.619,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/barrier_column",
+"path": "res://assets/kaykit/dungeon/barrier_column.gltf",
+"label": "Barrier column",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+1.05,
+0.525
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/barrier_corner",
+"path": "res://assets/kaykit/dungeon/barrier_corner.gltf",
+"label": "Barrier corner",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.796,
+1.05,
+1.796
+],
+"offset": [
+0.602,
+-0.0,
+-0.602
+]
+},
+{
+"id": "dungeon/barrier_half",
+"path": "res://assets/kaykit/dungeon/barrier_half.gltf",
+"label": "Barrier half",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.825,
+0.375
+],
+"offset": [
+-0.75,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/bed_decorated",
+"path": "res://assets/kaykit/dungeon/bed_decorated.gltf",
+"label": "Bed decorated",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.955,
+1.276,
+2.293
+],
+"offset": [
+-0.415,
+-0.0,
+0.021
+]
+},
+{
+"id": "dungeon/bed_floor",
+"path": "res://assets/kaykit/dungeon/bed_floor.gltf",
+"label": "Bed floor",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+0.422,
+2.25
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bed_frame",
+"path": "res://assets/kaykit/dungeon/bed_frame.gltf",
+"label": "Bed frame",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.797,
+2.25
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bottle_A_brown",
+"path": "res://assets/kaykit/dungeon/bottle_A_brown.gltf",
+"label": "Bottle A brown",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.276,
+0.664,
+0.276
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bottle_A_green",
+"path": "res://assets/kaykit/dungeon/bottle_A_green.gltf",
+"label": "Bottle A green",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.276,
+0.664,
+0.276
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bottle_A_labeled_brown",
+"path": "res://assets/kaykit/dungeon/bottle_A_labeled_brown.gltf",
+"label": "Bottle A labeled brown",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.276,
+0.664,
+0.276
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bottle_A_labeled_green",
+"path": "res://assets/kaykit/dungeon/bottle_A_labeled_green.gltf",
+"label": "Bottle A labeled green",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.276,
+0.664,
+0.276
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bottle_B_brown",
+"path": "res://assets/kaykit/dungeon/bottle_B_brown.gltf",
+"label": "Bottle B brown",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.415,
+0.664,
+0.415
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bottle_B_green",
+"path": "res://assets/kaykit/dungeon/bottle_B_green.gltf",
+"label": "Bottle B green",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.415,
+0.664,
+0.415
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bottle_C_brown",
+"path": "res://assets/kaykit/dungeon/bottle_C_brown.gltf",
+"label": "Bottle C brown",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.553,
+0.68,
+0.553
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/bottle_C_green",
+"path": "res://assets/kaykit/dungeon/bottle_C_green.gltf",
+"label": "Bottle C green",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.553,
+0.68,
+0.553
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/box_large",
+"path": "res://assets/kaykit/dungeon/box_large.gltf",
+"label": "Box large",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+1.125,
+1.125
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/box_small",
+"path": "res://assets/kaykit/dungeon/box_small.gltf",
+"label": "Box small",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.75,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/box_small_decorated",
+"path": "res://assets/kaykit/dungeon/box_small_decorated.gltf",
+"label": "Box small decorated",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.117,
+1.112,
+1.115
+],
+"offset": [
+-0.1,
+0.0,
+-0.083
+]
+},
+{
+"id": "dungeon/box_stacked",
+"path": "res://assets/kaykit/dungeon/box_stacked.gltf",
+"label": "Box stacked",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.606,
+2.482,
+2.726
+],
+"offset": [
+0.01,
+0.0,
+-0.033
+]
+},
+{
+"id": "dungeon/candle",
+"path": "res://assets/kaykit/dungeon/candle.gltf",
+"label": "Candle",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.251,
+0.655,
+0.247
+],
+"offset": [
+0.0,
+-0.0,
+0.004
+]
+},
+{
+"id": "dungeon/candle_lit",
+"path": "res://assets/kaykit/dungeon/candle_lit.gltf",
+"label": "Candle lit",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.251,
+0.788,
+0.247
+],
+"offset": [
+0.0,
+-0.0,
+0.004
+]
+},
+{
+"id": "dungeon/candle_melted",
+"path": "res://assets/kaykit/dungeon/candle_melted.gltf",
+"label": "Candle melted",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.251,
+0.526,
+0.247
+],
+"offset": [
+0.0,
+-0.0,
+0.004
+]
+},
+{
+"id": "dungeon/candle_thin",
+"path": "res://assets/kaykit/dungeon/candle_thin.gltf",
+"label": "Candle thin",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.145,
+0.655,
+0.143
+],
+"offset": [
+0.0,
+-0.0,
+0.002
+]
+},
+{
+"id": "dungeon/candle_thin_lit",
+"path": "res://assets/kaykit/dungeon/candle_thin_lit.gltf",
+"label": "Candle thin lit",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.145,
+0.788,
+0.143
+],
+"offset": [
+0.0,
+-0.0,
+0.002
+]
+},
+{
+"id": "dungeon/candle_triple",
+"path": "res://assets/kaykit/dungeon/candle_triple.gltf",
+"label": "Candle triple",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.376,
+0.655,
+0.292
+],
+"offset": [
+-0.063,
+-0.0,
+-0.027
+]
+},
+{
+"id": "dungeon/chair",
+"path": "res://assets/kaykit/dungeon/chair.gltf",
+"label": "Chair",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.563,
+0.92,
+0.563
+],
+"offset": [
+-0.001,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/chest",
+"path": "res://assets/kaykit/dungeon/chest.gltf",
+"label": "Chest",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.275,
+0.975,
+1.084
+],
+"offset": [
+-0.0,
+0.0,
+-0.017
+]
+},
+{
+"id": "dungeon/chest_gold",
+"path": "res://assets/kaykit/dungeon/chest_gold.gltf",
+"label": "Chest gold",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.275,
+0.975,
+1.084
+],
+"offset": [
+-0.0,
+0.0,
+-0.017
+]
+},
+{
+"id": "dungeon/coin",
+"path": "res://assets/kaykit/dungeon/coin.gltf",
+"label": "Coin",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.27,
+0.094,
+0.27
+],
+"offset": [
+-0.0,
+0.047,
+0.0
+],
+"round": true
+},
+{
+"id": "dungeon/coin_stack_large",
+"path": "res://assets/kaykit/dungeon/coin_stack_large.gltf",
+"label": "Coin stack large",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.077,
+0.868,
+1.244
+],
+"offset": [
+0.001,
+-0.0,
+-0.01
+]
+},
+{
+"id": "dungeon/coin_stack_medium",
+"path": "res://assets/kaykit/dungeon/coin_stack_medium.gltf",
+"label": "Coin stack medium",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.745,
+0.481,
+0.776
+],
+"offset": [
+-0.038,
+0.0,
+-0.007
+]
+},
+{
+"id": "dungeon/coin_stack_small",
+"path": "res://assets/kaykit/dungeon/coin_stack_small.gltf",
+"label": "Coin stack small",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.719,
+0.359,
+0.672
+],
+"offset": [
+-0.026,
+0.0,
+0.009
+]
+},
+{
+"id": "dungeon/column",
+"path": "res://assets/kaykit/dungeon/column.gltf",
+"label": "Column",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.525,
+1.05,
+0.525
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/crates_stacked",
+"path": "res://assets/kaykit/dungeon/crates_stacked.gltf",
+"label": "Crates stacked",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.567,
+1.607,
+1.687
+],
+"offset": [
+0.034,
+0.0,
+0.024
+]
+},
+{
+"id": "dungeon/floor_dirt_large",
+"path": "res://assets/kaykit/dungeon/floor_dirt_large.gltf",
+"label": "Floor dirt large",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.156,
+3.0
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_dirt_large_rocky",
+"path": "res://assets/kaykit/dungeon/floor_dirt_large_rocky.gltf",
+"label": "Floor dirt large rocky",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.295,
+3.0
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_dirt_small_A",
+"path": "res://assets/kaykit/dungeon/floor_dirt_small_A.gltf",
+"label": "Floor dirt small A",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.14,
+1.5
+],
+"offset": [
+0.0,
+0.075,
+0.0
+]
+},
+{
+"id": "dungeon/floor_dirt_small_B",
+"path": "res://assets/kaykit/dungeon/floor_dirt_small_B.gltf",
+"label": "Floor dirt small B",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.141,
+1.5
+],
+"offset": [
+0.0,
+0.075,
+0.0
+]
+},
+{
+"id": "dungeon/floor_dirt_small_C",
+"path": "res://assets/kaykit/dungeon/floor_dirt_small_C.gltf",
+"label": "Floor dirt small C",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.156,
+1.5
+],
+"offset": [
+0.0,
+0.075,
+0.0
+]
+},
+{
+"id": "dungeon/floor_dirt_small_D",
+"path": "res://assets/kaykit/dungeon/floor_dirt_small_D.gltf",
+"label": "Floor dirt small D",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.104,
+1.5
+],
+"offset": [
+0.0,
+0.075,
+0.0
+]
+},
+{
+"id": "dungeon/floor_dirt_small_corner",
+"path": "res://assets/kaykit/dungeon/floor_dirt_small_corner.gltf",
+"label": "Floor dirt small corner",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.115,
+1.5
+],
+"offset": [
+0.0,
+0.075,
+0.0
+]
+},
+{
+"id": "dungeon/floor_dirt_small_weeds",
+"path": "res://assets/kaykit/dungeon/floor_dirt_small_weeds.gltf",
+"label": "Floor dirt small weeds",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.222,
+1.5
+],
+"offset": [
+0.0,
+0.075,
+0.0
+]
+},
+{
+"id": "dungeon/floor_foundation_allsides",
+"path": "res://assets/kaykit/dungeon/floor_foundation_allsides.gltf",
+"label": "Floor foundation allsides",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.65,
+1.5,
+1.65
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_foundation_corner",
+"path": "res://assets/kaykit/dungeon/floor_foundation_corner.gltf",
+"label": "Floor foundation corner",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.575,
+1.5,
+1.575
+],
+"offset": [
+0.038,
+-0.0,
+-0.037
+]
+},
+{
+"id": "dungeon/floor_foundation_diagonal_corner",
+"path": "res://assets/kaykit/dungeon/floor_foundation_diagonal_corner.gltf",
+"label": "Floor foundation diagonal corner",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.575,
+1.5,
+1.575
+],
+"offset": [
+0.038,
+-0.0,
+-0.037
+]
+},
+{
+"id": "dungeon/floor_foundation_front",
+"path": "res://assets/kaykit/dungeon/floor_foundation_front.gltf",
+"label": "Floor foundation front",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.5,
+1.575
+],
+"offset": [
+-0.0,
+-0.0,
+-0.037
+]
+},
+{
+"id": "dungeon/floor_foundation_front_and_back",
+"path": "res://assets/kaykit/dungeon/floor_foundation_front_and_back.gltf",
+"label": "Floor foundation front and back",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.5,
+1.65
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_foundation_front_and_sides",
+"path": "res://assets/kaykit/dungeon/floor_foundation_front_and_sides.gltf",
+"label": "Floor foundation front and sides",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.65,
+1.5,
+1.575
+],
+"offset": [
+-0.0,
+-0.0,
+-0.037
+]
+},
+{
+"id": "dungeon/floor_tile_big_grate",
+"path": "res://assets/kaykit/dungeon/floor_tile_big_grate.gltf",
+"label": "Floor tile big grate",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.787,
+3.0
+],
+"offset": [
+-0.0,
+0.75,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_big_grate_open",
+"path": "res://assets/kaykit/dungeon/floor_tile_big_grate_open.gltf",
+"label": "Floor tile big grate open",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.787,
+3.0
+],
+"offset": [
+-0.0,
+0.75,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_big_spikes",
+"path": "res://assets/kaykit/dungeon/floor_tile_big_spikes.gltf",
+"label": "Floor tile big spikes",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+1.575,
+3.0
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_extralarge_grates",
+"path": "res://assets/kaykit/dungeon/floor_tile_extralarge_grates.gltf",
+"label": "Floor tile extralarge grates",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+6.0,
+0.847,
+6.0
+],
+"offset": [
+-0.0,
+0.735,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_extralarge_grates_open",
+"path": "res://assets/kaykit/dungeon/floor_tile_extralarge_grates_open.gltf",
+"label": "Floor tile extralarge grates open",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+6.0,
+0.847,
+6.0
+],
+"offset": [
+-0.0,
+0.735,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_grate",
+"path": "res://assets/kaykit/dungeon/floor_tile_grate.gltf",
+"label": "Floor tile grate",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.772,
+1.5
+],
+"offset": [
+-0.0,
+0.735,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_grate_open",
+"path": "res://assets/kaykit/dungeon/floor_tile_grate_open.gltf",
+"label": "Floor tile grate open",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.772,
+1.5
+],
+"offset": [
+-0.0,
+0.735,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_large",
+"path": "res://assets/kaykit/dungeon/floor_tile_large.gltf",
+"label": "Floor tile large",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.113,
+3.0
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_large_rocks",
+"path": "res://assets/kaykit/dungeon/floor_tile_large_rocks.gltf",
+"label": "Floor tile large rocks",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.477,
+3.0
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_small",
+"path": "res://assets/kaykit/dungeon/floor_tile_small.gltf",
+"label": "Floor tile small",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.113,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_small_broken_A",
+"path": "res://assets/kaykit/dungeon/floor_tile_small_broken_A.gltf",
+"label": "Floor tile small broken A",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.113,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_small_broken_B",
+"path": "res://assets/kaykit/dungeon/floor_tile_small_broken_B.gltf",
+"label": "Floor tile small broken B",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.113,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_small_corner",
+"path": "res://assets/kaykit/dungeon/floor_tile_small_corner.gltf",
+"label": "Floor tile small corner",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.113,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_small_decorated",
+"path": "res://assets/kaykit/dungeon/floor_tile_small_decorated.gltf",
+"label": "Floor tile small decorated",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.58,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_small_weeds_A",
+"path": "res://assets/kaykit/dungeon/floor_tile_small_weeds_A.gltf",
+"label": "Floor tile small weeds A",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.222,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_tile_small_weeds_B",
+"path": "res://assets/kaykit/dungeon/floor_tile_small_weeds_B.gltf",
+"label": "Floor tile small weeds B",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.222,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_wood_large",
+"path": "res://assets/kaykit/dungeon/floor_wood_large.gltf",
+"label": "Floor wood large",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.113,
+3.0
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_wood_large_dark",
+"path": "res://assets/kaykit/dungeon/floor_wood_large_dark.gltf",
+"label": "Floor wood large dark",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.113,
+3.0
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_wood_small",
+"path": "res://assets/kaykit/dungeon/floor_wood_small.gltf",
+"label": "Floor wood small",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.113,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/floor_wood_small_dark",
+"path": "res://assets/kaykit/dungeon/floor_wood_small_dark.gltf",
+"label": "Floor wood small dark",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.113,
+1.5
+],
+"offset": [
+-0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "dungeon/keg",
+"path": "res://assets/kaykit/dungeon/keg.gltf",
+"label": "Keg",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.35,
+1.538,
+1.5
+],
+"offset": [
+0.0,
+-0.0,
+-0.018
+]
+},
+{
+"id": "dungeon/keg_decorated",
+"path": "res://assets/kaykit/dungeon/keg_decorated.gltf",
+"label": "Keg decorated",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.64,
+1.538,
+1.5
+],
+"offset": [
+0.045,
+-0.0,
+-0.018
+]
+},
+{
+"id": "dungeon/key",
+"path": "res://assets/kaykit/dungeon/key.gltf",
+"label": "Key",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.672,
+0.302,
+0.106
+],
+"offset": [
+-0.19,
+0.151,
+-0.0
+]
+},
+{
+"id": "dungeon/keyring",
+"path": "res://assets/kaykit/dungeon/keyring.gltf",
+"label": "Keyring",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.773,
+0.196,
+0.907
+],
+"offset": [
+-0.051,
+0.015,
+0.051
+]
+},
+{
+"id": "dungeon/keyring_hanging",
+"path": "res://assets/kaykit/dungeon/keyring_hanging.gltf",
+"label": "Keyring hanging",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.51,
+0.915,
+0.288
+],
+"offset": [
+0.0,
+0.897,
+-0.025
+]
+},
+{
+"id": "dungeon/pillar",
+"path": "res://assets/kaykit/dungeon/pillar.gltf",
+"label": "Pillar",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+3.0,
+1.125
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/pillar_decorated",
+"path": "res://assets/kaykit/dungeon/pillar_decorated.gltf",
+"label": "Pillar decorated",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.674,
+3.0,
+1.283
+],
+"offset": [
+-0.0,
+-0.0,
+-0.079
+]
+},
+{
+"id": "dungeon/plate",
+"path": "res://assets/kaykit/dungeon/plate.gltf",
+"label": "Plate",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.728,
+0.097,
+0.728
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/plate_food_A",
+"path": "res://assets/kaykit/dungeon/plate_food_A.gltf",
+"label": "Plate food A",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.769,
+0.591,
+0.728
+],
+"offset": [
+0.021,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/plate_food_B",
+"path": "res://assets/kaykit/dungeon/plate_food_B.gltf",
+"label": "Plate food B",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.728,
+0.177,
+0.728
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/plate_small",
+"path": "res://assets/kaykit/dungeon/plate_small.gltf",
+"label": "Plate small",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.364,
+0.097,
+0.364
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/plate_stack",
+"path": "res://assets/kaykit/dungeon/plate_stack.gltf",
+"label": "Plate stack",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.748,
+0.423,
+0.751
+],
+"offset": [
+-0.005,
+-0.0,
+0.001
+]
+},
+{
+"id": "dungeon/rubble_half",
+"path": "res://assets/kaykit/dungeon/rubble_half.gltf",
+"label": "Rubble half",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+2.625,
+2.25
+],
+"offset": [
+-1.5,
+0.0,
+0.012
+]
+},
+{
+"id": "dungeon/rubble_large",
+"path": "res://assets/kaykit/dungeon/rubble_large.gltf",
+"label": "Rubble large",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+6.097,
+2.622,
+2.387
+],
+"offset": [
+0.003,
+-0.0,
+-0.004
+]
+},
+{
+"id": "dungeon/shelf_large",
+"path": "res://assets/kaykit/dungeon/shelf_large.gltf",
+"label": "Shelf large",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.337,
+0.375
+],
+"offset": [
+-0.0,
+0.263,
+-0.188
+]
+},
+{
+"id": "dungeon/shelf_small",
+"path": "res://assets/kaykit/dungeon/shelf_small.gltf",
+"label": "Shelf small",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.75,
+0.3,
+0.375
+],
+"offset": [
+-0.0,
+0.225,
+-0.187
+]
+},
+{
+"id": "dungeon/shelf_small_candles",
+"path": "res://assets/kaykit/dungeon/shelf_small_candles.gltf",
+"label": "Shelf small candles",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.75,
+0.746,
+0.375
+],
+"offset": [
+-0.0,
+0.225,
+-0.187
+]
+},
+{
+"id": "dungeon/shelves",
+"path": "res://assets/kaykit/dungeon/shelves.gltf",
+"label": "Shelves",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.462,
+0.375
+],
+"offset": [
+-0.0,
+-0.562,
+-0.375
+]
+},
+{
+"id": "dungeon/stairs",
+"path": "res://assets/kaykit/dungeon/stairs.gltf",
+"label": "Stairs",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.75,
+3.825,
+3.0
+],
+"offset": [
+0.0,
+-0.0,
+-1.5
+]
+},
+{
+"id": "dungeon/stairs_narrow",
+"path": "res://assets/kaykit/dungeon/stairs_narrow.gltf",
+"label": "Stairs narrow",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.825,
+3.0
+],
+"offset": [
+0.0,
+-0.0,
+-1.5
+]
+},
+{
+"id": "dungeon/stairs_wall_left",
+"path": "res://assets/kaykit/dungeon/stairs_wall_left.gltf",
+"label": "Stairs wall left",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.825,
+3.75
+],
+"offset": [
+-0.0,
+-0.0,
+-1.5
+]
+},
+{
+"id": "dungeon/stairs_wall_right",
+"path": "res://assets/kaykit/dungeon/stairs_wall_right.gltf",
+"label": "Stairs wall right",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.825,
+3.75
+],
+"offset": [
+-0.0,
+-0.0,
+-1.5
+]
+},
+{
+"id": "dungeon/stairs_walled",
+"path": "res://assets/kaykit/dungeon/stairs_walled.gltf",
+"label": "Stairs walled",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.75,
+3.0,
+3.0
+],
+"offset": [
+0.0,
+-0.0,
+-1.5
+]
+},
+{
+"id": "dungeon/stairs_wide",
+"path": "res://assets/kaykit/dungeon/stairs_wide.gltf",
+"label": "Stairs wide",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+5.25,
+3.825,
+3.0
+],
+"offset": [
+0.0,
+-0.0,
+-1.5
+]
+},
+{
+"id": "dungeon/stairs_wood",
+"path": "res://assets/kaykit/dungeon/stairs_wood.gltf",
+"label": "Stairs wood",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.475,
+3.038,
+4.5
+],
+"offset": [
+-0.0,
+0.0,
+-2.25
+]
+},
+{
+"id": "dungeon/stairs_wood_decorated",
+"path": "res://assets/kaykit/dungeon/stairs_wood_decorated.gltf",
+"label": "Stairs wood decorated",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.475,
+3.038,
+4.5
+],
+"offset": [
+-0.0,
+0.0,
+-2.25
+]
+},
+{
+"id": "dungeon/stool",
+"path": "res://assets/kaykit/dungeon/stool.gltf",
+"label": "Stool",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.563,
+0.375,
+0.563
+],
+"offset": [
+-0.001,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/sword_shield",
+"path": "res://assets/kaykit/dungeon/sword_shield.gltf",
+"label": "Sword shield",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.674,
+1.251,
+0.252
+],
+"offset": [
+-0.0,
+0.611,
+-0.062
+]
+},
+{
+"id": "dungeon/sword_shield_broken",
+"path": "res://assets/kaykit/dungeon/sword_shield_broken.gltf",
+"label": "Sword shield broken",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.069,
+1.472,
+0.252
+],
+"offset": [
+0.034,
+0.595,
+-0.062
+]
+},
+{
+"id": "dungeon/sword_shield_gold",
+"path": "res://assets/kaykit/dungeon/sword_shield_gold.gltf",
+"label": "Sword shield gold",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.674,
+1.251,
+0.252
+],
+"offset": [
+-0.0,
+0.611,
+-0.062
+]
+},
+{
+"id": "dungeon/table_long",
+"path": "res://assets/kaykit/dungeon/table_long.gltf",
+"label": "Table long",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+3.0
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/table_long_broken",
+"path": "res://assets/kaykit/dungeon/table_long_broken.gltf",
+"label": "Table long broken",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.807,
+0.95,
+3.303
+],
+"offset": [
+0.14,
+-0.0,
+-0.02
+]
+},
+{
+"id": "dungeon/table_long_decorated_A",
+"path": "res://assets/kaykit/dungeon/table_long_decorated_A.gltf",
+"label": "Table long decorated A",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.544,
+1.414,
+3.0
+],
+"offset": [
+0.001,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/table_long_decorated_C",
+"path": "res://assets/kaykit/dungeon/table_long_decorated_C.gltf",
+"label": "Table long decorated C",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+2.076,
+3.019
+],
+"offset": [
+0.0,
+-0.0,
+0.009
+]
+},
+{
+"id": "dungeon/table_long_tablecloth",
+"path": "res://assets/kaykit/dungeon/table_long_tablecloth.gltf",
+"label": "Table long tablecloth",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+3.0
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/table_long_tablecloth_decorated_A",
+"path": "res://assets/kaykit/dungeon/table_long_tablecloth_decorated_A.gltf",
+"label": "Table long tablecloth decorated A",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.544,
+1.414,
+3.0
+],
+"offset": [
+0.001,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/table_medium",
+"path": "res://assets/kaykit/dungeon/table_medium.gltf",
+"label": "Table medium",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/table_medium_broken",
+"path": "res://assets/kaykit/dungeon/table_medium_broken.gltf",
+"label": "Table medium broken",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.708,
+0.729,
+1.821
+],
+"offset": [
+-0.066,
+0.001,
+-0.19
+]
+},
+{
+"id": "dungeon/table_medium_decorated_A",
+"path": "res://assets/kaykit/dungeon/table_medium_decorated_A.gltf",
+"label": "Table medium decorated A",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.414,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/table_medium_tablecloth",
+"path": "res://assets/kaykit/dungeon/table_medium_tablecloth.gltf",
+"label": "Table medium tablecloth",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/table_medium_tablecloth_decorated_B",
+"path": "res://assets/kaykit/dungeon/table_medium_tablecloth_decorated_B.gltf",
+"label": "Table medium tablecloth decorated B",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.414,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/table_small",
+"path": "res://assets/kaykit/dungeon/table_small.gltf",
+"label": "Table small",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.75,
+0.75
+],
+"offset": [
+0.001,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/table_small_decorated_A",
+"path": "res://assets/kaykit/dungeon/table_small_decorated_A.gltf",
+"label": "Table small decorated A",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.779,
+1.216,
+0.908
+],
+"offset": [
+0.015,
+-0.0,
+0.012
+]
+},
+{
+"id": "dungeon/table_small_decorated_B",
+"path": "res://assets/kaykit/dungeon/table_small_decorated_B.gltf",
+"label": "Table small decorated B",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.759,
+1.618,
+0.75
+],
+"offset": [
+-0.002,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/torch",
+"path": "res://assets/kaykit/dungeon/torch.gltf",
+"label": "Torch",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.413,
+0.781,
+0.413
+],
+"offset": [
+-0.0,
+0.296,
+0.0
+]
+},
+{
+"id": "dungeon/torch_lit",
+"path": "res://assets/kaykit/dungeon/torch_lit.gltf",
+"label": "Torch lit",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.413,
+0.844,
+0.413
+],
+"offset": [
+-0.0,
+0.296,
+0.0
+]
+},
+{
+"id": "dungeon/torch_mounted",
+"path": "res://assets/kaykit/dungeon/torch_mounted.gltf",
+"label": "Torch mounted",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.413,
+0.797,
+0.462
+],
+"offset": [
+-0.0,
+0.286,
+-0.231
+]
+},
+{
+"id": "dungeon/trunk_large_A",
+"path": "res://assets/kaykit/dungeon/trunk_large_A.gltf",
+"label": "Trunk large A",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.75,
+0.975
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/trunk_large_B",
+"path": "res://assets/kaykit/dungeon/trunk_large_B.gltf",
+"label": "Trunk large B",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.75,
+0.975
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/trunk_large_C",
+"path": "res://assets/kaykit/dungeon/trunk_large_C.gltf",
+"label": "Trunk large C",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.75,
+0.975
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/trunk_medium_A",
+"path": "res://assets/kaykit/dungeon/trunk_medium_A.gltf",
+"label": "Trunk medium A",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.715,
+0.545,
+0.656
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/trunk_medium_B",
+"path": "res://assets/kaykit/dungeon/trunk_medium_B.gltf",
+"label": "Trunk medium B",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.715,
+0.545,
+0.656
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/trunk_medium_C",
+"path": "res://assets/kaykit/dungeon/trunk_medium_C.gltf",
+"label": "Trunk medium C",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.715,
+0.545,
+0.656
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/trunk_small_A",
+"path": "res://assets/kaykit/dungeon/trunk_small_A.gltf",
+"label": "Trunk small A",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.507,
+0.363,
+0.438
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/trunk_small_B",
+"path": "res://assets/kaykit/dungeon/trunk_small_B.gltf",
+"label": "Trunk small B",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.507,
+0.363,
+0.438
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/trunk_small_C",
+"path": "res://assets/kaykit/dungeon/trunk_small_C.gltf",
+"label": "Trunk small C",
+"cat": "Dungeon & castle",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.507,
+0.363,
+0.438
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall",
+"path": "res://assets/kaykit/dungeon/wall.gltf",
+"label": "Wall",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/wall_Tsplit",
+"path": "res://assets/kaykit/dungeon/wall_Tsplit.gltf",
+"label": "Wall T split",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+1.875
+],
+"offset": [
+-0.0,
+-0.0,
+-0.563
+]
+},
+{
+"id": "dungeon/wall_Tsplit_sloped",
+"path": "res://assets/kaykit/dungeon/wall_Tsplit_sloped.gltf",
+"label": "Wall T split sloped",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+1.875
+],
+"offset": [
+-0.0,
+-0.0,
+-0.562
+]
+},
+{
+"id": "dungeon/wall_arched",
+"path": "res://assets/kaykit/dungeon/wall_arched.gltf",
+"label": "Wall arched",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/wall_archedwindow_gated",
+"path": "res://assets/kaykit/dungeon/wall_archedwindow_gated.gltf",
+"label": "Wall arched window gated",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_archedwindow_gated_scaffold",
+"path": "res://assets/kaykit/dungeon/wall_archedwindow_gated_scaffold.gltf",
+"label": "Wall arched window gated scaffold",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_archedwindow_open",
+"path": "res://assets/kaykit/dungeon/wall_archedwindow_open.gltf",
+"label": "Wall arched window open",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/wall_broken",
+"path": "res://assets/kaykit/dungeon/wall_broken.gltf",
+"label": "Wall broken",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_corner",
+"path": "res://assets/kaykit/dungeon/wall_corner.gltf",
+"label": "Wall corner",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.875,
+3.0,
+1.875
+],
+"offset": [
+0.562,
+-0.0,
+-0.563
+]
+},
+{
+"id": "dungeon/wall_corner_gated",
+"path": "res://assets/kaykit/dungeon/wall_corner_gated.gltf",
+"label": "Wall corner gated",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.875,
+3.0,
+1.875
+],
+"offset": [
+0.562,
+-0.0,
+-0.563
+]
+},
+{
+"id": "dungeon/wall_corner_scaffold",
+"path": "res://assets/kaykit/dungeon/wall_corner_scaffold.gltf",
+"label": "Wall corner scaffold",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.875,
+3.0,
+1.875
+],
+"offset": [
+0.562,
+-0.0,
+-0.563
+]
+},
+{
+"id": "dungeon/wall_corner_small",
+"path": "res://assets/kaykit/dungeon/wall_corner_small.gltf",
+"label": "Wall corner small",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.125,
+3.0,
+1.125
+],
+"offset": [
+0.188,
+-0.0,
+-0.188
+]
+},
+{
+"id": "dungeon/wall_cracked",
+"path": "res://assets/kaykit/dungeon/wall_cracked.gltf",
+"label": "Wall cracked",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.945
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/wall_crossing",
+"path": "res://assets/kaykit/dungeon/wall_crossing.gltf",
+"label": "Wall crossing",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+3.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/wall_doorway",
+"path": "res://assets/kaykit/dungeon/wall_doorway.gltf",
+"label": "Wall doorway",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_doorway_Tsplit",
+"path": "res://assets/kaykit/dungeon/wall_doorway_Tsplit.gltf",
+"label": "Wall doorway T split",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+6.0,
+3.0,
+1.875
+],
+"offset": [
+-0.0,
+-0.0,
+-0.563
+]
+},
+{
+"id": "dungeon/wall_doorway_scaffold",
+"path": "res://assets/kaykit/dungeon/wall_doorway_scaffold.gltf",
+"label": "Wall doorway scaffold",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_doorway_sides",
+"path": "res://assets/kaykit/dungeon/wall_doorway_sides.gltf",
+"label": "Wall doorway sides",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.75,
+3.0,
+3.0
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/wall_endcap",
+"path": "res://assets/kaykit/dungeon/wall_endcap.gltf",
+"label": "Wall endcap",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.8,
+3.0,
+0.75
+],
+"offset": [
+-0.4,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_gated",
+"path": "res://assets/kaykit/dungeon/wall_gated.gltf",
+"label": "Wall gated",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_half",
+"path": "res://assets/kaykit/dungeon/wall_half.gltf",
+"label": "Wall half",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+3.0,
+0.75
+],
+"offset": [
+-0.75,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_half_endcap",
+"path": "res://assets/kaykit/dungeon/wall_half_endcap.gltf",
+"label": "Wall half endcap",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+3.0,
+0.75
+],
+"offset": [
+0.75,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_half_endcap_sloped",
+"path": "res://assets/kaykit/dungeon/wall_half_endcap_sloped.gltf",
+"label": "Wall half endcap sloped",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+3.0,
+0.75
+],
+"offset": [
+0.75,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_open_scaffold",
+"path": "res://assets/kaykit/dungeon/wall_open_scaffold.gltf",
+"label": "Wall open scaffold",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_pillar",
+"path": "res://assets/kaykit/dungeon/wall_pillar.gltf",
+"label": "Wall pillar",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+1.125
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "dungeon/wall_scaffold",
+"path": "res://assets/kaykit/dungeon/wall_scaffold.gltf",
+"label": "Wall scaffold",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_shelves",
+"path": "res://assets/kaykit/dungeon/wall_shelves.gltf",
+"label": "Wall shelves",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+1.026
+],
+"offset": [
+-0.0,
+-0.0,
+-0.138
+]
+},
+{
+"id": "dungeon/wall_sloped",
+"path": "res://assets/kaykit/dungeon/wall_sloped.gltf",
+"label": "Wall sloped",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_window_closed",
+"path": "res://assets/kaykit/dungeon/wall_window_closed.gltf",
+"label": "Wall window closed",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_window_closed_scaffold",
+"path": "res://assets/kaykit/dungeon/wall_window_closed_scaffold.gltf",
+"label": "Wall window closed scaffold",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_window_open",
+"path": "res://assets/kaykit/dungeon/wall_window_open.gltf",
+"label": "Wall window open",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "dungeon/wall_window_open_scaffold",
+"path": "res://assets/kaykit/dungeon/wall_window_open_scaffold.gltf",
+"label": "Wall window open scaffold",
+"cat": "Dungeon & castle",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "furniture/armchair",
+"path": "res://assets/kaykit/furniture/armchair.gltf",
+"label": "Armchair",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.35,
+0.918,
+1.2
+],
+"offset": [
+0.0,
+-0.0,
+-0.038
+]
+},
+{
+"id": "furniture/armchair_pillows",
+"path": "res://assets/kaykit/furniture/armchair_pillows.gltf",
+"label": "Armchair pillows",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.35,
+0.918,
+1.2
+],
+"offset": [
+0.0,
+-0.0,
+-0.038
+]
+},
+{
+"id": "furniture/bed_double_A",
+"path": "res://assets/kaykit/furniture/bed_double_A.gltf",
+"label": "Bed double A",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.325,
+0.75,
+2.25
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/bed_double_B",
+"path": "res://assets/kaykit/furniture/bed_double_B.gltf",
+"label": "Bed double B",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.325,
+0.75,
+2.25
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/bed_single_A",
+"path": "res://assets/kaykit/furniture/bed_single_A.gltf",
+"label": "Bed single A",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.2,
+0.75,
+2.25
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/bed_single_B",
+"path": "res://assets/kaykit/furniture/bed_single_B.gltf",
+"label": "Bed single B",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.2,
+0.75,
+2.25
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/book_set",
+"path": "res://assets/kaykit/furniture/book_set.gltf",
+"label": "Book set",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.585,
+0.375,
+0.274
+],
+"offset": [
+-0.0,
+0.187,
+-0.004
+]
+},
+{
+"id": "furniture/book_single",
+"path": "res://assets/kaykit/furniture/book_single.gltf",
+"label": "Book single",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.195,
+0.375,
+0.274
+],
+"offset": [
+-0.0,
+0.187,
+-0.004
+]
+},
+{
+"id": "furniture/cabinet_medium",
+"path": "res://assets/kaykit/furniture/cabinet_medium.gltf",
+"label": "Cabinet medium",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+0.751
+],
+"offset": [
+-0.0,
+0.0,
+-0.001
+]
+},
+{
+"id": "furniture/cabinet_medium_decorated",
+"path": "res://assets/kaykit/furniture/cabinet_medium_decorated.gltf",
+"label": "Cabinet medium decorated",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.531,
+1.37,
+0.751
+],
+"offset": [
+-0.016,
+0.0,
+-0.001
+]
+},
+{
+"id": "furniture/cabinet_small",
+"path": "res://assets/kaykit/furniture/cabinet_small.gltf",
+"label": "Cabinet small",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.75,
+0.751
+],
+"offset": [
+-0.0,
+0.0,
+-0.001
+]
+},
+{
+"id": "furniture/cabinet_small_decorated",
+"path": "res://assets/kaykit/furniture/cabinet_small_decorated.gltf",
+"label": "Cabinet small decorated",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.786,
+1.213,
+0.828
+],
+"offset": [
+0.015,
+0.0,
+-0.039
+]
+},
+{
+"id": "furniture/cactus_medium_A",
+"path": "res://assets/kaykit/furniture/cactus_medium_A.gltf",
+"label": "Cactus medium A",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.66,
+0.62,
+0.628
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/cactus_medium_B",
+"path": "res://assets/kaykit/furniture/cactus_medium_B.gltf",
+"label": "Cactus medium B",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.66,
+0.62,
+0.628
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/cactus_small_A",
+"path": "res://assets/kaykit/furniture/cactus_small_A.gltf",
+"label": "Cactus small A",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.414,
+0.375
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "furniture/cactus_small_B",
+"path": "res://assets/kaykit/furniture/cactus_small_B.gltf",
+"label": "Cactus small B",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.414,
+0.375
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "furniture/chair_A",
+"path": "res://assets/kaykit/furniture/chair_A.gltf",
+"label": "Chair A",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.944,
+0.634
+],
+"offset": [
+-0.0,
+0.0,
+0.036
+]
+},
+{
+"id": "furniture/chair_A_wood",
+"path": "res://assets/kaykit/furniture/chair_A_wood.gltf",
+"label": "Chair A wood",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.944,
+0.634
+],
+"offset": [
+-0.0,
+0.0,
+0.036
+]
+},
+{
+"id": "furniture/chair_B",
+"path": "res://assets/kaykit/furniture/chair_B.gltf",
+"label": "Chair B",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.944,
+0.634
+],
+"offset": [
+-0.0,
+0.0,
+0.036
+]
+},
+{
+"id": "furniture/chair_B_wood",
+"path": "res://assets/kaykit/furniture/chair_B_wood.gltf",
+"label": "Chair B wood",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.944,
+0.634
+],
+"offset": [
+-0.0,
+0.0,
+0.036
+]
+},
+{
+"id": "furniture/chair_C",
+"path": "res://assets/kaykit/furniture/chair_C.gltf",
+"label": "Chair C",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.902,
+0.702
+],
+"offset": [
+0.0,
+0.0,
+0.07
+]
+},
+{
+"id": "furniture/chair_stool",
+"path": "res://assets/kaykit/furniture/chair_stool.gltf",
+"label": "Chair stool",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.375,
+0.562
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "furniture/chair_stool_wood",
+"path": "res://assets/kaykit/furniture/chair_stool_wood.gltf",
+"label": "Chair stool wood",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.375,
+0.562
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "furniture/couch",
+"path": "res://assets/kaykit/furniture/couch.gltf",
+"label": "Couch",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+0.918,
+1.2
+],
+"offset": [
+-0.0,
+-0.0,
+-0.038
+]
+},
+{
+"id": "furniture/couch_pillows",
+"path": "res://assets/kaykit/furniture/couch_pillows.gltf",
+"label": "Couch pillows",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+0.918,
+1.2
+],
+"offset": [
+-0.0,
+-0.0,
+-0.038
+]
+},
+{
+"id": "furniture/lamp_standing",
+"path": "res://assets/kaykit/furniture/lamp_standing.gltf",
+"label": "Lamp standing",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+1.89,
+0.75
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "furniture/lamp_table",
+"path": "res://assets/kaykit/furniture/lamp_table.gltf",
+"label": "Lamp table",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.766,
+0.75
+],
+"offset": [
+-0.0,
+0.001,
+0.0
+]
+},
+{
+"id": "furniture/pictureframe_large_A",
+"path": "res://assets/kaykit/furniture/pictureframe_large_A.gltf",
+"label": "Picture frame large A",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.758,
+0.9,
+0.15
+],
+"offset": [
+-0.004,
+0.45,
+-0.075
+]
+},
+{
+"id": "furniture/pictureframe_large_B",
+"path": "res://assets/kaykit/furniture/pictureframe_large_B.gltf",
+"label": "Picture frame large B",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.9,
+0.15
+],
+"offset": [
+-0.0,
+0.45,
+-0.075
+]
+},
+{
+"id": "furniture/pictureframe_medium",
+"path": "res://assets/kaykit/furniture/pictureframe_medium.gltf",
+"label": "Picture frame medium",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.525,
+0.675,
+0.15
+],
+"offset": [
+-0.0,
+0.338,
+-0.075
+]
+},
+{
+"id": "furniture/pictureframe_small_A",
+"path": "res://assets/kaykit/furniture/pictureframe_small_A.gltf",
+"label": "Picture frame small A",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.375,
+0.45,
+0.15
+],
+"offset": [
+-0.0,
+0.225,
+-0.075
+]
+},
+{
+"id": "furniture/pictureframe_small_B",
+"path": "res://assets/kaykit/furniture/pictureframe_small_B.gltf",
+"label": "Picture frame small B",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.525,
+0.33,
+0.15
+],
+"offset": [
+-0.0,
+0.165,
+-0.075
+]
+},
+{
+"id": "furniture/pictureframe_small_C",
+"path": "res://assets/kaykit/furniture/pictureframe_small_C.gltf",
+"label": "Picture frame small C",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.375,
+0.375,
+0.15
+],
+"offset": [
+-0.0,
+0.188,
+-0.075
+]
+},
+{
+"id": "furniture/pictureframe_standing_A",
+"path": "res://assets/kaykit/furniture/pictureframe_standing_A.gltf",
+"label": "Picture frame standing A",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.464,
+0.285
+],
+"offset": [
+-0.0,
+0.001,
+0.014
+]
+},
+{
+"id": "furniture/pictureframe_standing_B",
+"path": "res://assets/kaykit/furniture/pictureframe_standing_B.gltf",
+"label": "Picture frame standing B",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.525,
+0.351,
+0.268
+],
+"offset": [
+-0.0,
+0.0,
+0.005
+]
+},
+{
+"id": "furniture/pillow_A",
+"path": "res://assets/kaykit/furniture/pillow_A.gltf",
+"label": "Pillow A",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.487,
+0.15,
+0.375
+],
+"offset": [
+0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "furniture/pillow_B",
+"path": "res://assets/kaykit/furniture/pillow_B.gltf",
+"label": "Pillow B",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.487,
+0.15,
+0.375
+],
+"offset": [
+0.0,
+0.075,
+-0.0
+]
+},
+{
+"id": "furniture/rug_oval_A",
+"path": "res://assets/kaykit/furniture/rug_oval_A.gltf",
+"label": "Rug oval A",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.25,
+0.075,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/rug_oval_B",
+"path": "res://assets/kaykit/furniture/rug_oval_B.gltf",
+"label": "Rug oval B",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.25,
+0.075,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/rug_rectangle_A",
+"path": "res://assets/kaykit/furniture/rug_rectangle_A.gltf",
+"label": "Rug rectangle A",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.25,
+0.075,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/rug_rectangle_B",
+"path": "res://assets/kaykit/furniture/rug_rectangle_B.gltf",
+"label": "Rug rectangle B",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.25,
+0.075,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/rug_rectangle_stripes_A",
+"path": "res://assets/kaykit/furniture/rug_rectangle_stripes_A.gltf",
+"label": "Rug rectangle stripes A",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.25,
+0.075,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/rug_rectangle_stripes_B",
+"path": "res://assets/kaykit/furniture/rug_rectangle_stripes_B.gltf",
+"label": "Rug rectangle stripes B",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.25,
+0.075,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/shelf_A_big",
+"path": "res://assets/kaykit/furniture/shelf_A_big.gltf",
+"label": "Shelf A big",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.3,
+0.375
+],
+"offset": [
+-0.0,
+0.225,
+-0.188
+]
+},
+{
+"id": "furniture/shelf_A_small",
+"path": "res://assets/kaykit/furniture/shelf_A_small.gltf",
+"label": "Shelf A small",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.75,
+0.3,
+0.375
+],
+"offset": [
+-0.0,
+0.225,
+-0.188
+]
+},
+{
+"id": "furniture/shelf_B_large",
+"path": "res://assets/kaykit/furniture/shelf_B_large.gltf",
+"label": "Shelf B large",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.3,
+0.375
+],
+"offset": [
+-0.0,
+0.075,
+-0.188
+]
+},
+{
+"id": "furniture/shelf_B_large_decorated",
+"path": "res://assets/kaykit/furniture/shelf_B_large_decorated.gltf",
+"label": "Shelf B large decorated",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.613,
+0.375
+],
+"offset": [
+-0.0,
+0.075,
+-0.188
+]
+},
+{
+"id": "furniture/shelf_B_small",
+"path": "res://assets/kaykit/furniture/shelf_B_small.gltf",
+"label": "Shelf B small",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.75,
+0.3,
+0.375
+],
+"offset": [
+-0.0,
+0.075,
+-0.188
+]
+},
+{
+"id": "furniture/shelf_B_small_decorated",
+"path": "res://assets/kaykit/furniture/shelf_B_small_decorated.gltf",
+"label": "Shelf B small decorated",
+"cat": "Furniture",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.75,
+0.759,
+0.429
+],
+"offset": [
+-0.0,
+0.075,
+-0.214
+]
+},
+{
+"id": "furniture/table_low",
+"path": "res://assets/kaykit/furniture/table_low.gltf",
+"label": "Table low",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.8,
+0.375,
+1.125
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "furniture/table_medium",
+"path": "res://assets/kaykit/furniture/table_medium.gltf",
+"label": "Table medium",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+1.5
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "furniture/table_medium_long",
+"path": "res://assets/kaykit/furniture/table_medium_long.gltf",
+"label": "Table medium long",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+0.75,
+1.5
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "furniture/table_small",
+"path": "res://assets/kaykit/furniture/table_small.gltf",
+"label": "Table small",
+"cat": "Furniture",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.75,
+0.75
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "halloween/arch",
+"path": "res://assets/kaykit/halloween/arch.gltf",
+"label": "Arch",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.164,
+3.31,
+0.577
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/arch_gate",
+"path": "res://assets/kaykit/halloween/arch_gate.gltf",
+"label": "Arch gate",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.164,
+3.31,
+0.577
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/bench",
+"path": "res://assets/kaykit/halloween/bench.gltf",
+"label": "Bench",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.375,
+0.562
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "halloween/bench_decorated",
+"path": "res://assets/kaykit/halloween/bench_decorated.gltf",
+"label": "Bench decorated",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.258,
+0.763
+],
+"offset": [
+-0.0,
+-0.0,
+-0.004
+]
+},
+{
+"id": "halloween/bone_A",
+"path": "res://assets/kaykit/halloween/bone_A.gltf",
+"label": "Bone A",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.53,
+0.207,
+0.15
+],
+"offset": [
+0.0,
+0.104,
+0.0
+]
+},
+{
+"id": "halloween/bone_B",
+"path": "res://assets/kaykit/halloween/bone_B.gltf",
+"label": "Bone B",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.455,
+0.131,
+0.215
+],
+"offset": [
+-0.004,
+0.065,
+-0.0
+]
+},
+{
+"id": "halloween/bone_C",
+"path": "res://assets/kaykit/halloween/bone_C.gltf",
+"label": "Bone C",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.83,
+0.207,
+0.15
+],
+"offset": [
+0.0,
+0.104,
+0.0
+]
+},
+{
+"id": "halloween/candle",
+"path": "res://assets/kaykit/halloween/candle.gltf",
+"label": "Candle",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.226,
+0.589,
+0.222
+],
+"offset": [
+0.0,
+-0.0,
+0.003
+]
+},
+{
+"id": "halloween/candle_melted",
+"path": "res://assets/kaykit/halloween/candle_melted.gltf",
+"label": "Candle melted",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.226,
+0.474,
+0.222
+],
+"offset": [
+0.0,
+-0.0,
+0.003
+]
+},
+{
+"id": "halloween/candle_thin",
+"path": "res://assets/kaykit/halloween/candle_thin.gltf",
+"label": "Candle thin",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.13,
+0.589,
+0.128
+],
+"offset": [
+0.0,
+-0.0,
+0.002
+]
+},
+{
+"id": "halloween/candle_triple",
+"path": "res://assets/kaykit/halloween/candle_triple.gltf",
+"label": "Candle triple",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.338,
+0.589,
+0.263
+],
+"offset": [
+-0.056,
+-0.0,
+-0.024
+]
+},
+{
+"id": "halloween/coffin",
+"path": "res://assets/kaykit/halloween/coffin.gltf",
+"label": "Coffin",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.992,
+2.25
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/coffin_decorated",
+"path": "res://assets/kaykit/halloween/coffin_decorated.gltf",
+"label": "Coffin decorated",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.677,
+2.25
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/crypt",
+"path": "res://assets/kaykit/halloween/crypt.gltf",
+"label": "Crypt",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+4.5,
+6.0,
+6.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/fence",
+"path": "res://assets/kaykit/halloween/fence.gltf",
+"label": "Fence",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+1.65,
+0.375
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/fence_broken",
+"path": "res://assets/kaykit/halloween/fence_broken.gltf",
+"label": "Fence broken",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+1.65,
+0.375
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/fence_gate",
+"path": "res://assets/kaykit/halloween/fence_gate.gltf",
+"label": "Fence gate",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+2.25,
+0.375
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/fence_pillar",
+"path": "res://assets/kaykit/halloween/fence_pillar.gltf",
+"label": "Fence pillar",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.375,
+1.65,
+0.375
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/fence_pillar_broken",
+"path": "res://assets/kaykit/halloween/fence_pillar_broken.gltf",
+"label": "Fence pillar broken",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.375,
+1.127,
+0.375
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/fence_seperate",
+"path": "res://assets/kaykit/halloween/fence_seperate.gltf",
+"label": "Fence separate",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+1.5,
+0.127
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/fence_seperate_broken",
+"path": "res://assets/kaykit/halloween/fence_seperate_broken.gltf",
+"label": "Fence separate broken",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+1.5,
+0.127
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/floor_dirt",
+"path": "res://assets/kaykit/halloween/floor_dirt.gltf",
+"label": "Floor dirt",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.398,
+3.0
+],
+"offset": [
+-0.0,
+0.375,
+-0.0
+]
+},
+{
+"id": "halloween/floor_dirt_grave",
+"path": "res://assets/kaykit/halloween/floor_dirt_grave.gltf",
+"label": "Floor dirt grave",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+1.147,
+3.0
+],
+"offset": [
+-0.0,
+1.125,
+-0.0
+]
+},
+{
+"id": "halloween/floor_dirt_small",
+"path": "res://assets/kaykit/halloween/floor_dirt_small.gltf",
+"label": "Floor dirt small",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.398,
+1.5
+],
+"offset": [
+-0.0,
+0.375,
+-0.0
+]
+},
+{
+"id": "halloween/grave_A",
+"path": "res://assets/kaykit/halloween/grave_A.gltf",
+"label": "Grave A",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.597,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/grave_A_destroyed",
+"path": "res://assets/kaykit/halloween/grave_A_destroyed.gltf",
+"label": "Grave A destroyed",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.558,
+1.58,
+0.851
+],
+"offset": [
+-0.029,
+-0.0,
+0.051
+]
+},
+{
+"id": "halloween/grave_B",
+"path": "res://assets/kaykit/halloween/grave_B.gltf",
+"label": "Grave B",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.65,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/gravemarker_A",
+"path": "res://assets/kaykit/halloween/gravemarker_A.gltf",
+"label": "Grave marker A",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.604,
+0.897,
+0.209
+],
+"offset": [
+0.023,
+-0.0,
+0.021
+]
+},
+{
+"id": "halloween/gravemarker_B",
+"path": "res://assets/kaykit/halloween/gravemarker_B.gltf",
+"label": "Grave marker B",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.602,
+0.885,
+0.31
+],
+"offset": [
+0.006,
+-0.0,
+-0.127
+]
+},
+{
+"id": "halloween/gravestone",
+"path": "res://assets/kaykit/halloween/gravestone.gltf",
+"label": "Gravestone",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.05,
+1.2,
+0.3
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/lantern_hanging",
+"path": "res://assets/kaykit/halloween/lantern_hanging.gltf",
+"label": "Lantern hanging",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.48,
+1.056,
+0.48
+],
+"offset": [
+0.0,
+0.981,
+-0.0
+]
+},
+{
+"id": "halloween/lantern_standing",
+"path": "res://assets/kaykit/halloween/lantern_standing.gltf",
+"label": "Lantern standing",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.48,
+0.694,
+0.48
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "halloween/path_A",
+"path": "res://assets/kaykit/halloween/path_A.gltf",
+"label": "Path A",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.427,
+0.075,
+1.413
+],
+"offset": [
+0.011,
+-0.0,
+-0.003
+]
+},
+{
+"id": "halloween/path_B",
+"path": "res://assets/kaykit/halloween/path_B.gltf",
+"label": "Path B",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.415,
+0.075,
+1.392
+],
+"offset": [
+-0.008,
+-0.0,
+0.002
+]
+},
+{
+"id": "halloween/path_C",
+"path": "res://assets/kaykit/halloween/path_C.gltf",
+"label": "Path C",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.388,
+0.075,
+1.392
+],
+"offset": [
+-0.009,
+-0.0,
+-0.003
+]
+},
+{
+"id": "halloween/path_D",
+"path": "res://assets/kaykit/halloween/path_D.gltf",
+"label": "Path D",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.242,
+0.075,
+1.28
+],
+"offset": [
+-0.009,
+-0.0,
+-0.021
+]
+},
+{
+"id": "halloween/pillar",
+"path": "res://assets/kaykit/halloween/pillar.gltf",
+"label": "Pillar",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.75,
+3.3,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/plaque",
+"path": "res://assets/kaykit/halloween/plaque.gltf",
+"label": "Plaque",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.3,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/plaque_candles",
+"path": "res://assets/kaykit/halloween/plaque_candles.gltf",
+"label": "Plaque candles",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.848,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "halloween/post",
+"path": "res://assets/kaykit/halloween/post.gltf",
+"label": "Post",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.318,
+2.475,
+1.175
+],
+"offset": [
+-0.003,
+-0.0,
+-0.425
+]
+},
+{
+"id": "halloween/post_lantern",
+"path": "res://assets/kaykit/halloween/post_lantern.gltf",
+"label": "Post lantern",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.48,
+2.475,
+1.175
+],
+"offset": [
+0.0,
+-0.0,
+-0.425
+]
+},
+{
+"id": "halloween/post_skull",
+"path": "res://assets/kaykit/halloween/post_skull.gltf",
+"label": "Post skull",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.607,
+2.475,
+1.175
+],
+"offset": [
+0.001,
+-0.0,
+-0.425
+]
+},
+{
+"id": "halloween/pumpkin_orange",
+"path": "res://assets/kaykit/halloween/pumpkin_orange.gltf",
+"label": "Pumpkin orange",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.751,
+0.525,
+0.751
+],
+"offset": [
+-0.0,
+0.003,
+0.0
+],
+"round": true
+},
+{
+"id": "halloween/pumpkin_orange_jackolantern",
+"path": "res://assets/kaykit/halloween/pumpkin_orange_jackolantern.gltf",
+"label": "Pumpkin orange jack-o'-lantern",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.975,
+1.05
+],
+"offset": [
+-0.0,
+0.003,
+0.0
+],
+"round": true
+},
+{
+"id": "halloween/pumpkin_orange_small",
+"path": "res://assets/kaykit/halloween/pumpkin_orange_small.gltf",
+"label": "Pumpkin orange small",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.45,
+0.413,
+0.45
+],
+"offset": [
+0.0,
+0.002,
+-0.0
+],
+"round": true
+},
+{
+"id": "halloween/pumpkin_yellow",
+"path": "res://assets/kaykit/halloween/pumpkin_yellow.gltf",
+"label": "Pumpkin yellow",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.751,
+0.525,
+0.751
+],
+"offset": [
+-0.0,
+0.003,
+0.0
+],
+"round": true
+},
+{
+"id": "halloween/pumpkin_yellow_jackolantern",
+"path": "res://assets/kaykit/halloween/pumpkin_yellow_jackolantern.gltf",
+"label": "Pumpkin yellow jack-o'-lantern",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.975,
+1.05
+],
+"offset": [
+-0.0,
+0.003,
+0.0
+],
+"round": true
+},
+{
+"id": "halloween/pumpkin_yellow_small",
+"path": "res://assets/kaykit/halloween/pumpkin_yellow_small.gltf",
+"label": "Pumpkin yellow small",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.45,
+0.413,
+0.45
+],
+"offset": [
+0.0,
+0.002,
+-0.0
+],
+"round": true
+},
+{
+"id": "halloween/ribcage",
+"path": "res://assets/kaykit/halloween/ribcage.gltf",
+"label": "Ribcage",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.634,
+0.644,
+0.56
+],
+"offset": [
+0.0,
+0.29,
+0.036
+]
+},
+{
+"id": "halloween/shrine",
+"path": "res://assets/kaykit/halloween/shrine.gltf",
+"label": "Shrine",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.824,
+1.8,
+0.824
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "halloween/shrine_candles",
+"path": "res://assets/kaykit/halloween/shrine_candles.gltf",
+"label": "Shrine candles",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.824,
+1.342,
+0.824
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "halloween/skull",
+"path": "res://assets/kaykit/halloween/skull.gltf",
+"label": "Skull",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.688,
+0.674,
+0.68
+],
+"offset": [
+-0.0,
+-0.013,
+0.004
+],
+"round": true
+},
+{
+"id": "halloween/skull_candle",
+"path": "res://assets/kaykit/halloween/skull_candle.gltf",
+"label": "Skull candle",
+"cat": "Graveyard",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.688,
+0.89,
+0.702
+],
+"offset": [
+-0.0,
+-0.043,
+0.038
+]
+},
+{
+"id": "halloween/tree_dead_large",
+"path": "res://assets/kaykit/halloween/tree_dead_large.gltf",
+"label": "Tree dead large",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.726,
+3.8,
+1.032
+],
+"offset": [
+0.128,
+0.204,
+0.028
+]
+},
+{
+"id": "halloween/tree_dead_large_decorated",
+"path": "res://assets/kaykit/halloween/tree_dead_large_decorated.gltf",
+"label": "Tree dead large decorated",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.726,
+4.063,
+1.211
+],
+"offset": [
+0.128,
+0.204,
+0.036
+]
+},
+{
+"id": "halloween/tree_dead_medium",
+"path": "res://assets/kaykit/halloween/tree_dead_medium.gltf",
+"label": "Tree dead medium",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.356,
+3.142,
+0.35
+],
+"offset": [
+-0.314,
+0.225,
+-0.0
+]
+},
+{
+"id": "halloween/tree_dead_small",
+"path": "res://assets/kaykit/halloween/tree_dead_small.gltf",
+"label": "Tree dead small",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.057,
+2.24,
+0.761
+],
+"offset": [
+0.373,
+0.222,
+0.223
+]
+},
+{
+"id": "halloween/tree_pine_orange_large",
+"path": "res://assets/kaykit/halloween/tree_pine_orange_large.gltf",
+"label": "Tree pine orange large",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.57,
+5.606,
+3.116
+],
+"offset": [
+-0.013,
+0.416,
+-0.001
+]
+},
+{
+"id": "halloween/tree_pine_orange_medium",
+"path": "res://assets/kaykit/halloween/tree_pine_orange_medium.gltf",
+"label": "Tree pine orange medium",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.497,
+4.404,
+2.34
+],
+"offset": [
+0.009,
+0.36,
+-0.154
+]
+},
+{
+"id": "halloween/tree_pine_orange_small",
+"path": "res://assets/kaykit/halloween/tree_pine_orange_small.gltf",
+"label": "Tree pine orange small",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.801,
+3.032,
+1.648
+],
+"offset": [
+-0.012,
+0.296,
+0.034
+]
+},
+{
+"id": "halloween/tree_pine_yellow_large",
+"path": "res://assets/kaykit/halloween/tree_pine_yellow_large.gltf",
+"label": "Tree pine yellow large",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.57,
+5.606,
+3.116
+],
+"offset": [
+-0.013,
+0.416,
+-0.001
+]
+},
+{
+"id": "halloween/tree_pine_yellow_medium",
+"path": "res://assets/kaykit/halloween/tree_pine_yellow_medium.gltf",
+"label": "Tree pine yellow medium",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.497,
+4.404,
+2.34
+],
+"offset": [
+0.009,
+0.36,
+-0.154
+]
+},
+{
+"id": "halloween/tree_pine_yellow_small",
+"path": "res://assets/kaykit/halloween/tree_pine_yellow_small.gltf",
+"label": "Tree pine yellow small",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.801,
+3.032,
+1.648
+],
+"offset": [
+-0.012,
+0.296,
+0.034
+]
+},
+{
+"id": "medieval/building_archeryrange_blue",
+"path": "res://assets/kaykit/medieval/building_archeryrange_blue.gltf",
+"label": "Archery range",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.024,
+10.75,
+9.305
+],
+"offset": [
+-0.212,
+-0.0,
+0.588
+]
+},
+{
+"id": "medieval/building_barracks_blue",
+"path": "res://assets/kaykit/medieval/building_barracks_blue.gltf",
+"label": "Barracks",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+8.64,
+9.84,
+9.396
+],
+"offset": [
+-0.0,
+-0.0,
+-0.378
+]
+},
+{
+"id": "medieval/building_blacksmith_blue",
+"path": "res://assets/kaykit/medieval/building_blacksmith_blue.gltf",
+"label": "Blacksmith",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+7.726,
+5.911,
+7.471
+],
+"offset": [
+-0.083,
+0.031,
+-0.375
+]
+},
+{
+"id": "medieval/building_bridge_A",
+"path": "res://assets/kaykit/medieval/building_bridge_A.gltf",
+"label": "Bridge A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+8.0,
+7.5,
+11.547
+],
+"offset": [
+-0.0,
+6.0,
+0.0
+]
+},
+{
+"id": "medieval/building_bridge_B",
+"path": "res://assets/kaykit/medieval/building_bridge_B.gltf",
+"label": "Bridge B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+8.0,
+7.5,
+11.547
+],
+"offset": [
+0.0,
+6.0,
+0.0
+]
+},
+{
+"id": "medieval/building_castle_blue",
+"path": "res://assets/kaykit/medieval/building_castle_blue.gltf",
+"label": "Castle",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+11.852,
+23.875,
+13.538
+],
+"offset": [
+-0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "medieval/building_church_blue",
+"path": "res://assets/kaykit/medieval/building_church_blue.gltf",
+"label": "Church",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+6.174,
+9.87,
+6.93
+],
+"offset": [
+-0.0,
+0.0,
+-0.105
+]
+},
+{
+"id": "medieval/building_destroyed",
+"path": "res://assets/kaykit/medieval/building_destroyed.gltf",
+"label": "Destroyed",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+9.236,
+5.963,
+7.836
+],
+"offset": [
+-0.305,
+0.083,
+0.363
+]
+},
+{
+"id": "medieval/building_dirt",
+"path": "res://assets/kaykit/medieval/building_dirt.gltf",
+"label": "Dirt",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.769,
+0.52,
+12.041
+],
+"offset": [
+-0.0,
+0.12,
+-0.0
+]
+},
+{
+"id": "medieval/building_grain",
+"path": "res://assets/kaykit/medieval/building_grain.gltf",
+"label": "Grain",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+11.242,
+2.363,
+12.562
+],
+"offset": [
+0.001,
+-0.0,
+0.0
+]
+},
+{
+"id": "medieval/building_home_A_blue",
+"path": "res://assets/kaykit/medieval/building_home_A_blue.gltf",
+"label": "Home A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+4.752,
+5.58,
+5.122
+],
+"offset": [
+0.0,
+0.0,
+0.251
+]
+},
+{
+"id": "medieval/building_home_B_blue",
+"path": "res://assets/kaykit/medieval/building_home_B_blue.gltf",
+"label": "Home B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+5.25,
+7.68,
+6.592
+],
+"offset": [
+0.008,
+0.0,
+-0.064
+]
+},
+{
+"id": "medieval/building_lumbermill_blue",
+"path": "res://assets/kaykit/medieval/building_lumbermill_blue.gltf",
+"label": "Lumber mill",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+8.202,
+10.247,
+7.135
+],
+"offset": [
+0.016,
+0.021,
+-0.812
+]
+},
+{
+"id": "medieval/building_market_blue",
+"path": "res://assets/kaykit/medieval/building_market_blue.gltf",
+"label": "Market",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.796,
+5.89,
+7.894
+],
+"offset": [
+0.01,
+0.034,
+0.343
+]
+},
+{
+"id": "medieval/building_mine_blue",
+"path": "res://assets/kaykit/medieval/building_mine_blue.gltf",
+"label": "Mine",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+9.633,
+6.82,
+11.52
+],
+"offset": [
+0.084,
+0.001,
+0.359
+]
+},
+{
+"id": "medieval/building_scaffolding",
+"path": "res://assets/kaykit/medieval/building_scaffolding.gltf",
+"label": "Scaffolding",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+11.403,
+7.792,
+12.656
+],
+"offset": [
+-0.131,
+0.016,
+0.193
+]
+},
+{
+"id": "medieval/building_stage_A",
+"path": "res://assets/kaykit/medieval/building_stage_A.gltf",
+"label": "Stage A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+6.28,
+1.715,
+5.25
+],
+"offset": [
+-0.256,
+0.035,
+-0.571
+]
+},
+{
+"id": "medieval/building_stage_B",
+"path": "res://assets/kaykit/medieval/building_stage_B.gltf",
+"label": "Stage B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+6.123,
+3.815,
+6.783
+],
+"offset": [
+-0.084,
+0.035,
+0.059
+]
+},
+{
+"id": "medieval/building_stage_C",
+"path": "res://assets/kaykit/medieval/building_stage_C.gltf",
+"label": "Stage C",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+6.96,
+5.915,
+6.762
+],
+"offset": [
+-0.48,
+0.035,
+0.061
+]
+},
+{
+"id": "medieval/building_tavern_blue",
+"path": "res://assets/kaykit/medieval/building_tavern_blue.gltf",
+"label": "Tavern",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+7.03,
+8.38,
+7.994
+],
+"offset": [
+0.055,
+0.0,
+0.217
+]
+},
+{
+"id": "medieval/building_tower_A_blue",
+"path": "res://assets/kaykit/medieval/building_tower_A_blue.gltf",
+"label": "Tower A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+5.96,
+13.15,
+6.921
+],
+"offset": [
+0.0,
+-0.0,
+-0.02
+]
+},
+{
+"id": "medieval/building_tower_B_blue",
+"path": "res://assets/kaykit/medieval/building_tower_B_blue.gltf",
+"label": "Tower B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+7.184,
+14.912,
+8.296
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "medieval/building_tower_base_blue",
+"path": "res://assets/kaykit/medieval/building_tower_base_blue.gltf",
+"label": "Tower base",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+5.579,
+9.0,
+6.667
+],
+"offset": [
+-0.0,
+-0.0,
+-0.147
+]
+},
+{
+"id": "medieval/building_tower_catapult_blue",
+"path": "res://assets/kaykit/medieval/building_tower_catapult_blue.gltf",
+"label": "Tower catapult",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+5.579,
+11.785,
+7.82
+],
+"offset": [
+-0.0,
+-0.0,
+0.43
+]
+},
+{
+"id": "medieval/building_watermill_blue",
+"path": "res://assets/kaykit/medieval/building_watermill_blue.gltf",
+"label": "Water mill",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+6.3,
+9.408,
+7.416
+],
+"offset": [
+-0.0,
+2.1,
+-1.488
+]
+},
+{
+"id": "medieval/building_well_blue",
+"path": "res://assets/kaykit/medieval/building_well_blue.gltf",
+"label": "Well",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+3.911,
+4.956,
+4.504
+],
+"offset": [
+-0.066,
+0.0,
+0.0
+]
+},
+{
+"id": "medieval/building_windmill_blue",
+"path": "res://assets/kaykit/medieval/building_windmill_blue.gltf",
+"label": "Windmill",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+6.755,
+8.747,
+4.899
+],
+"offset": [
+-0.03,
+0.0,
+-0.176
+]
+},
+{
+"id": "medieval/fence_stone_straight",
+"path": "res://assets/kaykit/medieval/fence_stone_straight.gltf",
+"label": "Fence stone straight",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.2,
+1.614,
+6.928
+],
+"offset": [
+6.0,
+0.3,
+0.0
+]
+},
+{
+"id": "medieval/fence_stone_straight_gate",
+"path": "res://assets/kaykit/medieval/fence_stone_straight_gate.gltf",
+"label": "Fence stone straight gate",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.2,
+1.778,
+6.928
+],
+"offset": [
+6.0,
+0.3,
+0.0
+]
+},
+{
+"id": "medieval/fence_wood_straight",
+"path": "res://assets/kaykit/medieval/fence_wood_straight.gltf",
+"label": "Fence wood straight",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+0.6,
+3.3,
+6.928
+],
+"offset": [
+6.0,
+0.3,
+0.0
+]
+},
+{
+"id": "medieval/fence_wood_straight_gate",
+"path": "res://assets/kaykit/medieval/fence_wood_straight_gate.gltf",
+"label": "Fence wood straight gate",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+0.84,
+3.9,
+6.928
+],
+"offset": [
+6.0,
+0.3,
+0.0
+]
+},
+{
+"id": "medieval/flag_blue",
+"path": "res://assets/kaykit/medieval/flag_blue.gltf",
+"label": "Flag blue",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+0.33,
+1.665,
+1.584
+],
+"offset": [
+-0.002,
+-0.0,
+0.66
+]
+},
+{
+"id": "medieval/flag_green",
+"path": "res://assets/kaykit/medieval/flag_green.gltf",
+"label": "Flag green",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+0.33,
+1.665,
+1.584
+],
+"offset": [
+-0.002,
+-0.0,
+0.66
+]
+},
+{
+"id": "medieval/flag_red",
+"path": "res://assets/kaykit/medieval/flag_red.gltf",
+"label": "Flag red",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+0.33,
+1.665,
+1.584
+],
+"offset": [
+-0.002,
+-0.0,
+0.66
+]
+},
+{
+"id": "medieval/flag_yellow",
+"path": "res://assets/kaykit/medieval/flag_yellow.gltf",
+"label": "Flag yellow",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+0.33,
+1.665,
+1.584
+],
+"offset": [
+-0.002,
+-0.0,
+0.66
+]
+},
+{
+"id": "medieval/hill_single_A",
+"path": "res://assets/kaykit/medieval/hill_single_A.gltf",
+"label": "Hill single A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+6.659,
+1.844,
+4.856
+],
+"offset": [
+-0.217,
+-0.0,
+-0.018
+]
+},
+{
+"id": "medieval/hill_single_B",
+"path": "res://assets/kaykit/medieval/hill_single_B.gltf",
+"label": "Hill single B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+5.97,
+2.512,
+8.163
+],
+"offset": [
+0.237,
+-0.0,
+0.519
+]
+},
+{
+"id": "medieval/hill_single_C",
+"path": "res://assets/kaykit/medieval/hill_single_C.gltf",
+"label": "Hill single C",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+6.146,
+3.531,
+7.949
+],
+"offset": [
+-0.006,
+-0.0,
+0.26
+]
+},
+{
+"id": "medieval/hills_A",
+"path": "res://assets/kaykit/medieval/hills_A.gltf",
+"label": "Hills A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.532,
+4.765,
+10.423
+],
+"offset": [
+-0.338,
+-0.0,
+-0.211
+]
+},
+{
+"id": "medieval/hills_A_trees",
+"path": "res://assets/kaykit/medieval/hills_A_trees.gltf",
+"label": "Hills A trees",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.532,
+7.993,
+10.423
+],
+"offset": [
+-0.338,
+-0.0,
+-0.211
+]
+},
+{
+"id": "medieval/hills_B",
+"path": "res://assets/kaykit/medieval/hills_B.gltf",
+"label": "Hills B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+8.841,
+2.196,
+9.742
+],
+"offset": [
+0.202,
+0.001,
+0.441
+]
+},
+{
+"id": "medieval/hills_B_trees",
+"path": "res://assets/kaykit/medieval/hills_B_trees.gltf",
+"label": "Hills B trees",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+8.841,
+8.215,
+9.742
+],
+"offset": [
+0.202,
+0.001,
+0.441
+]
+},
+{
+"id": "medieval/hills_C",
+"path": "res://assets/kaykit/medieval/hills_C.gltf",
+"label": "Hills C",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+9.164,
+3.328,
+8.842
+],
+"offset": [
+-0.518,
+0.001,
+-1.108
+]
+},
+{
+"id": "medieval/hills_C_trees",
+"path": "res://assets/kaykit/medieval/hills_C_trees.gltf",
+"label": "Hills C trees",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.179,
+7.772,
+11.395
+],
+"offset": [
+-0.01,
+0.123,
+0.169
+]
+},
+{
+"id": "medieval/ladder",
+"path": "res://assets/kaykit/medieval/ladder.gltf",
+"label": "Ladder",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.519,
+4.62,
+0.304
+],
+"offset": [
+0.0,
+0.0,
+-0.047
+]
+},
+{
+"id": "medieval/mountain_A",
+"path": "res://assets/kaykit/medieval/mountain_A.gltf",
+"label": "Mountain A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.806,
+8.552,
+11.257
+],
+"offset": [
+-0.041,
+-0.0,
+-0.006
+]
+},
+{
+"id": "medieval/mountain_A_grass",
+"path": "res://assets/kaykit/medieval/mountain_A_grass.gltf",
+"label": "Mountain A grass",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.806,
+9.006,
+11.257
+],
+"offset": [
+-0.041,
+-0.0,
+-0.006
+]
+},
+{
+"id": "medieval/mountain_A_grass_trees",
+"path": "res://assets/kaykit/medieval/mountain_A_grass_trees.gltf",
+"label": "Mountain A grass trees",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+11.132,
+13.058,
+11.257
+],
+"offset": [
+-0.204,
+-0.0,
+-0.006
+]
+},
+{
+"id": "medieval/mountain_B",
+"path": "res://assets/kaykit/medieval/mountain_B.gltf",
+"label": "Mountain B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.806,
+10.617,
+11.257
+],
+"offset": [
+-0.076,
+0.0,
+-0.024
+]
+},
+{
+"id": "medieval/mountain_B_grass",
+"path": "res://assets/kaykit/medieval/mountain_B_grass.gltf",
+"label": "Mountain B grass",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.806,
+11.018,
+11.257
+],
+"offset": [
+-0.076,
+0.0,
+-0.024
+]
+},
+{
+"id": "medieval/mountain_B_grass_trees",
+"path": "res://assets/kaykit/medieval/mountain_B_grass_trees.gltf",
+"label": "Mountain B grass trees",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.806,
+15.028,
+11.257
+],
+"offset": [
+-0.076,
+0.0,
+-0.024
+]
+},
+{
+"id": "medieval/mountain_C",
+"path": "res://assets/kaykit/medieval/mountain_C.gltf",
+"label": "Mountain C",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.552,
+9.048,
+12.138
+],
+"offset": [
+-0.168,
+-0.0,
+0.038
+]
+},
+{
+"id": "medieval/mountain_C_grass",
+"path": "res://assets/kaykit/medieval/mountain_C_grass.gltf",
+"label": "Mountain C grass",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.552,
+9.325,
+12.138
+],
+"offset": [
+-0.168,
+-0.0,
+0.038
+]
+},
+{
+"id": "medieval/mountain_C_grass_trees",
+"path": "res://assets/kaykit/medieval/mountain_C_grass_trees.gltf",
+"label": "Mountain C grass trees",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.552,
+12.674,
+12.138
+],
+"offset": [
+-0.168,
+-0.0,
+0.038
+]
+},
+{
+"id": "medieval/projectile_catapult",
+"path": "res://assets/kaykit/medieval/projectile_catapult.gltf",
+"label": "Projectile catapult",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+1.443,
+1.696,
+1.517
+],
+"offset": [
+0.0,
+0.848,
+0.0
+]
+},
+{
+"id": "medieval/resource_lumber",
+"path": "res://assets/kaykit/medieval/resource_lumber.gltf",
+"label": "Resource lumber",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+4.116,
+1.26,
+1.983
+],
+"offset": [
+0.009,
+0.0,
+-0.01
+]
+},
+{
+"id": "medieval/resource_stone",
+"path": "res://assets/kaykit/medieval/resource_stone.gltf",
+"label": "Resource stone",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+2.527,
+1.68,
+2.147
+],
+"offset": [
+0.0,
+0.0,
+-0.011
+]
+},
+{
+"id": "medieval/rock_single_A",
+"path": "res://assets/kaykit/medieval/rock_single_A.gltf",
+"label": "Rock single A",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+1.789,
+0.416,
+1.702
+],
+"offset": [
+0.0,
+-0.0,
+0.09
+],
+"round": true
+},
+{
+"id": "medieval/rock_single_B",
+"path": "res://assets/kaykit/medieval/rock_single_B.gltf",
+"label": "Rock single B",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+1.72,
+0.808,
+1.498
+],
+"offset": [
+-0.008,
+0.0,
+0.019
+],
+"round": true
+},
+{
+"id": "medieval/rock_single_C",
+"path": "res://assets/kaykit/medieval/rock_single_C.gltf",
+"label": "Rock single C",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+2.063,
+1.169,
+2.065
+],
+"offset": [
+0.08,
+0.001,
+0.059
+],
+"round": true
+},
+{
+"id": "medieval/rock_single_D",
+"path": "res://assets/kaykit/medieval/rock_single_D.gltf",
+"label": "Rock single D",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+1.72,
+0.978,
+1.498
+],
+"offset": [
+-0.008,
+0.0,
+0.029
+],
+"round": true
+},
+{
+"id": "medieval/rock_single_E",
+"path": "res://assets/kaykit/medieval/rock_single_E.gltf",
+"label": "Rock single E",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+2.929,
+1.169,
+2.085
+],
+"offset": [
+0.068,
+0.001,
+0.066
+]
+},
+{
+"id": "medieval/target",
+"path": "res://assets/kaykit/medieval/target.gltf",
+"label": "Target",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+1.436,
+1.811,
+0.853
+],
+"offset": [
+-0.0,
+-0.0,
+0.174
+]
+},
+{
+"id": "medieval/tent",
+"path": "res://assets/kaykit/medieval/tent.gltf",
+"label": "Tent",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+3.096,
+3.096,
+3.096
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "medieval/tree_single_A",
+"path": "res://assets/kaykit/medieval/tree_single_A.gltf",
+"label": "Tree single A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+3.444,
+7.179,
+3.282
+],
+"offset": [
+0.003,
+0.616,
+0.169
+]
+},
+{
+"id": "medieval/tree_single_A_cut",
+"path": "res://assets/kaykit/medieval/tree_single_A_cut.gltf",
+"label": "Tree single A cut",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.018,
+1.981,
+0.97
+],
+"offset": [
+0.0,
+0.616,
+0.049
+]
+},
+{
+"id": "medieval/tree_single_B",
+"path": "res://assets/kaykit/medieval/tree_single_B.gltf",
+"label": "Tree single B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+4.109,
+7.276,
+4.321
+],
+"offset": [
+-0.0,
+0.6,
+0.0
+]
+},
+{
+"id": "medieval/tree_single_B_cut",
+"path": "res://assets/kaykit/medieval/tree_single_B_cut.gltf",
+"label": "Tree single B cut",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.084,
+1.42,
+1.14
+],
+"offset": [
+0.0,
+0.6,
+0.0
+]
+},
+{
+"id": "medieval/trees_A_cut",
+"path": "res://assets/kaykit/medieval/trees_A_cut.gltf",
+"label": "Trees A cut",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+9.983,
+1.258,
+10.108
+],
+"offset": [
+0.067,
+0.08,
+0.06
+]
+},
+{
+"id": "medieval/trees_A_large",
+"path": "res://assets/kaykit/medieval/trees_A_large.gltf",
+"label": "Trees A large",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+11.671,
+5.559,
+11.8
+],
+"offset": [
+-0.025,
+0.08,
+0.049
+]
+},
+{
+"id": "medieval/trees_A_medium",
+"path": "res://assets/kaykit/medieval/trees_A_medium.gltf",
+"label": "Trees A medium",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.509,
+7.772,
+10.886
+],
+"offset": [
+-0.086,
+0.123,
+-0.204
+]
+},
+{
+"id": "medieval/trees_A_small",
+"path": "res://assets/kaykit/medieval/trees_A_small.gltf",
+"label": "Trees A small",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+8.558,
+6.654,
+8.61
+],
+"offset": [
+0.284,
+0.123,
+0.078
+]
+},
+{
+"id": "medieval/trees_B_cut",
+"path": "res://assets/kaykit/medieval/trees_B_cut.gltf",
+"label": "Trees B cut",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+8.413,
+1.039,
+8.764
+],
+"offset": [
+-0.214,
+0.132,
+0.057
+]
+},
+{
+"id": "medieval/trees_B_large",
+"path": "res://assets/kaykit/medieval/trees_B_large.gltf",
+"label": "Trees B large",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+11.096,
+7.047,
+11.595
+],
+"offset": [
+-0.106,
+0.132,
+0.117
+]
+},
+{
+"id": "medieval/trees_B_medium",
+"path": "res://assets/kaykit/medieval/trees_B_medium.gltf",
+"label": "Trees B medium",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+11.183,
+7.044,
+10.999
+],
+"offset": [
+-0.242,
+0.129,
+0.342
+]
+},
+{
+"id": "medieval/trees_B_small",
+"path": "res://assets/kaykit/medieval/trees_B_small.gltf",
+"label": "Trees B small",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+7.97,
+5.531,
+6.831
+],
+"offset": [
+0.172,
+0.039,
+-0.397
+]
+},
+{
+"id": "medieval/wall_corner_A_gate",
+"path": "res://assets/kaykit/medieval/wall_corner_A_gate.gltf",
+"label": "Wall corner A gate",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.559,
+8.491,
+9.195
+],
+"offset": [
+0.721,
+0.3,
+1.799
+]
+},
+{
+"id": "medieval/wall_corner_A_inside",
+"path": "res://assets/kaykit/medieval/wall_corner_A_inside.gltf",
+"label": "Wall corner A inside",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+11.079,
+6.6,
+8.496
+],
+"offset": [
+0.461,
+-0.0,
+1.848
+]
+},
+{
+"id": "medieval/wall_corner_A_outside",
+"path": "res://assets/kaykit/medieval/wall_corner_A_outside.gltf",
+"label": "Wall corner A outside",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+10.559,
+6.6,
+8.59
+],
+"offset": [
+0.721,
+-0.0,
+2.101
+]
+},
+{
+"id": "medieval/wall_corner_B_inside",
+"path": "res://assets/kaykit/medieval/wall_corner_B_inside.gltf",
+"label": "Wall corner B inside",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+5.775,
+6.6,
+8.796
+],
+"offset": [
+3.113,
+-0.0,
+1.998
+]
+},
+{
+"id": "medieval/wall_corner_B_outside",
+"path": "res://assets/kaykit/medieval/wall_corner_B_outside.gltf",
+"label": "Wall corner B outside",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+5.784,
+6.6,
+8.098
+],
+"offset": [
+3.108,
+-0.0,
+2.047
+]
+},
+{
+"id": "medieval/wall_straight",
+"path": "res://assets/kaykit/medieval/wall_straight.gltf",
+"label": "Wall straight",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+12.0,
+6.6,
+4.8
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "medieval/wall_straight_gate",
+"path": "res://assets/kaykit/medieval/wall_straight_gate.gltf",
+"label": "Wall straight gate",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+12.0,
+8.484,
+5.374
+],
+"offset": [
+-0.0,
+0.3,
+-0.287
+]
+},
+{
+"id": "medieval/waterlily_A",
+"path": "res://assets/kaykit/medieval/waterlily_A.gltf",
+"label": "Waterlily A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+0.871,
+0.103,
+0.868
+],
+"offset": [
+0.0,
+-0.0,
+0.002
+]
+},
+{
+"id": "medieval/waterlily_B",
+"path": "res://assets/kaykit/medieval/waterlily_B.gltf",
+"label": "Waterlily B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.269,
+0.103,
+1.264
+],
+"offset": [
+0.0,
+-0.0,
+0.002
+]
+},
+{
+"id": "medieval/waterplant_A",
+"path": "res://assets/kaykit/medieval/waterplant_A.gltf",
+"label": "Waterplant A",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.19,
+0.794,
+1.294
+],
+"offset": [
+0.137,
+0.118,
+0.091
+]
+},
+{
+"id": "medieval/waterplant_B",
+"path": "res://assets/kaykit/medieval/waterplant_B.gltf",
+"label": "Waterplant B",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+0.948,
+1.525,
+0.618
+],
+"offset": [
+0.034,
+0.114,
+0.076
+]
+},
+{
+"id": "medieval/waterplant_C",
+"path": "res://assets/kaykit/medieval/waterplant_C.gltf",
+"label": "Waterplant C",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.19,
+1.483,
+1.294
+],
+"offset": [
+0.137,
+0.118,
+0.091
+]
+},
+{
+"id": "medieval/weaponrack",
+"path": "res://assets/kaykit/medieval/weaponrack.gltf",
+"label": "Weapon rack",
+"cat": "Village & nature",
+"kind": "prop",
+"scale": 6.0,
+"size": [
+1.2,
+1.44,
+0.78
+],
+"offset": [
+-0.0,
+-0.0,
+0.03
+]
+},
+{
+"id": "medieval/wheelbarrow",
+"path": "res://assets/kaykit/medieval/wheelbarrow.gltf",
+"label": "Wheelbarrow",
+"cat": "Village & nature",
+"kind": "structure",
+"scale": 6.0,
+"size": [
+1.428,
+1.13,
+3.034
+],
+"offset": [
+-0.0,
+0.0,
+-0.24
+]
+},
+{
+"id": "restaurant/bowl",
+"path": "res://assets/kaykit/restaurant/bowl.gltf",
+"label": "Bowl",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.713,
+0.225,
+0.713
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/bowl_dirty",
+"path": "res://assets/kaykit/restaurant/bowl_dirty.gltf",
+"label": "Bowl dirty",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.713,
+0.225,
+0.713
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/bowl_small",
+"path": "res://assets/kaykit/restaurant/bowl_small.gltf",
+"label": "Bowl small",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.225,
+0.562
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/chair_A",
+"path": "res://assets/kaykit/restaurant/chair_A.gltf",
+"label": "Chair A",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.563,
+0.906,
+0.597
+],
+"offset": [
+0.0,
+-0.0,
+0.017
+]
+},
+{
+"id": "restaurant/chair_B",
+"path": "res://assets/kaykit/restaurant/chair_B.gltf",
+"label": "Chair B",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.563,
+0.906,
+0.597
+],
+"offset": [
+0.0,
+-0.0,
+0.017
+]
+},
+{
+"id": "restaurant/chair_stool",
+"path": "res://assets/kaykit/restaurant/chair_stool.gltf",
+"label": "Chair stool",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.375,
+0.562
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/crate",
+"path": "res://assets/kaykit/restaurant/crate.gltf",
+"label": "Crate",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.6,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_buns",
+"path": "res://assets/kaykit/restaurant/crate_buns.gltf",
+"label": "Crate buns",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.602,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_carrots",
+"path": "res://assets/kaykit/restaurant/crate_carrots.gltf",
+"label": "Crate carrots",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.707,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_cheese",
+"path": "res://assets/kaykit/restaurant/crate_cheese.gltf",
+"label": "Crate cheese",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.709,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_ham",
+"path": "res://assets/kaykit/restaurant/crate_ham.gltf",
+"label": "Crate ham",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.67,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_lettuce",
+"path": "res://assets/kaykit/restaurant/crate_lettuce.gltf",
+"label": "Crate lettuce",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.749,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_lid",
+"path": "res://assets/kaykit/restaurant/crate_lid.gltf",
+"label": "Crate lid",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.15,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/crate_onions",
+"path": "res://assets/kaykit/restaurant/crate_onions.gltf",
+"label": "Crate onions",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.693,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_potatoes",
+"path": "res://assets/kaykit/restaurant/crate_potatoes.gltf",
+"label": "Crate potatoes",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.724,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_steak",
+"path": "res://assets/kaykit/restaurant/crate_steak.gltf",
+"label": "Crate steak",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.658,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/crate_tomatoes",
+"path": "res://assets/kaykit/restaurant/crate_tomatoes.gltf",
+"label": "Crate tomatoes",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.692,
+1.5
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/cuttingboard",
+"path": "res://assets/kaykit/restaurant/cuttingboard.gltf",
+"label": "Cutting board",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.112,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/dishrack",
+"path": "res://assets/kaykit/restaurant/dishrack.gltf",
+"label": "Dish rack",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.9,
+0.45,
+0.9
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/dishrack_plates",
+"path": "res://assets/kaykit/restaurant/dishrack_plates.gltf",
+"label": "Dish rack plates",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.9,
+0.821,
+0.9
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/door_A",
+"path": "res://assets/kaykit/restaurant/door_A.gltf",
+"label": "Door A",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.2,
+2.1,
+0.579
+],
+"offset": [
+-0.6,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/door_B",
+"path": "res://assets/kaykit/restaurant/door_B.gltf",
+"label": "Door B",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.2,
+2.1,
+0.579
+],
+"offset": [
+-0.6,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/extractorhood",
+"path": "res://assets/kaykit/restaurant/extractorhood.gltf",
+"label": "Extractor hood",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.5,
+1.207
+],
+"offset": [
+-0.0,
+-1.5,
+-0.603
+]
+},
+{
+"id": "restaurant/floor_kitchen",
+"path": "res://assets/kaykit/restaurant/floor_kitchen.gltf",
+"label": "Floor kitchen",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+0.375,
+3.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/floor_kitchen_small",
+"path": "res://assets/kaykit/restaurant/floor_kitchen_small.gltf",
+"label": "Floor kitchen small",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.375,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/food_burger",
+"path": "res://assets/kaykit/restaurant/food_burger.gltf",
+"label": "Burger",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.713,
+0.643,
+0.712
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/food_dinner",
+"path": "res://assets/kaykit/restaurant/food_dinner.gltf",
+"label": "Dinner",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.778,
+0.681,
+0.712
+],
+"offset": [
+0.004,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_bun",
+"path": "res://assets/kaykit/restaurant/food_ingredient_bun.gltf",
+"label": "Bun",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.525,
+0.38,
+0.525
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_bun_bottom",
+"path": "res://assets/kaykit/restaurant/food_ingredient_bun_bottom.gltf",
+"label": "Bun bottom",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.52,
+0.15,
+0.52
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_bun_top",
+"path": "res://assets/kaykit/restaurant/food_ingredient_bun_top.gltf",
+"label": "Bun top",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.525,
+0.23,
+0.525
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_burger_cooked",
+"path": "res://assets/kaykit/restaurant/food_ingredient_burger_cooked.gltf",
+"label": "Burger cooked",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.525,
+0.15,
+0.525
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_burger_trash",
+"path": "res://assets/kaykit/restaurant/food_ingredient_burger_trash.gltf",
+"label": "Burger trash",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.525,
+0.15,
+0.525
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_burger_uncooked",
+"path": "res://assets/kaykit/restaurant/food_ingredient_burger_uncooked.gltf",
+"label": "Burger uncooked",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.525,
+0.15,
+0.525
+],
+"offset": [
+0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_carrot",
+"path": "res://assets/kaykit/restaurant/food_ingredient_carrot.gltf",
+"label": "Carrot",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.42,
+0.952,
+0.415
+],
+"offset": [
+-0.0,
+0.439,
+0.003
+]
+},
+{
+"id": "restaurant/food_ingredient_carrot_chopped",
+"path": "res://assets/kaykit/restaurant/food_ingredient_carrot_chopped.gltf",
+"label": "Carrot chopped",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.999,
+0.419,
+0.425
+],
+"offset": [
+0.158,
+0.007,
+0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_carrot_pieces",
+"path": "res://assets/kaykit/restaurant/food_ingredient_carrot_pieces.gltf",
+"label": "Carrot pieces",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.407,
+0.242,
+0.539
+],
+"offset": [
+0.089,
+-0.014,
+-0.025
+]
+},
+{
+"id": "restaurant/food_ingredient_cheese",
+"path": "res://assets/kaykit/restaurant/food_ingredient_cheese.gltf",
+"label": "Cheese",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.732,
+0.375,
+0.541
+],
+"offset": [
+-0.115,
+0.0,
+-0.002
+]
+},
+{
+"id": "restaurant/food_ingredient_cheese_chopped",
+"path": "res://assets/kaykit/restaurant/food_ingredient_cheese_chopped.gltf",
+"label": "Cheese chopped",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.765,
+0.375,
+0.541
+],
+"offset": [
+0.123,
+0.0,
+-0.002
+]
+},
+{
+"id": "restaurant/food_ingredient_cheese_slice",
+"path": "res://assets/kaykit/restaurant/food_ingredient_cheese_slice.gltf",
+"label": "Cheese slice",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.618,
+0.079,
+0.618
+],
+"offset": [
+0.0,
+0.066,
+-0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_ham",
+"path": "res://assets/kaykit/restaurant/food_ingredient_ham.gltf",
+"label": "Ham",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.043,
+0.622,
+0.623
+],
+"offset": [
+-0.15,
+0.311,
+-0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_ham_cooked",
+"path": "res://assets/kaykit/restaurant/food_ingredient_ham_cooked.gltf",
+"label": "Ham cooked",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.043,
+0.622,
+0.623
+],
+"offset": [
+-0.15,
+0.311,
+-0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_ham_trash",
+"path": "res://assets/kaykit/restaurant/food_ingredient_ham_trash.gltf",
+"label": "Ham trash",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.043,
+0.622,
+0.623
+],
+"offset": [
+-0.15,
+0.311,
+-0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_lettuce",
+"path": "res://assets/kaykit/restaurant/food_ingredient_lettuce.gltf",
+"label": "Lettuce",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.828,
+0.615,
+0.85
+],
+"offset": [
+-0.0,
+0.008,
+0.039
+]
+},
+{
+"id": "restaurant/food_ingredient_lettuce_chopped",
+"path": "res://assets/kaykit/restaurant/food_ingredient_lettuce_chopped.gltf",
+"label": "Lettuce chopped",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.349,
+0.607,
+0.909
+],
+"offset": [
+-0.236,
+0.024,
+0.01
+]
+},
+{
+"id": "restaurant/food_ingredient_lettuce_slice",
+"path": "res://assets/kaykit/restaurant/food_ingredient_lettuce_slice.gltf",
+"label": "Lettuce slice",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.605,
+0.066,
+0.605
+],
+"offset": [
+-0.0,
+0.025,
+-0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_onion",
+"path": "res://assets/kaykit/restaurant/food_ingredient_onion.gltf",
+"label": "Onion",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.647,
+0.562
+],
+"offset": [
+-0.0,
+0.009,
+-0.0
+],
+"round": true
+},
+{
+"id": "restaurant/food_ingredient_onion_chopped",
+"path": "res://assets/kaykit/restaurant/food_ingredient_onion_chopped.gltf",
+"label": "Onion chopped",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.919,
+0.562,
+0.562
+],
+"offset": [
+0.029,
+0.016,
+0.008
+]
+},
+{
+"id": "restaurant/food_ingredient_onion_rings",
+"path": "res://assets/kaykit/restaurant/food_ingredient_onion_rings.gltf",
+"label": "Onion rings",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.582,
+0.08,
+0.547
+],
+"offset": [
+-0.004,
+0.021,
+0.016
+]
+},
+{
+"id": "restaurant/food_ingredient_potato",
+"path": "res://assets/kaykit/restaurant/food_ingredient_potato.gltf",
+"label": "Potato",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.45,
+0.585,
+0.51
+],
+"offset": [
+0.037,
+0.295,
+0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_potato_chopped",
+"path": "res://assets/kaykit/restaurant/food_ingredient_potato_chopped.gltf",
+"label": "Potato chopped",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.785,
+0.45,
+0.525
+],
+"offset": [
+0.114,
+0.016,
+-0.004
+]
+},
+{
+"id": "restaurant/food_ingredient_potato_mashed",
+"path": "res://assets/kaykit/restaurant/food_ingredient_potato_mashed.gltf",
+"label": "Potato mashed",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.452,
+0.159,
+0.477
+],
+"offset": [
+-0.094,
+-0.019,
+0.076
+]
+},
+{
+"id": "restaurant/food_ingredient_steak",
+"path": "res://assets/kaykit/restaurant/food_ingredient_steak.gltf",
+"label": "Steak",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.789,
+0.212,
+0.677
+],
+"offset": [
+-0.002,
+0.028,
+-0.001
+]
+},
+{
+"id": "restaurant/food_ingredient_steak_pieces",
+"path": "res://assets/kaykit/restaurant/food_ingredient_steak_pieces.gltf",
+"label": "Steak pieces",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.485,
+0.326,
+0.467
+],
+"offset": [
+-0.012,
+0.015,
+0.008
+]
+},
+{
+"id": "restaurant/food_ingredient_tomato",
+"path": "res://assets/kaykit/restaurant/food_ingredient_tomato.gltf",
+"label": "Tomato",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.563,
+0.525,
+0.563
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+],
+"round": true
+},
+{
+"id": "restaurant/food_ingredient_tomato_slice",
+"path": "res://assets/kaykit/restaurant/food_ingredient_tomato_slice.gltf",
+"label": "Tomato slice",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.487,
+0.075,
+0.487
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_tomato_slices",
+"path": "res://assets/kaykit/restaurant/food_ingredient_tomato_slices.gltf",
+"label": "Tomato slices",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.57,
+0.225,
+0.487
+],
+"offset": [
+-0.019,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/food_ingredient_vegetableburger_cooked",
+"path": "res://assets/kaykit/restaurant/food_ingredient_vegetableburger_cooked.gltf",
+"label": "Veggie burger cooked",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.546,
+0.162,
+0.538
+],
+"offset": [
+-0.002,
+0.0,
+-0.006
+]
+},
+{
+"id": "restaurant/food_ingredient_vegetableburger_uncooked",
+"path": "res://assets/kaykit/restaurant/food_ingredient_vegetableburger_uncooked.gltf",
+"label": "Veggie burger uncooked",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.546,
+0.162,
+0.538
+],
+"offset": [
+-0.002,
+0.0,
+-0.006
+]
+},
+{
+"id": "restaurant/food_stew",
+"path": "res://assets/kaykit/restaurant/food_stew.gltf",
+"label": "Stew",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.713,
+0.277,
+0.713
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/food_vegetableburger",
+"path": "res://assets/kaykit/restaurant/food_vegetableburger.gltf",
+"label": "Veggie burger",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.713,
+0.643,
+0.712
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/fridge_A",
+"path": "res://assets/kaykit/restaurant/fridge_A.gltf",
+"label": "Fridge A",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.875,
+1.68
+],
+"offset": [
+-0.0,
+0.0,
+-0.09
+]
+},
+{
+"id": "restaurant/fridge_A_decorated",
+"path": "res://assets/kaykit/restaurant/fridge_A_decorated.gltf",
+"label": "Fridge A decorated",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.875,
+1.68
+],
+"offset": [
+-0.0,
+0.0,
+-0.09
+]
+},
+{
+"id": "restaurant/fridge_B",
+"path": "res://assets/kaykit/restaurant/fridge_B.gltf",
+"label": "Fridge B",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.875,
+1.68
+],
+"offset": [
+-0.0,
+-0.0,
+-0.09
+]
+},
+{
+"id": "restaurant/jar_A_large",
+"path": "res://assets/kaykit/restaurant/jar_A_large.gltf",
+"label": "Jar A large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.562,
+0.375
+],
+"offset": [
+0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_A_medium",
+"path": "res://assets/kaykit/restaurant/jar_A_medium.gltf",
+"label": "Jar A medium",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.487,
+0.375
+],
+"offset": [
+0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_A_small",
+"path": "res://assets/kaykit/restaurant/jar_A_small.gltf",
+"label": "Jar A small",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.425,
+0.412,
+0.425
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_B_large",
+"path": "res://assets/kaykit/restaurant/jar_B_large.gltf",
+"label": "Jar B large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.562,
+0.375
+],
+"offset": [
+0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_B_medium",
+"path": "res://assets/kaykit/restaurant/jar_B_medium.gltf",
+"label": "Jar B medium",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.487,
+0.375
+],
+"offset": [
+0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_B_small",
+"path": "res://assets/kaykit/restaurant/jar_B_small.gltf",
+"label": "Jar B small",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.425,
+0.412,
+0.425
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_C_large",
+"path": "res://assets/kaykit/restaurant/jar_C_large.gltf",
+"label": "Jar C large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.562,
+0.375
+],
+"offset": [
+0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_C_medium",
+"path": "res://assets/kaykit/restaurant/jar_C_medium.gltf",
+"label": "Jar C medium",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.487,
+0.375
+],
+"offset": [
+0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_C_small",
+"path": "res://assets/kaykit/restaurant/jar_C_small.gltf",
+"label": "Jar C small",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.425,
+0.412,
+0.425
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_D_large",
+"path": "res://assets/kaykit/restaurant/jar_D_large.gltf",
+"label": "Jar D large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.562,
+0.375
+],
+"offset": [
+0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_D_medium",
+"path": "res://assets/kaykit/restaurant/jar_D_medium.gltf",
+"label": "Jar D medium",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.487,
+0.375
+],
+"offset": [
+0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/jar_D_small",
+"path": "res://assets/kaykit/restaurant/jar_D_small.gltf",
+"label": "Jar D small",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.425,
+0.412,
+0.425
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/ketchup",
+"path": "res://assets/kaykit/restaurant/ketchup.gltf",
+"label": "Ketchup",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.225,
+0.584,
+0.225
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchencabinet",
+"path": "res://assets/kaykit/restaurant/kitchencabinet.gltf",
+"label": "Kitchen cabinet",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.5,
+0.781
+],
+"offset": [
+-0.0,
+-1.5,
+-0.391
+]
+},
+{
+"id": "restaurant/kitchencabinet_corner",
+"path": "res://assets/kaykit/restaurant/kitchencabinet_corner.gltf",
+"label": "Kitchen cabinet corner",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.5,
+1.5
+],
+"offset": [
+-0.0,
+-1.5,
+-0.75
+]
+},
+{
+"id": "restaurant/kitchencabinet_corner_half",
+"path": "res://assets/kaykit/restaurant/kitchencabinet_corner_half.gltf",
+"label": "Kitchen cabinet corner half",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+1.5
+],
+"offset": [
+-0.0,
+-2.25,
+-0.75
+]
+},
+{
+"id": "restaurant/kitchencabinet_half",
+"path": "res://assets/kaykit/restaurant/kitchencabinet_half.gltf",
+"label": "Kitchen cabinet half",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+0.781
+],
+"offset": [
+-0.0,
+-2.25,
+-0.391
+]
+},
+{
+"id": "restaurant/kitchencounter_innercorner",
+"path": "res://assets/kaykit/restaurant/kitchencounter_innercorner.gltf",
+"label": "Kitchen counter inner corner",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchencounter_innercorner_backsplash",
+"path": "res://assets/kaykit/restaurant/kitchencounter_innercorner_backsplash.gltf",
+"label": "Kitchen counter inner corner with backsplash",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.9,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchencounter_outercorner",
+"path": "res://assets/kaykit/restaurant/kitchencounter_outercorner.gltf",
+"label": "Kitchen counter outer corner",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchencounter_outercorner_backsplash",
+"path": "res://assets/kaykit/restaurant/kitchencounter_outercorner_backsplash.gltf",
+"label": "Kitchen counter outer corner with backsplash",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.9,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchencounter_sink",
+"path": "res://assets/kaykit/restaurant/kitchencounter_sink.gltf",
+"label": "Kitchen counter sink",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.351,
+1.531
+],
+"offset": [
+-0.0,
+-0.0,
+-0.016
+]
+},
+{
+"id": "restaurant/kitchencounter_sink_backsplash",
+"path": "res://assets/kaykit/restaurant/kitchencounter_sink_backsplash.gltf",
+"label": "Kitchen counter sink with backsplash",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.351,
+1.531
+],
+"offset": [
+-0.0,
+-0.0,
+-0.016
+]
+},
+{
+"id": "restaurant/kitchencounter_straight_A",
+"path": "res://assets/kaykit/restaurant/kitchencounter_straight_A.gltf",
+"label": "Kitchen counter straight A",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+1.531
+],
+"offset": [
+-0.0,
+-0.0,
+-0.016
+]
+},
+{
+"id": "restaurant/kitchencounter_straight_A_backsplash",
+"path": "res://assets/kaykit/restaurant/kitchencounter_straight_A_backsplash.gltf",
+"label": "Kitchen counter straight A with backsplash",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.9,
+1.531
+],
+"offset": [
+-0.0,
+-0.0,
+-0.016
+]
+},
+{
+"id": "restaurant/kitchencounter_straight_A_decorated",
+"path": "res://assets/kaykit/restaurant/kitchencounter_straight_A_decorated.gltf",
+"label": "Kitchen counter straight A decorated",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.504,
+1.571,
+1.698
+],
+"offset": [
+-0.002,
+-0.0,
+-0.099
+]
+},
+{
+"id": "restaurant/kitchencounter_straight_B",
+"path": "res://assets/kaykit/restaurant/kitchencounter_straight_B.gltf",
+"label": "Kitchen counter straight B",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.75,
+1.531
+],
+"offset": [
+-0.0,
+-0.0,
+-0.016
+]
+},
+{
+"id": "restaurant/kitchencounter_straight_B_backsplash",
+"path": "res://assets/kaykit/restaurant/kitchencounter_straight_B_backsplash.gltf",
+"label": "Kitchen counter straight B with backsplash",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.9,
+1.531
+],
+"offset": [
+-0.0,
+-0.0,
+-0.016
+]
+},
+{
+"id": "restaurant/kitchencounter_straight_decorated",
+"path": "res://assets/kaykit/restaurant/kitchencounter_straight_decorated.gltf",
+"label": "Kitchen counter straight decorated",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.435,
+1.531
+],
+"offset": [
+-0.0,
+-0.0,
+-0.016
+]
+},
+{
+"id": "restaurant/kitchentable_A",
+"path": "res://assets/kaykit/restaurant/kitchentable_A.gltf",
+"label": "Kitchen table A",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.753,
+1.5
+],
+"offset": [
+-0.0,
+0.003,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchentable_A_large",
+"path": "res://assets/kaykit/restaurant/kitchentable_A_large.gltf",
+"label": "Kitchen table A large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+0.753,
+1.5
+],
+"offset": [
+-0.0,
+0.003,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchentable_A_large_decorated",
+"path": "res://assets/kaykit/restaurant/kitchentable_A_large_decorated.gltf",
+"label": "Kitchen table A large decorated",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+1.446,
+1.5
+],
+"offset": [
+-0.0,
+0.003,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchentable_B",
+"path": "res://assets/kaykit/restaurant/kitchentable_B.gltf",
+"label": "Kitchen table B",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.753,
+1.5
+],
+"offset": [
+-0.0,
+0.003,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchentable_B_large",
+"path": "res://assets/kaykit/restaurant/kitchentable_B_large.gltf",
+"label": "Kitchen table B large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+0.753,
+1.5
+],
+"offset": [
+-0.0,
+0.003,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchentable_sink",
+"path": "res://assets/kaykit/restaurant/kitchentable_sink.gltf",
+"label": "Kitchen table sink",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.354,
+1.5
+],
+"offset": [
+-0.0,
+0.003,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchentable_sink_large",
+"path": "res://assets/kaykit/restaurant/kitchentable_sink_large.gltf",
+"label": "Kitchen table sink large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+1.351,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/kitchentable_sink_large_decorated",
+"path": "res://assets/kaykit/restaurant/kitchentable_sink_large_decorated.gltf",
+"label": "Kitchen table sink large decorated",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+1.46,
+1.5
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/knife",
+"path": "res://assets/kaykit/restaurant/knife.gltf",
+"label": "Knife",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.188,
+0.862,
+0.075
+],
+"offset": [
+0.056,
+0.158,
+0.0
+]
+},
+{
+"id": "restaurant/lid_A",
+"path": "res://assets/kaykit/restaurant/lid_A.gltf",
+"label": "Lid A",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.15,
+0.75
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/lid_B",
+"path": "res://assets/kaykit/restaurant/lid_B.gltf",
+"label": "Lid B",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.15,
+0.75
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/lid_large",
+"path": "res://assets/kaykit/restaurant/lid_large.gltf",
+"label": "Lid large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.225,
+0.9
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/menu",
+"path": "res://assets/kaykit/restaurant/menu.gltf",
+"label": "Menu",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.6,
+0.225
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/mustard",
+"path": "res://assets/kaykit/restaurant/mustard.gltf",
+"label": "Mustard",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.225,
+0.584,
+0.225
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/oven",
+"path": "res://assets/kaykit/restaurant/oven.gltf",
+"label": "Oven",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+1.515,
+1.761
+],
+"offset": [
+-0.0,
+-0.0,
+-0.108
+]
+},
+{
+"id": "restaurant/pan_006",
+"path": "res://assets/kaykit/restaurant/pan_006.gltf",
+"label": "Pan 006",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.262,
+0.956
+],
+"offset": [
+-0.0,
+-0.0,
+-0.197
+]
+},
+{
+"id": "restaurant/pan_A",
+"path": "res://assets/kaykit/restaurant/pan_A.gltf",
+"label": "Pan A",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.188,
+1.125
+],
+"offset": [
+-0.0,
+-0.0,
+-0.188
+]
+},
+{
+"id": "restaurant/pan_B",
+"path": "res://assets/kaykit/restaurant/pan_B.gltf",
+"label": "Pan B",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.75,
+0.188,
+1.125
+],
+"offset": [
+-0.0,
+-0.0,
+-0.188
+]
+},
+{
+"id": "restaurant/papertowel",
+"path": "res://assets/kaykit/restaurant/papertowel.gltf",
+"label": "Paper towel",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.375,
+0.685,
+0.375
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/pillar_A",
+"path": "res://assets/kaykit/restaurant/pillar_A.gltf",
+"label": "Pillar A",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.45,
+3.075,
+0.45
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/pillar_B",
+"path": "res://assets/kaykit/restaurant/pillar_B.gltf",
+"label": "Pillar B",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.75,
+3.075,
+0.75
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/plate",
+"path": "res://assets/kaykit/restaurant/plate.gltf",
+"label": "Plate",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.713,
+0.075,
+0.712
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/plate_dirty",
+"path": "res://assets/kaykit/restaurant/plate_dirty.gltf",
+"label": "Plate dirty",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.713,
+0.075,
+0.712
+],
+"offset": [
+-0.0,
+0.0,
+0.0
+]
+},
+{
+"id": "restaurant/plate_small",
+"path": "res://assets/kaykit/restaurant/plate_small.gltf",
+"label": "Plate small",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+0.562,
+0.075,
+0.562
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/pot_A",
+"path": "res://assets/kaykit/restaurant/pot_A.gltf",
+"label": "Pot A",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.05,
+0.375,
+0.75
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/pot_A_stew",
+"path": "res://assets/kaykit/restaurant/pot_A_stew.gltf",
+"label": "Pot A stew",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.05,
+0.387,
+0.75
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/pot_B",
+"path": "res://assets/kaykit/restaurant/pot_B.gltf",
+"label": "Pot B",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.05,
+0.375,
+0.75
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/pot_B_stew",
+"path": "res://assets/kaykit/restaurant/pot_B_stew.gltf",
+"label": "Pot B stew",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.05,
+0.387,
+0.75
+],
+"offset": [
+0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/pot_large",
+"path": "res://assets/kaykit/restaurant/pot_large.gltf",
+"label": "Pot large",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.562,
+0.9
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/shelf_papertowel",
+"path": "res://assets/kaykit/restaurant/shelf_papertowel.gltf",
+"label": "Shelf paper towel",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+0.795,
+0.45
+],
+"offset": [
+-0.0,
+0.682,
+-0.225
+]
+},
+{
+"id": "restaurant/shelf_papertowel_decorated",
+"path": "res://assets/kaykit/restaurant/shelf_papertowel_decorated.gltf",
+"label": "Shelf paper towel decorated",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+1.282,
+0.47
+],
+"offset": [
+-0.0,
+0.682,
+-0.235
+]
+},
+{
+"id": "restaurant/stove_multi",
+"path": "res://assets/kaykit/restaurant/stove_multi.gltf",
+"label": "Stove multi",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.9,
+1.716
+],
+"offset": [
+-0.0,
+-0.0,
+-0.085
+]
+},
+{
+"id": "restaurant/stove_multi_countertop",
+"path": "res://assets/kaykit/restaurant/stove_multi_countertop.gltf",
+"label": "Stove multi countertop",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.31,
+0.203,
+1.31
+],
+"offset": [
+0.0,
+-0.697,
+0.0
+]
+},
+{
+"id": "restaurant/stove_multi_decorated",
+"path": "res://assets/kaykit/restaurant/stove_multi_decorated.gltf",
+"label": "Stove multi decorated",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.65,
+1.287,
+1.716
+],
+"offset": [
+-0.075,
+-0.0,
+-0.085
+]
+},
+{
+"id": "restaurant/stove_single",
+"path": "res://assets/kaykit/restaurant/stove_single.gltf",
+"label": "Stove single",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.5,
+0.906,
+1.716
+],
+"offset": [
+-0.0,
+-0.0,
+-0.085
+]
+},
+{
+"id": "restaurant/stove_single_countertop",
+"path": "res://assets/kaykit/restaurant/stove_single_countertop.gltf",
+"label": "Stove single countertop",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.31,
+0.208,
+1.31
+],
+"offset": [
+0.0,
+-0.697,
+0.0
+]
+},
+{
+"id": "restaurant/table_round_A",
+"path": "res://assets/kaykit/restaurant/table_round_A.gltf",
+"label": "Table round A",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+0.75,
+2.25
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/table_round_A_decorated",
+"path": "res://assets/kaykit/restaurant/table_round_A_decorated.gltf",
+"label": "Table round A decorated",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+1.393,
+2.25
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/table_round_A_small",
+"path": "res://assets/kaykit/restaurant/table_round_A_small.gltf",
+"label": "Table round A small",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+0.75,
+1.125
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/table_round_A_small_decorated",
+"path": "res://assets/kaykit/restaurant/table_round_A_small_decorated.gltf",
+"label": "Table round A small decorated",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+1.125,
+1.35,
+1.125
+],
+"offset": [
+-0.0,
+0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/table_round_B",
+"path": "res://assets/kaykit/restaurant/table_round_B.gltf",
+"label": "Table round B",
+"cat": "Kitchen & food",
+"kind": "prop",
+"scale": 0.75,
+"size": [
+2.25,
+0.75,
+2.25
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+]
+},
+{
+"id": "restaurant/towelrail",
+"path": "res://assets/kaykit/restaurant/towelrail.gltf",
+"label": "Towel rail",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.2,
+0.437,
+0.348
+],
+"offset": [
+-0.0,
+-0.21,
+-0.774
+]
+},
+{
+"id": "restaurant/wall",
+"path": "res://assets/kaykit/restaurant/wall.gltf",
+"label": "Wall",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.375
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "restaurant/wall_decorated",
+"path": "res://assets/kaykit/restaurant/wall_decorated.gltf",
+"label": "Wall decorated",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.004,
+3.0,
+2.184
+],
+"offset": [
+0.002,
+-0.0,
+-0.904
+]
+},
+{
+"id": "restaurant/wall_doorway",
+"path": "res://assets/kaykit/restaurant/wall_doorway.gltf",
+"label": "Wall doorway",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.375
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "restaurant/wall_half",
+"path": "res://assets/kaykit/restaurant/wall_half.gltf",
+"label": "Wall half",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.5,
+3.0,
+0.375
+],
+"offset": [
+-0.75,
+-0.0,
+0.0
+]
+},
+{
+"id": "restaurant/wall_orderwindow",
+"path": "res://assets/kaykit/restaurant/wall_orderwindow.gltf",
+"label": "Wall order window",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.675
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "restaurant/wall_orderwindow_decorated",
+"path": "res://assets/kaykit/restaurant/wall_orderwindow_decorated.gltf",
+"label": "Wall order window decorated",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.675
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "restaurant/wall_window_closed",
+"path": "res://assets/kaykit/restaurant/wall_window_closed.gltf",
+"label": "Wall window closed",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.375
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+},
+{
+"id": "restaurant/wall_window_open",
+"path": "res://assets/kaykit/restaurant/wall_window_open.gltf",
+"label": "Wall window open",
+"cat": "Kitchen & food",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.0,
+3.0,
+0.375
+],
+"offset": [
+0.0,
+-0.0,
+0.0
+]
+}
+]

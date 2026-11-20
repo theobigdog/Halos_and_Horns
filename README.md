@@ -9,7 +9,7 @@ Passion project, inspired by Witch It.
 
 One small test map (the Playground), placeholder shapes for everything, and Creative mode for building your own.
 
-- **Creative (build maps):** from the main menu. Hold right mouse to look around, WASD to fly (Space/E up, Q down, Shift faster). Pick a piece on the left (blocks, cylinders, every prop, bouncies, the shrine, the angel and demon starts) and click in the world to place it. Click a piece to select it; press on it and drag to move it (it slides over whatever is under the cursor, so you can drag things onto roofs), or use G move, R rotate, T resize; while doing that, X / Y / Z keep it to one axis, L switches between the map's axes and the piece's own, and holding Alt turns snapping off. Ctrl+D copies, Delete removes, F flies to it, Ctrl+Z / Ctrl+Y undo and redo. The right-hand panel takes exact numbers; 0, 0, 0 is the middle of the map. Save, then **Test play** to run a round on it, and Esc → Back to Creative to keep building.
+- **Creative (build maps):** from the main menu. Hold right mouse to look around, WASD to fly (Space/E up, Q down, Shift faster). Pick a piece on the left (blocks, cylinders, bouncies, the shrine, the angel and demon starts, about 260 props and 300 structures) and click in the world to place it. The left-hand list folds into categories (Graveyard, Furniture, Kitchen & food, Dungeon & castle, Town, Village & nature) and has a search box. **Props** are things demons can possess. **Structures** are solid scenery in their real shape: walls with doorways and windows, floors, stairs, pillars, fences, crypts, houses, towers, trees, hills, roads. T stretches a structure on any axis. Click a piece to select it; press on it and drag to move it (it slides over whatever is under the cursor, so you can drag things onto roofs), or use G move, R rotate, T resize; while doing that, X / Y / Z keep it to one axis, L switches between the map's axes and the piece's own, and holding Alt turns snapping off. Ctrl+D copies, Delete removes, F flies to it, Ctrl+Z / Ctrl+Y undo and redo. The right-hand panel takes exact numbers; 0, 0, 0 is the middle of the map. Save, then **Test play** to run a round on it, and Esc → Back to Creative to keep building.
 - **Maps** are plain data files (no code, so a map can't do anything but be a map), saved in your maps folder (Creative has a button that opens it). The host picks the map in the lobby; everyone who joins gets it automatically.
 
 - **Practice:** single player. The angel side hunts 3 test demons (they hop and taunt so you can find them); the demon side is a sandbox for possessing props.
@@ -26,7 +26,7 @@ One small test map (the Playground), placeholder shapes for everything, and Crea
 - **Settings & controls** (main menu or Esc): music volume, sound-effects volume, and graphics quality: Low (fast), Medium, or High (light shafts in the haze, bounce light, glowing blessing trails that light up the area).
 - **Feel:** the view widens a touch when you run or dash and leans into strafes, you squash a little on landing, the camera shakes near a stomp or a blast, you can still jump just after running off a ledge, and pressing jump just before landing still counts. The F1 tuning panel can turn each of these down or off.
 - **Naughtiness pays:** demons earn Hatred when angels roast in their fire, when their minion soaks a hit, and for taunting right under an angel's nose.
-- **Bouncies:** springy pads that fling anyone about 8 m up (thrown Alarm Cherubs and Vacuum Orbs bounce off them too). Blue ones are part of the map; gold ones work once per round.
+- **Bouncies:** springy pads that fling anyone about 8 m up (thrown Alarm Cherubs and Vacuum Orbs bounce off them too). Riveted metal ones are part of the map; wooden ones work once per round; glowing magic **super-bouncy** pads throw you about 18 m up.
 - **Ledge grab:** angels in the air who push into a wall whose top they could reach pull themselves up onto it.
 - **Controls screen:** every action can be rebound to any key or mouse button (main menu or Esc menu).
 - **The shrine:** one per map (the stone dais with the floating half-gold, half-red crystal and a SHRINE sign), the only place to swap skills mid-round. Press G there; a swap takes 3 seconds in total, you can't move while at it, demons have to leave their prop first, and the shrine flares up so everyone knows someone is there. Fresh skills start on cooldown.
@@ -122,6 +122,7 @@ The host is the referee. It decides every hit (other players' throws are only vi
 
 - `godot --headless -s res://tests/test_gameplay.gd`: practice mode, movement, stamina, taunts.
 - `godot --headless -s res://tests/test_skills.gd`: flying, possess vs transform, per-form health and speed, every angel tool.
+- `godot --headless -s res://tests/test_models.gd`: the model catalog (every model loads and stands on the ground), structures in a map (an open doorway you can walk through, solid walls, stairs), possessing a model prop, the three bouncy pads, and placing and searching in Creative.
 - `godot --headless -s res://tests/test_props.gd`: loose props getting shoved (tipping, rocking, rolling, chain shoves, blasts, kicks, a demon leaving a knocked-over prop, a late joiner's view), plus the graphics settings.
 - `godot --headless -s res://tests/test_music.gd`: renders every song and checks its length, loudness and seamless loop (add `-- --save=FOLDER` to get .wav files to listen to).
 - `GODOT=godot tests/test_multiplayer.sh`: plays a whole 5-player online match with bots, including a cheater, and checks the results and that no names leak. With `RELAY=1` it plays the same match through a relay server it runs on this computer.
@@ -129,4 +130,6 @@ The host is the referee. It decides every hit (other players' throws are only vi
 
 ## License
 
-Free forever, never for profit. Code: PolyForm Noncommercial 1.0.0. Art and sound: CC BY-NC-SA 4.0. See [LICENSE.md](LICENSE.md).
+Free forever, never for profit. Code: PolyForm Noncommercial 1.0.0. Art and sound: CC BY-NC-SA 4.0. See [LICENSE.md](LICENSE.md). The 3D models are CC0, by Kay Lousberg (KayKit): see [CREDITS.md](CREDITS.md).
+
+**Adding models:** put the `.gltf`/`.glb` files in a folder under `assets/kaykit/`, add the pack to `PACKS` in `tools/build_catalog.py` (its category and scale), if they're `.glb` files that each carry the same texture, run `python tools/split_glb.py <folder> <texture>.png` so they share one, then run `godot --headless -s res://tools/measure_models.gd` and `python tools/build_catalog.py`. Each model becomes a prop (health, speed and weight worked out from its size) or a structure, by the rules in that script.

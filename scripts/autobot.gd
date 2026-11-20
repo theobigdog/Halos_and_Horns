@@ -190,7 +190,7 @@ func _play_demon(delta: float, p) -> void:
 			_hidden = true
 			log_line("possessing a real " + _possess_target.get_meta("prop_type"))
 		return
-	var types := PropLib.type_names()
+	var types := PropLib.scatter_names()
 	p.force_possess(types[randi() % types.size()])
 	_hidden = true
 	log_line("hiding as a copy of a " + p.possessed_type)

@@ -22,5 +22,6 @@ This summary is not legal advice and does not replace the license texts above.
 
 ## Third-party assets
 
-Some art or sounds may come from other creators under their own licenses, such as CC0.
-Those keep their original licenses and are credited in a CREDITS file when added.
+Some art or sounds come from other creators under their own licenses, such as CC0.
+Those keep their original licenses and are credited in [CREDITS.md](CREDITS.md) (the 3D models in
+`assets/kaykit/` are CC0, by Kay Lousberg).

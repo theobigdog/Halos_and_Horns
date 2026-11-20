@@ -27,6 +27,7 @@ const Minion = preload("res://scripts/minion.gd")
 const PowerUps = preload("res://scripts/powerups.gd")
 const Keybinds = preload("res://scripts/keybinds.gd")
 const Bouncy = preload("res://scripts/bouncy.gd")
+const Models = preload("res://scripts/models.gd")
 const Shrine = preload("res://scripts/shrine.gd")
 const MapData = preload("res://scripts/map_data.gd")
 const Editor = preload("res://scripts/editor.gd")
@@ -753,15 +754,25 @@ func _build_map() -> void:
 				world_root.add_child(shrine)
 				shrine.position = pos
 				structures.append([Vector2(pos.x, pos.z), 3.0])
-			"bouncy":
+			"bouncy", "bouncy_super":
 				var b := Bouncy.new()
 				b.bouncy_id = 1000 + permanent_bouncies
+				b.super_bouncy = p["type"] == "bouncy_super"
 				permanent_bouncies += 1
 				world_root.add_child(b)
 				b.position = pos
 				structures.append([Vector2(pos.x, pos.z), 1.6])
 			"bouncy_once", "prop":
 				structures.append([Vector2(pos.x, pos.z), 1.6])   # (made fresh each round)
+			"model":
+				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
+				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+				var body := Models.make_structure(p["model"], sc)
+				body.position = pos
+				body.rotation = MapData.rot_rad(p)
+				world_root.add_child(body)
+				var sz := Models.size(p["model"]) * sc
+				structures.append([Vector2(pos.x, pos.z), maxf(sz.x, sz.z) / 2.0 + 1.0])
 
 
 const CHERUB_PAD_SIDEWAYS := 3.0  # m/s a cherub at least drifts off a bouncy pad (first guess)
@@ -854,7 +865,7 @@ func _reset_round_props(seed_value: int) -> void:
 	# Props placed by hand on the map, then the random ones.
 	for pp in PLACED_PROPS:
 		_spawn_prop(pp[0], pp[1], pp[2])
-	var types := PropLib.type_names()
+	var types := PropLib.scatter_names()
 	for i in PROP_COUNT:
 		_spawn_prop(types[rng.randi() % types.size()], _random_spot())
 
@@ -1593,7 +1604,7 @@ func start_practice() -> void:
 
 func start_round() -> void:
 	_reset_round_props(randi())
-	var types := PropLib.type_names()
+	var types := PropLib.scatter_names()
 	bots_left = 0
 	if role == "angel":
 		for i in BOT_COUNT:

@@ -4,13 +4,15 @@
 extends RefCounted
 
 const Surfaces = preload("res://scripts/surfaces.gd")
+const Models = preload("res://scripts/models.gd")
 
 # shape: "box" uses size, "cylinder" uses radius + height (collision only)
 # hp / speed: a demon disguised as this prop. Small = fragile but quick,
 # big = tanky but slow. First guesses, to be tuned in playtests.
 # mass: how hard it is to shove (knock.gd). round: it rolls instead of tipping.
 # lying: already on its side, so it only slides.
-const TYPES := {
+# The original hand-built props. Random scatter and practice bots still use just these.
+const CLASSIC := {
 	"barrel": {"shape": "cylinder", "radius": 0.45, "height": 1.0, "label": "Barrel", "hp": 120, "speed": 5.0, "mass": 2.5},
 	"crate": {"shape": "box", "size": Vector3(0.9, 0.9, 0.9), "label": "Crate", "hp": 110, "speed": 5.5, "mass": 2.0},
 	"lamp": {"shape": "cylinder", "radius": 0.3, "height": 1.75, "label": "Lamp", "hp": 80, "speed": 5.5, "mass": 1.2},
@@ -25,6 +27,34 @@ const TYPES := {
 
 const DEMON_FORM_HP := 100
 const DEMON_FORM_SPEED := 6.5
+
+# Every prop: the classic ones, then every model the catalog marks as a prop (scripts/models.gd).
+static var TYPES := _build_types()
+
+
+# A model prop's health, speed and weight come from its size, on the same curve as the classic props
+# (a crate, about 0.7 m³, is 110 hp / 5.5 speed / 2.0 mass; an apple is fragile and quick). First guesses.
+static func _build_types() -> Dictionary:
+	var out := CLASSIC.duplicate(true)
+	for id in Models.ids("prop"):
+		var s := Models.size(id)
+		var k := pow(maxf(s.x * s.y * s.z, 0.001), 1.0 / 3.0)
+		var d := {"shape": "box", "size": s, "label": Models.label(id), "model": id,
+				"hp": int(clampf(20.0 + 100.0 * k, 30.0, 220.0)),
+				"speed": snappedf(clampf(8.2 - 3.0 * k, 4.0, 8.0), 0.1),
+				"mass": snappedf(clampf(2.3 * k, 0.3, 4.0), 0.1)}
+		if Models.entry(id).get("round", false):
+			d["round"] = true
+		out[id] = d
+	return out
+
+
+static func scatter_names() -> Array:
+	return CLASSIC.keys()
+
+
+static func category(type_name: String) -> String:
+	return Models.category(type_name) if TYPES.get(type_name, {}).has("model") else "Classic"
 
 
 # Max health for a demon in this form ("" = demon form).
@@ -156,6 +186,8 @@ static func _box(size: Vector3) -> BoxMesh:
 
 
 static func make_visual(type_name: String) -> Node3D:
+	if TYPES.get(type_name, {}).has("model"):
+		return Models.instance(TYPES[type_name]["model"])
 	var root := Node3D.new()
 	match type_name:
 		"barrel":

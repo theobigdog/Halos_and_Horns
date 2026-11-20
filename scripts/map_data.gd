@@ -15,6 +15,7 @@
 extends RefCounted
 
 const PropLib = preload("res://scripts/prop_library.gd")
+const Models = preload("res://scripts/models.gd")
 
 const FORMAT := 1
 const BUILT_IN := ["res://maps/playground.json"]
@@ -26,8 +27,10 @@ const MAX_COORD := 500.0
 # Piece types and what each one needs.
 #   block / cylinder: solid shapes (size, rot, color)
 #   prop: a real, possessable prop placed by hand ("prop": type, rot)
+#   model: a solid structure from the model catalog ("model": id, rot, "size": scale on each axis, 1 = normal)
+#   bouncy_super: a bouncy pad that throws you much higher
 #   bouncy / bouncy_once, shrine, angel_spawn, demon_spawn: special pieces (pos, rot)
-const TYPES := ["block", "cylinder", "prop", "bouncy", "bouncy_once", "shrine", "angel_spawn", "demon_spawn"]
+const TYPES := ["block", "cylinder", "prop", "model", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
 const SHAPED := ["block", "cylinder"]
 
 
@@ -158,6 +161,13 @@ static func clean(raw: Dictionary) -> Dictionary:
 		if t in SHAPED:
 			c["size"] = _arr(_vec(p.get("size"), 0.05, 400.0, Vector3.ONE))
 			c["color"] = _color(p.get("color"), "#a09080")
+		elif t == "model":
+			if typeof(p.get("model")) != TYPE_STRING or not Models.has(p["model"]):
+				continue
+			c["model"] = p["model"]
+			var sc := _vec(p.get("size"), 0.1, 10.0, Vector3.ONE)
+			if sc != Vector3.ONE:
+				c["size"] = _arr(sc)
 		elif t == "prop":
 			if not PropLib.TYPES.has(p.get("prop")):
 				continue
