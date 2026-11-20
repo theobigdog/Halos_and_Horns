@@ -207,6 +207,17 @@ func _run() -> void:
 	check(ed._preview == null, "...gone once nothing's picked")
 	var with_pics: int = ed._palette_buttons.filter(func(e): return e[0].icon != null).size()
 	check(with_pics == ed._palette_buttons.size(), "every piece in the palette has a picture (%d of %d)" % [with_pics, ed._palette_buttons.size()])
+	# Settings from Creative: the panel shows (it lives on the HUD layer Creative hides), and Esc closes it
+	main.open_settings_from_editor()
+	await frames(2)
+	check(main.controls_panel.visible and main.controls_panel.is_visible_in_tree(), "Settings opens over Creative and can be seen")
+	var esc := InputEventKey.new()
+	esc.physical_keycode = KEY_ESCAPE
+	esc.keycode = KEY_ESCAPE
+	esc.pressed = true
+	Input.parse_input_event(esc)
+	await frames(3)
+	check(not main.controls_panel.visible and ed.ui.visible and not main.hud_layer.visible, "...and Esc goes back to building, everything still there")
 	ed.dirty = false
 	ed._try_exit()
 	await frames(3)

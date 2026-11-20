@@ -105,6 +105,8 @@ var _left_panel: Control
 var _new_button: Button
 var _test_button: Button
 var _extend_button: Button
+var _top_panel: Control
+var _right_panel: Control
 
 # UI
 var ui: CanvasLayer
@@ -881,8 +883,8 @@ func _snap_on() -> bool:
 # ---------------- input ----------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not active():
-		return
+	if not active() or not ui.visible:
+		return   # (Settings is open over us: its keys, Esc included, go to it)
 	if event is InputEventMouseButton:
 		var mb: InputEventMouseButton = event
 		if mb.button_index == MOUSE_BUTTON_RIGHT:
@@ -1047,6 +1049,11 @@ func _process(delta: float) -> void:
 	_update_preview()
 	if online:
 		_online_tick(delta)
+	# The side panels start below the top bar, however tall it's grown (big text wraps it)
+	var below := _top_panel.size.y + 4.0
+	if absf(_left_panel.offset_top - below) > 0.5:
+		_left_panel.offset_top = below
+		_right_panel.offset_top = below
 	_draw_lines()
 
 
@@ -1632,11 +1639,12 @@ func _build_ui() -> void:
 
 	# Top: the map itself
 	var top := PanelContainer.new()
+	_top_panel = top
 	top.set_anchors_preset(Control.PRESET_TOP_WIDE)
 	ui.add_child(top)
 	var rows := VBoxContainer.new()
 	top.add_child(rows)
-	var bar := HBoxContainer.new()
+	var bar := HFlowContainer.new()   # (wraps onto more lines with big text)
 	bar.add_theme_constant_override("separation", 8)
 	rows.add_child(bar)
 	_label(bar, " Map:")
@@ -1676,7 +1684,7 @@ func _build_ui() -> void:
 	_wall_pick.color_changed.connect(func(c): set_setting("wall_color", "#" + c.to_html(false)))
 	bar.add_child(_wall_pick)
 
-	var bar2 := HBoxContainer.new()
+	var bar2 := HFlowContainer.new()
 	bar2.add_theme_constant_override("separation", 8)
 	rows.add_child(bar2)
 	_new_button = _small_button(bar2, "New", new_map)
@@ -1754,6 +1762,7 @@ func _build_ui() -> void:
 
 	# Right: the selected piece
 	var right := PanelContainer.new()
+	_right_panel = right
 	right.set_anchors_preset(Control.PRESET_RIGHT_WIDE)
 	right.offset_top = 80
 	right.offset_bottom = -40
@@ -1761,8 +1770,12 @@ func _build_ui() -> void:
 	right.custom_minimum_size.x = 250
 	ui.add_child(right)
 	_inspector = VBoxContainer.new()
+	var rscroll := ScrollContainer.new()   # (scrolls when big text makes it too tall)
+	rscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	right.add_child(rscroll)
 	var rcol := VBoxContainer.new()
-	right.add_child(rcol)
+	rcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rscroll.add_child(rcol)
 	rcol.add_child(_inspector)
 	_builders_box = VBoxContainer.new()
 	rcol.add_child(_builders_box)

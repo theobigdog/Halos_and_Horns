@@ -127,6 +127,11 @@ var _was_at_shrine := false   # just walked up to the shrine: show how to use it
 var chat_box: VBoxContainer     # recent chat lines, bottom left
 var chat_edit: LineEdit
 var chat_team_only := false
+# Text size for everything (menus, HUD, Creative): the whole 2D layer is scaled. Settings, or Ctrl + / Ctrl - anywhere.
+const UI_SCALES := [0.8, 0.9, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0, 2.5]
+var ui_scale := 1.0
+var _ui_scale_pick: OptionButton
+var _scroll_panels := []         # [ScrollContainer, its contents]: panels that scroll when too tall for the screen
 var chat_font_size := 22         # Settings: how big chat text is (each player picks their own; was 17)
 var _chat_size_pick: SpinBox
 var lobby_chat: PanelContainer   # the lobby's own chat: a log and a box to type in
@@ -278,6 +283,7 @@ func _ready() -> void:
 	_build_controls()
 	_build_lobby()
 	_build_shrine_panel()
+	get_viewport().size_changed.connect(_fit_panels)
 	_build_chat()
 	_build_lobby_chat()
 	_load_settings()
@@ -903,15 +909,59 @@ func _panel(min_width: float) -> Array:
 	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	hud_layer.add_child(panel)
+	# It scrolls if it's taller than the screen (big text sizes).
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	panel.add_child(scroll)
 	var margin := MarginContainer.new()
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 18)
-	panel.add_child(margin)
+	scroll.add_child(margin)
+	_scroll_panels.append([scroll, margin])
+	margin.minimum_size_changed.connect(_fit_panels.call_deferred)
 	var box := VBoxContainer.new()
 	box.custom_minimum_size.x = min_width
 	box.add_theme_constant_override("separation", 10)
 	margin.add_child(box)
 	return [panel, box]
+
+
+# Size each panel to its contents, but no taller than the screen (then it scrolls).
+func _fit_panels() -> void:
+	var room := get_viewport().get_visible_rect().size.y - 24.0
+	for e in _scroll_panels:
+		var need: Vector2 = e[1].get_combined_minimum_size()
+		var bar := 14.0 if need.y > room else 0.0
+		e[0].custom_minimum_size = Vector2(need.x + bar, minf(need.y, room))
+		var panel: Control = e[0].get_parent()
+		panel.reset_size()
+		panel.set_anchors_and_offsets_preset(Control.PRESET_CENTER, Control.PRESET_MODE_KEEP_SIZE)
+
+
+func set_ui_scale(v: float, announce := false) -> void:
+	ui_scale = clampf(v, UI_SCALES[0], UI_SCALES[-1])
+	get_window().content_scale_factor = ui_scale
+	if _ui_scale_pick:
+		var best := 0
+		for i in UI_SCALES.size():
+			if absf(UI_SCALES[i] - ui_scale) < absf(UI_SCALES[best] - ui_scale):
+				best = i
+		_ui_scale_pick.select(best)
+	_fit_panels.call_deferred()
+	if announce:
+		_toast("Text size %d%%
+Ctrl +  /  Ctrl -  to change" % roundi(ui_scale * 100.0), 3.0)
+		if menu_status and mode == "menu":
+			menu_status.text = "Text size %d%%  (Ctrl + / Ctrl - to change)" % roundi(ui_scale * 100.0)
+
+
+func _step_ui_scale(dir: int) -> void:
+	var i := 0
+	for k in UI_SCALES.size():
+		if absf(UI_SCALES[k] - ui_scale) < absf(UI_SCALES[i] - ui_scale):
+			i = k
+	set_ui_scale(UI_SCALES[clampi(i + dir, 0, UI_SCALES.size() - 1)], true)
+	_save_settings()
 
 
 func _button(parent: Control, text: String, action: Callable) -> Button:
@@ -969,6 +1019,21 @@ func _build_menu() -> void:
 	port_edit = _field(box, "Port", str(NetGame.DEFAULT_PORT))
 	_button(box, "Host directly", _on_host_pressed)
 	box.add_child(HSeparator.new())
+	var text_row := HBoxContainer.new()
+	text_row.add_theme_constant_override("separation", 8)
+	box.add_child(text_row)
+	var tlab := Label.new()
+	tlab.text = "Text size"
+	tlab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_row.add_child(tlab)
+	for d in [[-1, "A -"], [1, "A +"]]:
+		var tb := Button.new()
+		tb.text = d[1]
+		tb.custom_minimum_size = Vector2(70, 40)
+		tb.add_theme_font_size_override("font_size", 22 if d[0] > 0 else 15)
+		var dir: int = d[0]
+		tb.pressed.connect(func(): _step_ui_scale(dir))
+		text_row.add_child(tb)
 	_button(box, "Settings & controls", _open_controls)
 	_button(box, "Quit", func(): get_tree().quit())
 	menu_status = Label.new()
@@ -1077,6 +1142,17 @@ func _build_options(box: VBoxContainer) -> void:
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 16)
 	box.add_child(grid)
+	var tl := Label.new()
+	tl.text = "Text size (everything)"
+	tl.tooltip_text = "Makes all the menus and writing bigger. Ctrl + and Ctrl - change it anywhere, Ctrl 0 puts it back."
+	grid.add_child(tl)
+	_ui_scale_pick = OptionButton.new()
+	for v in UI_SCALES:
+		_ui_scale_pick.add_item("%d%%" % roundi(v * 100.0))
+	_ui_scale_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_ui_scale_pick.tooltip_text = tl.tooltip_text
+	_ui_scale_pick.item_selected.connect(func(i): set_ui_scale(UI_SCALES[i]))
+	grid.add_child(_ui_scale_pick)
 	_music_slider = _volume_row(grid, "Music", func(v):
 		_music_volume = v
 		_apply_volumes())
@@ -1150,6 +1226,7 @@ func _close_controls() -> void:
 	controls_panel.visible = false
 	if mode == "editor" and editor != null and editor.active():
 		editor.ui.visible = true
+		hud_layer.visible = false
 	if _controls_hid:
 		_controls_hid.visible = true
 		_controls_hid = null
@@ -1170,6 +1247,22 @@ func _start_rebind(action: String) -> void:
 
 # While waiting for a key: the next key or mouse button becomes the binding.
 func _input(event: InputEvent) -> void:
+	# Ctrl + / Ctrl - / Ctrl 0: text size, anywhere (menus, rounds, Creative)
+	if event is InputEventKey and event.pressed and not event.echo and (event.ctrl_pressed or event.meta_pressed):
+		var k: Key = event.physical_keycode
+		if k in [KEY_EQUAL, KEY_PLUS, KEY_KP_ADD]:
+			_step_ui_scale(1)
+			get_viewport().set_input_as_handled()
+			return
+		if k in [KEY_MINUS, KEY_KP_SUBTRACT]:
+			_step_ui_scale(-1)
+			get_viewport().set_input_as_handled()
+			return
+		if k in [KEY_0, KEY_KP_0]:
+			set_ui_scale(1.0, true)
+			_save_settings()
+			get_viewport().set_input_as_handled()
+			return
 	if _rebinding == "" or not controls_panel.visible:
 		return
 	if not (event is InputEventKey or event is InputEventMouseButton) or not event.pressed:
@@ -1358,6 +1451,7 @@ func _load_settings() -> void:
 	graphics.apply(q)
 	hellfire_splashes = clampi(int(_settings.get_value("options", "hellfire_splashes", 3)), 0, 8)
 	_splash_pick.set_value_no_signal(hellfire_splashes)
+	set_ui_scale(float(_settings.get_value("options", "ui_scale", 1.0)))
 	_chat_size_pick.set_value_no_signal(clampi(int(_settings.get_value("options", "chat_size", 22)), 12, 40))
 	_set_chat_size(int(_chat_size_pick.value))
 
@@ -1376,6 +1470,7 @@ func _save_settings() -> void:
 	_settings.set_value("options", "graphics", Graphics.quality)
 	_settings.set_value("options", "hellfire_splashes", hellfire_splashes)
 	_settings.set_value("options", "chat_size", chat_font_size)
+	_settings.set_value("options", "ui_scale", ui_scale)
 	_settings.save(SETTINGS_PATH)
 
 
@@ -1658,6 +1753,7 @@ func leave_online_building() -> void:
 # Creative's Settings button: music, sound effects, graphics, keys, without leaving.
 func open_settings_from_editor() -> void:
 	editor.ui.visible = false
+	hud_layer.visible = true   # (the settings panel lives there)
 	_open_controls()
 
 
