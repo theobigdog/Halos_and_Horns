@@ -108,6 +108,15 @@ static func fly_flames() -> CPUParticles3D:
 	return p
 
 
+# Flying flames in another colour (a demon's wardrobe choice).
+static func tint_flames(p: CPUParticles3D, c: Color) -> void:
+	p.mesh = _mote_mesh(0.13, true, c)
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.35, 1.0])
+	g.colors = PackedColorArray([c.lightened(0.5), Color(c.r, c.g, c.b, 0.9), Color(c.r * 0.3, c.g * 0.3, c.b * 0.3, 0.0)])
+	p.color_ramp = g
+
+
 # Glowing motes bursting out from a point, drifting a little up as they fade.
 static func burst(parent: Node, pos: Vector3, color: Color, amount: int, speed: float, lifetime: float) -> void:
 	var p := _particles(parent, pos, amount, lifetime)

@@ -14,4 +14,8 @@ next to the models.
 - KayKit: City Builder Bits 1.0 (town buildings, cars, street props)
 - KayKit: Medieval Hexagon Pack 1.0 (village buildings, trees, rocks, hills; the hex tiles weren't taken)
 
+The characters in `assets/kaykit_characters/` are also by Kay Lousberg, CC0: **KayKit: Character Pack
+Adventurers 1.0** and **KayKit: Character Pack Skeletons 1.0** (licence files next to the models). The halos,
+horns, wings and skin colours on top of them are made in code for this game.
+
 Everything else (the classic props, characters, effects, music and sounds) is made in code for this game.

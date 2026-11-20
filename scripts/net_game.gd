@@ -21,6 +21,7 @@ const MapData = preload("res://scripts/map_data.gd")
 const RelayPeer = preload("res://scripts/relay_peer.gd")
 const Aura = preload("res://scripts/aura.gd")
 const RP = preload("res://relay/relay_protocol.gd")
+const Characters = preload("res://scripts/characters.gd")
 
 const PROTOCOL_VERSION := 5      # (old) kept for reference; joining now checks main.game_build
 # Only the exact same build can join. The build number comes from the release tag
@@ -82,6 +83,7 @@ func host(port: int, player_name: String) -> Error:
 	is_host = true
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	peers[1] = _new_record(_clean_name(player_name))
+	peers[1]["outfits"] = _clean_outfits(main.outfits)
 	_broadcast_lobby()
 	return OK
 
@@ -112,6 +114,7 @@ func host_relay(relay_host: String, relay_port: int, player_name: String) -> Err
 	multiplayer.server_disconnected.connect(func(): main.online_disconnected(
 			_relay_trouble(peer, "Lost the connection to the relay server.")))
 	peers[1] = _new_record(_clean_name(player_name))
+	peers[1]["outfits"] = _clean_outfits(main.outfits)
 	_broadcast_lobby()
 	return OK
 
@@ -128,7 +131,7 @@ func join_relay(relay_host: String, relay_port: int, code: String, player_name: 
 
 func _client_signals(player_name: String, cant_connect: String) -> void:
 	multiplayer.connected_to_server.connect(func(): c_hello.rpc_id(1, player_name, main.game_build,
-			main.loadout["angel"], main.loadout["demon"]))
+			main.loadout["angel"], main.loadout["demon"], main.outfits))
 	multiplayer.connection_failed.connect(func(): main.online_disconnected(_relay_trouble(multiplayer.multiplayer_peer, cant_connect)))
 	multiplayer.server_disconnected.connect(func(): main.online_disconnected(_relay_trouble(multiplayer.multiplayer_peer, "The host left the game.")))
 
@@ -215,7 +218,7 @@ func _new_eid() -> int:
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func c_hello(player_name: String, version: int, angel_skills: Array, demon_skills: Array) -> void:
+func c_hello(player_name: String, version: int, angel_skills: Array, demon_skills: Array, outfits := {}) -> void:
 	if not is_host:
 		return
 	var id := multiplayer.get_remote_sender_id()
@@ -228,6 +231,7 @@ func c_hello(player_name: String, version: int, angel_skills: Array, demon_skill
 	peers[id] = _new_record(_clean_name(player_name))
 	peers[id]["loadout"] = {"angel": Skills.clean_loadout("angel", angel_skills),
 			"demon": Skills.clean_loadout("demon", demon_skills)}
+	peers[id]["outfits"] = _clean_outfits(outfits)
 	print("[host] %s joined" % peers[id]["name"])
 	send_map(id)
 	_broadcast_lobby()
@@ -436,6 +440,7 @@ func start_round() -> void:
 		if id != 1:
 			_ensure_host_remote(id)
 	_broadcast_count()
+	_send_looks()
 	print("[host] round started: %d angel(s), %d demon(s)" % [angel_count, ids.size() - angel_count])
 	_start_demons = ids.size() - angel_count
 
@@ -529,7 +534,78 @@ func s_map(text: String) -> void:
 	print("[net] map: %s" % m["name"])
 
 
+# ---- how everyone looks ----
+# Each player's outfit for their current team, keyed by their (anonymous) entity id, and each minion
+# dressed like its owner. Sent whenever who's who changes.
+
+static func _clean_outfits(o) -> Dictionary:
+	if typeof(o) != TYPE_DICTIONARY:
+		o = {}
+	return {"angel": Characters.clean_outfit(o.get("angel"), "angel"), "demon": Characters.clean_outfit(o.get("demon"), "demon")}
+
+
+func send_outfits(o: Dictionary) -> void:
+	if is_host:
+		if peers.has(1):
+			peers[1]["outfits"] = _clean_outfits(o)
+			_send_looks()
+	elif multiplayer.multiplayer_peer:
+		c_outfits.rpc_id(1, o)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func c_outfits(o: Dictionary) -> void:
+	if not is_host:
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if not peers.has(id):
+		return
+	var t := now()
+	if t - peers[id].get("outfit_time", -10.0) < 0.5:
+		return   # (no flooding)
+	peers[id]["outfit_time"] = t
+	peers[id]["outfits"] = _clean_outfits(o)
+	_send_looks()
+
+
+func _looks() -> Dictionary:
+	var out := {}
+	for id in peers:
+		var rec: Dictionary = peers[id]
+		if rec["in_round"] and rec["role"] != "":
+			out[rec["eid"]] = rec.get("outfits", _clean_outfits({}))[rec["role"]]
+	for owner in minions:
+		if peers.has(owner):
+			out[minions[owner]["eid"]] = peers[owner].get("outfits", _clean_outfits({}))["demon"]
+	return out
+
+
+func _send_looks() -> void:
+	var looks := _looks()
+	_apply_looks(looks)
+	for id in _client_ids():
+		s_looks.rpc_id(id, looks)
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_looks(l: Dictionary) -> void:
+	_apply_looks(l)
+	print("[net] outfits for %d players" % l.size())
+
+
+var looks := {}                  # entity id -> outfit
+
+
+func _apply_looks(l: Dictionary) -> void:
+	looks = l
+	for eid in l:
+		if remotes.has(int(eid)):
+			var role: String = remotes[int(eid)].role if remotes[int(eid)].role != "" else "angel"
+			remotes[int(eid)].set_outfit(Characters.clean_outfit(l[eid], role))
+
+
 func _send_rosters() -> void:
+	_send_looks()
 	_apply_roster(_roster_for(1))
 	for id in _client_ids():
 		if peers[id]["in_round"]:
@@ -1184,6 +1260,7 @@ func minion_spawned(owner: int, point: Vector3, form_index: int) -> void:
 	var m := {"eid": _new_eid(), "pos": main.ground_below(point + Vector3.UP), "yaw": rec["yaw"],
 		"form": form, "hp": PropLib.max_hp(rec["form"]) * Skills.MINION_HEALTH, "until": now() + Skills.MINION_LIFETIME, "last_time": now()}
 	minions[owner] = m
+	_send_looks()   # (the minion dresses like its owner)
 	if owner != 1:
 		var r := _get_or_make_remote(m["eid"])
 		r.net = self
@@ -2113,6 +2190,8 @@ func _get_or_make_remote(eid: int) -> RemotePlayer:
 	var r := RemotePlayer.new()
 	r.eid = eid
 	r.name = "Remote_%d" % eid
+	if looks.has(eid):
+		r.outfit = looks[eid]
 	main.add_child(r)
 	remotes[eid] = r
 	return r

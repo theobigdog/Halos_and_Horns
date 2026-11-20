@@ -286,6 +286,7 @@ func _ready() -> void:
 	_build_pause_menu()
 	_build_controls()
 	_build_lobby()
+	_build_wardrobe()
 	_build_shrine_panel()
 	get_viewport().size_changed.connect(_fit_panels)
 	_build_chat()
@@ -322,6 +323,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	if mode == "menu":
 		if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE and controls_panel.visible:
 			_close_controls()
+		elif event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE and wardrobe.visible:
+			_close_wardrobe()
 		return
 	if chat_edit.visible:
 		if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
@@ -360,7 +363,8 @@ func _unhandled_input(event: InputEvent) -> void:
 # The mouse is free whenever a menu or panel is open; otherwise it steers.
 func _any_panel_open() -> bool:
 	return menu_panel.visible or pause_panel.visible or tuning_panel.visible or lobby_panel.visible \
-			or shrine_panel.visible or chat_edit.visible or (controls_panel != null and controls_panel.visible)
+			or shrine_panel.visible or chat_edit.visible or (controls_panel != null and controls_panel.visible) \
+			or (wardrobe != null and wardrobe.visible)
 
 
 func _refresh_mouse() -> void:
@@ -966,6 +970,49 @@ func _spawn_prop(type_name: String, pos: Vector3, rot = null) -> void:
 # which is how everyone in an online match sees an identical map.
 # The hunt's music: one of these each round, from the round's seed (so everyone online hears the same).
 const ROUND_THEMES := ["hunt", "shuffle", "tango", "bones"]
+const Characters = preload("res://scripts/characters.gd")
+# What we look like (the wardrobe): an outfit for each team, saved in settings.
+var outfits := {"angel": Characters.default_outfit("angel"), "demon": Characters.default_outfit("demon")}
+
+
+const Wardrobe = preload("res://scripts/wardrobe.gd")
+var wardrobe: PanelContainer
+var wardrobe_presets := []       # saved outfits: [{"name", "team", "outfit"}]
+var _wardrobe_hid: Control
+
+
+func _build_wardrobe() -> void:
+	wardrobe = Wardrobe.new()
+	wardrobe.main = self
+	wardrobe.visible = false
+	wardrobe.on_done = _close_wardrobe
+	hud_layer.add_child(wardrobe)
+
+
+func _open_wardrobe() -> void:
+	_wardrobe_hid = menu_panel if menu_panel.visible else (lobby_panel if lobby_panel.visible else (pause_panel if pause_panel.visible else null))
+	if _wardrobe_hid:
+		_wardrobe_hid.visible = false
+	wardrobe.open(outfits, wardrobe_presets)
+	_refresh_mouse()
+
+
+func _close_wardrobe() -> void:
+	wardrobe.visible = false
+	if _wardrobe_hid:
+		_wardrobe_hid.visible = true
+		_wardrobe_hid = null
+	_save_settings()
+	_refresh_mouse()
+
+
+func set_outfits(o: Dictionary) -> void:
+	outfits = {"angel": Characters.clean_outfit(o.get("angel"), "angel"), "demon": Characters.clean_outfit(o.get("demon"), "demon")}
+	player.outfits = outfits
+	if player.possessed_type == "" and player.visual_root.visible:
+		player._apply_form()
+	if net:
+		net.send_outfits(outfits)
 var round_theme := "hunt"
 
 
@@ -1125,6 +1172,7 @@ func _build_menu() -> void:
 	_build_loadout(box)
 	_button(box, "Practice (single player)", start_practice)
 	_button(box, "Creative (build maps)", open_editor)
+	_button(box, "Wardrobe (your angel and demon)", _open_wardrobe)
 	box.add_child(HSeparator.new())
 	_button(box, "Host a game", _on_host_relay_pressed)
 	address_edit = _field(box, "Room code (or the host's address)", "e.g. KX4PZ")
@@ -1482,6 +1530,7 @@ func _build_lobby() -> void:
 		if net:
 			net.start_building())
 	lobby_build.tooltip_text = "Everyone goes into Creative on this map and builds it together."
+	_button(box, "Wardrobe", _open_wardrobe)
 	_button(box, "Settings & controls", _open_controls)
 	_button(box, "Leave", func(): _show_menu(""))
 	lobby_panel.visible = false
@@ -1587,6 +1636,13 @@ func _load_settings() -> void:
 	hellfire_splashes = clampi(int(_settings.get_value("options", "hellfire_splashes", 3)), 0, 8)
 	_splash_pick.set_value_no_signal(hellfire_splashes)
 	set_ui_scale(float(_settings.get_value("options", "ui_scale", 1.0)))
+	var presets = _settings.get_value("wardrobe", "presets", [])
+	wardrobe_presets = []
+	if typeof(presets) == TYPE_ARRAY:
+		for p in presets.slice(0, 60):
+			if typeof(p) == TYPE_DICTIONARY and p.get("team") in ["angel", "demon"] and typeof(p.get("name")) == TYPE_STRING:
+				wardrobe_presets.append({"name": str(p["name"]).substr(0, 30), "team": p["team"], "outfit": Characters.clean_outfit(p.get("outfit"), p["team"])})
+	set_outfits(_settings.get_value("wardrobe", "outfits", {}) if typeof(_settings.get_value("wardrobe", "outfits", {})) == TYPE_DICTIONARY else {})
 	_chat_size_pick.set_value_no_signal(clampi(int(_settings.get_value("options", "chat_size", 22)), 12, 40))
 	_set_chat_size(int(_chat_size_pick.value))
 
@@ -1606,6 +1662,8 @@ func _save_settings() -> void:
 	_settings.set_value("options", "hellfire_splashes", hellfire_splashes)
 	_settings.set_value("options", "chat_size", chat_font_size)
 	_settings.set_value("options", "ui_scale", ui_scale)
+	_settings.set_value("wardrobe", "outfits", outfits)
+	_settings.set_value("wardrobe", "presets", wardrobe_presets)
 	_settings.save(SETTINGS_PATH)
 
 
@@ -2249,6 +2307,7 @@ func _spawn_my_minion(at: Vector3, form_index: int) -> void:
 	var m := Minion.new()
 	var types: Array = PropLib.type_names()
 	m.form = types[form_index] if form_index >= 0 and form_index < types.size() else ""
+	m.outfit = outfits["demon"]
 	m.fall_gravity = player.gravity * player.tuning["gravity_scale"]
 	m.jump_velocity = player.tuning["jump_velocity"]
 	round_root.add_child(m)

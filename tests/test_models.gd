@@ -179,6 +179,36 @@ func _run() -> void:
 	player.unpossess()
 	await frames(3)
 
+	# ---- Characters: mix and match parts, skins, the wardrobe ----
+	const Characters = preload("res://scripts/characters.gd")
+	var mixed := Characters.build("angel", {"crown": "halo_star", "head": "Mage", "upper": "Barbarian", "lower": "Rogue", "skin": "ocean", "trail": "feather"}, 1.7)
+	root.add_child(mixed)
+	var names: Array = mixed.find_children("*", "MeshInstance3D", true, false).map(func(m): return str(m.name))
+	check("Mage_Head" in names and "Barbarian_Body" in names and "Rogue_LegLeft" in names and "Mage_Hat" in names,
+		"a character mixes parts from different characters (%s)" % [names.filter(func(n): return n.contains("_")).slice(0, 6)])
+	var head_mi: MeshInstance3D = mixed.find_children("Mage_Head", "MeshInstance3D", true, false)[0]
+	check(head_mi.material_override is ShaderMaterial, "...with its skin recoloured")
+	await frames(3)
+	check(mixed.anim != null and mixed.anim.is_playing() and mixed.anim.current_animation == "Idle", "...and it's animated (standing about: %s)" % mixed.anim.current_animation)
+	mixed.queue_free()
+	var junk := Characters.clean_outfit({"head": "Shrek", "skin": 7, "crown": "horns"}, "angel")
+	check(junk["head"] == "Knight" and junk["skin"] == "natural" and junk["crown"] == "halo", "outfits from files or other players are checked (no Shrek heads, no horns on angels)")
+	check(player.visual_root.get_child(0).has_method("play_action"), "your own body is a character now, not a capsule")
+	main._open_wardrobe()
+	await frames(2)
+	main.wardrobe._set_team("demon")
+	main.wardrobe._pick("crown", "horns_goat")
+	main.wardrobe._name_edit.text = "Goaty"
+	main.wardrobe._save_preset()
+	check(main.outfits["demon"]["crown"] == "horns_goat" and main.wardrobe_presets.any(func(p): return p["name"] == "Goaty"),
+		"the wardrobe changes your outfit and saves presets")
+	main._close_wardrobe()
+	main._load_settings()
+	check(main.outfits["demon"]["crown"] == "horns_goat" and main.wardrobe_presets.any(func(p): return p["name"] == "Goaty"), "...and remembers them")
+	main.wardrobe_presets = []
+	main.set_outfits({})
+	main._save_settings()
+
 	# ---- Ice: slide about, and running then turning hard makes you fall ----
 	var ice_sheet: Node3D = main.make_ice({"size": [14, 0.06, 14]})
 	ice_sheet.position = Vector3(14, 0.03, -2)

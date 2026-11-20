@@ -6,6 +6,7 @@
 # A disguised demon seen by an angel is just an id, a position and a prop type.
 extends AnimatableBody3D
 
+const Characters = preload("res://scripts/characters.gd")
 const Effects = preload("res://scripts/effects.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const Bodies = preload("res://scripts/bodies.gd")
@@ -16,6 +17,7 @@ const Aura = preload("res://scripts/aura.gd")
 var eid := 0                  # entity id for this round (not the player's network id)
 var role := ""
 var form := ""                # possessed prop type, "" = body form
+var outfit := {}               # how their body looks (from the host; characters.gd)
 var player_name := ""         # only set for teammates
 var team := ""                # side, as the host's roster told us (arrives with the name)
 var snap := false             # host: jump straight to reported positions (hits must be exact)
@@ -69,8 +71,19 @@ func _ready() -> void:
 
 
 # Flying (the host says): loud wing beats from wherever it is, disguised or not.
+# The host told us how this player (or minion) looks.
+func set_outfit(o: Dictionary) -> void:
+	if o == outfit:
+		return
+	outfit = o
+	if form == "" and role != "":
+		_rebuild()
+
+
 func set_flying(on: bool) -> void:
 	on = on and not _vanished
+	if _visual and _visual.get("flying") != null:
+		_visual.flying = on
 	if on and _wings == null:
 		if _wing_loop == null:
 			_wing_loop = Sfx.fly_loop()
@@ -84,6 +97,7 @@ func set_flying(on: bool) -> void:
 		_flames = Effects.fly_flames()
 		add_child(_flames)
 		_flames.position.y = 0.1
+		Effects.tint_flames(_flames, Characters.trail_color("demon", outfit))
 	if _flames:
 		_flames.emitting = on
 	if _wings:
@@ -179,7 +193,7 @@ func _rebuild() -> void:
 		_shape.shape = PropLib.make_shape(form)
 		h = PropLib.height(form)
 	else:
-		_visual = Bodies.make(role)
+		_visual = Bodies.make(role, outfit)
 		_shape.shape = Bodies.make_shape(role)
 		h = Bodies.height_for(role)
 	_shape.position.y = h / 2.0

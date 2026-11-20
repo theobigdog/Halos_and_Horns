@@ -21,6 +21,7 @@ const Blessings = preload("res://scripts/blessings.gd")
 const Taunts = preload("res://scripts/taunts.gd")
 const Sfx = preload("res://scripts/sfx.gd")
 const Bodies = preload("res://scripts/bodies.gd")
+const Characters = preload("res://scripts/characters.gd")
 const PowerUps = preload("res://scripts/powerups.gd")
 const Skills = preload("res://scripts/skills.gd")
 
@@ -238,7 +239,17 @@ func set_role(new_role: String) -> void:
 	_apply_form()
 
 
+# The wardrobe's last slot: an angel's blessing type, a demon's flame colour.
+func _apply_trail() -> void:
+	var o: Dictionary = outfits.get(role, {})
+	if role == "angel" and o.get("trail", "") in Blessings.names():
+		blessing = o["trail"]
+	elif role == "demon" and _flames:
+		Effects.tint_flames(_flames, Characters.trail_color("demon", o))
+
+
 func _apply_form() -> void:
+	_rig = null
 	for child in visual_root.get_children():
 		child.queue_free()
 	_ghost_on = false   # a new look: (still invisible?) the next frame makes it ghostly again
@@ -248,7 +259,10 @@ func _apply_form() -> void:
 		shape_node.shape = PropLib.make_shape(possessed_type)
 		_form_height = PropLib.height(possessed_type)
 	else:
-		visual_root.add_child(Bodies.make(role))
+		var body := Bodies.make(role, outfits.get(role, {}))
+		_apply_trail()
+		visual_root.add_child(body)
+		_rig = body if body.has_method("play_action") else null
 		shape_node.shape = Bodies.make_shape(role)
 		_form_height = Bodies.height_for(role)
 	shape_node.position.y = _form_height / 2.0
@@ -363,6 +377,8 @@ func _physics_process(delta: float) -> void:
 	_throw_cooldown = maxf(_throw_cooldown - delta, 0.0)
 	if _flames.emitting != flying:
 		_flames.emitting = flying
+	if _rig:
+		_rig.flying = flying
 	_since_throw += delta
 	_taunt_cooldown = maxf(_taunt_cooldown - delta, 0.0)
 	melee_cd = maxf(melee_cd - delta, 0.0)
@@ -899,6 +915,8 @@ func _is_leaper() -> bool:
 # A demon's Fear caught us: panic for a few seconds.
 # Holy Word struck us out of the sky: slammed down, can't fly again until we land, frozen stiff for a moment.
 var stunned := 0.0
+var outfits := {}                 # "angel"/"demon" -> outfit (characters.gd), set by main from the wardrobe
+var _rig: Node3D                  # our body's animation player (character_rig.gd), in body form
 var _on_ice := false
 var _slip_cooldown := 0.0
 const ICE_GRIP := 0.12            # ice: this much of the normal grip (first guess)
@@ -1248,6 +1266,8 @@ func _shoot() -> void:
 	_since_throw = 0.0
 	threw.emit(blessing)
 	launched.emit(start, p.velocity, blessing, p.gravity, throw_seq)
+	if _rig:
+		_rig.play_action("Throw", 0.45)
 
 
 func _settle_view(delta: float, input_dir: Vector2) -> void:

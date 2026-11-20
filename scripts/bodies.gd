@@ -1,9 +1,10 @@
-# Placeholder character bodies, shared by your own player and everyone else's.
-# Angels: white with a golden halo. Demons: small red gremlins with horns.
-# Built with their feet at y = 0. Real models replace these later.
+# Character bodies, shared by your own player and everyone else's: KayKit characters dressed in an
+# outfit (characters.gd), angels with halos and feathered wings, demons smaller with horns and bat wings.
+# Built with their feet at y = 0, facing -Z.
 extends RefCounted
 
 const PropLib = preload("res://scripts/prop_library.gd")
+const Characters = preload("res://scripts/characters.gd")
 
 const BODY_HEIGHT := 1.7       # angel height
 const BODY_RADIUS := 0.35
@@ -25,7 +26,18 @@ static func make_shape(role: String) -> CapsuleShape3D:
 	return capsule
 
 
-static func make(role: String) -> Node3D:
+# A player's body: a KayKit character dressed in their outfit (characters.gd). Demons are smaller.
+static func make(role: String, outfit := {}) -> Node3D:
+	var c := Characters.build(role, outfit, BODY_HEIGHT)
+	if c != null and c.get_child_count() > 0:
+		if role != "angel":
+			c.scale = Vector3.ONE * DEMON_SCALE
+		return c
+	return make_capsule(role)
+
+
+# The original placeholder (vertical Tylenol), kept as a fallback.
+static func make_capsule(role: String) -> Node3D:
 	var root := Node3D.new()
 	var body := MeshInstance3D.new()
 	var capsule := CapsuleMesh.new()

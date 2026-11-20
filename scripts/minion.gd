@@ -15,6 +15,7 @@ const Effects = preload("res://scripts/effects.gd")
 const Skills = preload("res://scripts/skills.gd")
 
 var form := ""                 # prop type, or "" for a demon body
+var outfit := {}                 # its owner's demon outfit
 var speed := 6.5
 var fall_gravity := 13.0
 var jump_velocity := 5.6
@@ -41,7 +42,7 @@ func _ready() -> void:
 	else:
 		shape.shape = Bodies.make_shape("demon")
 		h = Bodies.height_for("demon")
-		add_child(Bodies.make("demon"))
+		add_child(Bodies.make("demon", outfit))   # (dressed like its owner: it's a decoy)
 	shape.position.y = h / 2.0
 	add_child(shape)
 	speed = PropLib.speed(form)

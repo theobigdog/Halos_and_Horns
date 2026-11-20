@@ -79,6 +79,7 @@ check "an angel used Holy Leap" "grep -q 'used leap' '$OUT/Cal.log'"
 if sed '/round over/q' "$OUT/Cal.log" | grep -q 'used stomp'; then
 	check "...and the host handled the Cloud Stomp" "grep -q 'cloud stomp hit' '$OUT/host.log'"
 fi
+check "everyone gets everyone's outfits" "grep -q 'outfits for [1-9]' '$OUT/Ava.log'"
 check "the roster shows chosen skills" "grep -q 'Ava(angel,[0-9]*ms,Alarm Cherub+Vacuum Orb)' '$OUT/Ben.log'"
 check "out-of-bounds teleport was blocked" "grep -q 'blocked Dee: out of bounds' '$OUT/host.log'"
 x=$(grep -oE 'after cheat, position x = -?[0-9.]+' "$OUT/Dee.log" | grep -oE -- '-?[0-9.]+$')
