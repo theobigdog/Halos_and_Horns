@@ -292,6 +292,18 @@ func _run() -> void:
 	ed._end_drag(true)
 	fp = ed.map["pieces"][fi]
 	check(int(fp.get("repeat", 1)) == 6 and is_equal_approx(fp["pos"][0], -step * 2.0), "...and pulling the near tab grows it the other way, the far end staying put (%s, from x %.2f)" % [fp.get("repeat", 1), fp["pos"][0]])
+	# Stairs extend upward: each flight starts at the top of the last
+	var st_step: Vector3 = Models.row_step("dungeon/stairs")
+	check(st_step.y > 2.5 and Vector2(st_step.x, st_step.z).length() > 2.5, "pulling out stairs continues the climb (each flight %s further on and up)" % st_step)
+	var si: int = ed.place("model:dungeon/stairs", Vector3(-24, 0, 20))
+	ed.select(si)
+	ed.pull_tab(0, 1)
+	var st_dir := Vector3(st_step.x, 0, st_step.z).normalized()
+	ed.drag_update(Vector3(-24, 30, 20) + st_dir * Vector2(st_step.x, st_step.z).length() * 2.6, Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	check(int(ed.map["pieces"][si].get("repeat", 1)) == 3, "...three flights (%s)" % ed.map["pieces"][si].get("repeat", 1))
+	ed.undo()
+	ed.undo()
 	# Floors pull out both ways, into a grid
 	var fl: int = ed.place("model:dungeon/floor_wood_large", Vector3(-20, 0, -12))
 	ed.select(fl)

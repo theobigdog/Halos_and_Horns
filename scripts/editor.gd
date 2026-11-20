@@ -909,8 +909,10 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 			# The pulled end follows the mouse across the ground: whole copies get added (or taken away),
 			# never stretched. The other end stays put.
 			var ax := _ext_steps(_drag_piece)[_ext_axis] as Vector3
-			var w := maxf(ax.length(), 0.05)
-			var dir := ax / w
+			# (measured across the ground: a staircase's step also goes up)
+			var flat := Vector3(ax.x, 0.0, ax.z)
+			var w := maxf(flat.length(), 0.05)
+			var dir := flat / w
 			var key := "repeat" if _ext_axis == 0 else "repeat2"
 			var n0 := int(_drag_piece.get(key, 1))
 			if absf(ray_dir.y) < 0.03:
@@ -920,14 +922,15 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 				return
 			var count := 1
 			var first := start
+			var flat_start := Vector3(start.x, hit.y, start.z)
 			if _ext_side > 0:
-				var from_edge: float = (hit - (start - dir * w * 0.5)).dot(dir)
+				var from_edge: float = (hit - (flat_start - dir * w * 0.5)).dot(dir)
 				count = clampi(roundi(from_edge / w), 1, MapData.MAX_REPEAT)
 			else:
-				var far_edge := start + dir * w * (n0 - 0.5)
+				var far_edge := flat_start + dir * w * (n0 - 0.5)
 				var back: float = (far_edge - hit).dot(dir)
 				count = clampi(roundi(back / w), 1, MapData.MAX_REPEAT)
-				first = far_edge - dir * w * (count - 0.5)
+				first = start - ax * (count - n0)   # (the top end stays put; stairs come down to meet the ground)
 			var other := int(_drag_piece.get("repeat2" if _ext_axis == 0 else "repeat", 1))
 			count = mini(count, MapData.MAX_GRID / maxi(other, 1))
 			p["pos"] = [snappedf(first.x, 0.001), snappedf(first.y, 0.001), snappedf(first.z, 0.001)]

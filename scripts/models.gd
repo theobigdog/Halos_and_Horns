@@ -461,10 +461,64 @@ static func _collect(node: Node, xf: Transform3D, out: PackedVector3Array) -> vo
 
 
 # How far apart repeated copies of a structure sit (a wall extended by dragging): its own length,
-# along whichever way it's longer.
+# along whichever way it's longer. Stairs instead go up: each copy starts at the top of the last one
+# (Ted, Nov 20), so a staircase gets longer rather than doubling up beside itself.
 static func row_step(id: String, extra_scale := Vector3.ONE) -> Vector3:
+	if is_stairs(id):
+		return stair_step(id) * extra_scale
 	var s := size(id) * extra_scale
 	return Vector3(s.x, 0, 0) if s.x >= s.z else Vector3(0, 0, s.z)
+
+
+static func is_stairs(id: String) -> bool:
+	return id.get_slice("/", 1).begins_with("stairs")
+
+
+static var _stair_cache := {}
+
+
+# Which way a staircase climbs and how high: from the model's own shape, the walkable height at each end
+# of its middle line. The next flight starts where this one's top step is.
+static func stair_step(id: String) -> Vector3:
+	if _stair_cache.has(id):
+		return _stair_cache[id]
+	var s := size(id)
+	var f := faces(id)
+	var ends := {
+		"+z": _height_at(f, Vector2(0, s.z * 0.5 - 0.15)), "-z": _height_at(f, Vector2(0, -s.z * 0.5 + 0.15)),
+		"+x": _height_at(f, Vector2(s.x * 0.5 - 0.15, 0)), "-x": _height_at(f, Vector2(-s.x * 0.5 + 0.15, 0)),
+	}
+	var along_z := absf(ends["+z"] - ends["-z"]) >= absf(ends["+x"] - ends["-x"])
+	var step: Vector3
+	if along_z:
+		var up_pos: bool = ends["+z"] > ends["-z"]
+		step = Vector3(0, maxf(ends["+z"], ends["-z"]), s.z * (1.0 if up_pos else -1.0))
+	else:
+		var up_pos: bool = ends["+x"] > ends["-x"]
+		step = Vector3(s.x * (1.0 if up_pos else -1.0), maxf(ends["+x"], ends["-x"]), 0)
+	_stair_cache[id] = step
+	return step
+
+
+# The highest surface over a spot (x, z), from a model's triangles.
+static func _height_at(f: PackedVector3Array, p: Vector2) -> float:
+	var best := 0.0
+	for i in range(0, f.size() - 2, 3):
+		var a := f[i]
+		var b := f[i + 1]
+		var c := f[i + 2]
+		var v0 := Vector2(b.x - a.x, b.z - a.z)
+		var v1 := Vector2(c.x - a.x, c.z - a.z)
+		var v2 := Vector2(p.x - a.x, p.y - a.z)
+		var den := v0.x * v1.y - v1.x * v0.y
+		if absf(den) < 0.000001:
+			continue
+		var u := (v2.x * v1.y - v1.x * v2.y) / den
+		var v := (v0.x * v2.y - v2.x * v0.y) / den
+		if u < 0.0 or v < 0.0 or u + v > 1.0:
+			continue
+		best = maxf(best, a.y + u * (b.y - a.y) + v * (c.y - a.y))
+	return best
 
 
 # The other way across (for flat things like floors, which can be pulled out into a grid).
