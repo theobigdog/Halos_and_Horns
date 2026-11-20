@@ -1661,6 +1661,7 @@ var _settings_loaded := false
 func _exit_tree() -> void:
 	if _settings_loaded:
 		_save_settings()
+	Characters.release()
 
 
 func _notification(what: int) -> void:

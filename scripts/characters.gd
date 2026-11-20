@@ -116,6 +116,15 @@ static func trail_color(role: String, outfit: Dictionary) -> Color:
 
 # ---------------- building one ----------------
 
+# Free the characters kept to copy parts from. Called when the game closes: left until the engine's own
+# shutdown, they're freed after the renderer is gone, which crashed the Linux build on exit (v0.6.8).
+static func release() -> void:
+	for n in _sources.values():
+		if is_instance_valid(n):
+			n.free()
+	_sources.clear()
+
+
 static func _source(c: String) -> Node:
 	if not _sources.has(c):
 		var scene := load(DIR + SOURCES[c] + ".glb") as PackedScene
