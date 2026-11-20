@@ -197,6 +197,24 @@ func _run() -> void:
 	ed.undo()
 	ed.undo()
 	check(not ed.map["pieces"][fi].has("repeat"), "...undo takes it back")
+	# Shift + wheel turns what you're about to place; arrow keys nudge the selected piece
+	ed.placing = "model:dungeon/wall"
+	ed.wheel_turn(15.0)
+	ed.wheel_turn(15.0)
+	ed.wheel_turn(15.0)
+	var ti: int = ed.place("model:dungeon/wall", Vector3(-8, 0, 12))
+	check(is_equal_approx(float(ed.map["pieces"][ti].get("rot", [0, 0, 0])[1]), 45.0), "Shift + wheel turns a piece before it's placed (%s)" % [ed.map["pieces"][ti].get("rot")])
+	ed.placing = ""
+	ed.place_yaw = 0.0
+	ed.select(ti)
+	ed.wheel_turn(-15.0)
+	check(is_equal_approx(float(ed.map["pieces"][ti]["rot"][1]), 30.0), "...and turns a selected one too (%s)" % [ed.map["pieces"][ti]["rot"]])
+	var before_n: Vector3 = MapData.vec(ed.map["pieces"][ti]["pos"])
+	ed.nudge(KEY_UP, false)
+	ed.nudge(KEY_PAGEUP, true)
+	var moved_n: Vector3 = MapData.vec(ed.map["pieces"][ti]["pos"]) - before_n
+	check(is_equal_approx(moved_n.length_squared(), ed.grid * ed.grid + 0.0001) and is_equal_approx(moved_n.y, 0.01),
+		"arrow keys nudge it one snap step, Alt + Page Up a centimetre up (%s)" % moved_n)
 	# The see-through preview of what you're about to place
 	ed.placing = "model:halloween/crypt"
 	ed._update_preview()

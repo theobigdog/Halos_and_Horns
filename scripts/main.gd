@@ -196,7 +196,10 @@ var lobby_info: Label
 var lobby_start: Button
 var lobby_build: Button
 var _public_ip := ""
-var _room_code := ""          # relay hosting: the code friends join with
+var _room_code := ""          # the relay room code (the host's, or the one we joined with)
+var _room_watermark: Label     # the code, big and faint, behind the lobby
+var _settings_code_row: HBoxContainer
+var _settings_code_label: Label
 var _relay_override := ""     # --relay=HOST[:PORT]
 var _settings := ConfigFile.new()
 var ping_label: Label
@@ -1117,6 +1120,21 @@ func _build_controls() -> void:
 	_controls_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_controls_note.add_theme_color_override("font_color", Color(1.0, 0.8, 0.5))
 	box.add_child(_controls_note)
+	_settings_code_row = HBoxContainer.new()
+	_settings_code_row.add_theme_constant_override("separation", 12)
+	_settings_code_label = Label.new()
+	_settings_code_label.add_theme_font_size_override("font_size", 22)
+	_settings_code_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_settings_code_row.add_child(_settings_code_label)
+	var copy := Button.new()
+	copy.text = "Copy"
+	copy.custom_minimum_size = Vector2(100, 36)
+	copy.pressed.connect(func():
+		DisplayServer.clipboard_set(_room_code)
+		_controls_note.text = "Room code copied: paste it into Discord.")
+	_settings_code_row.add_child(copy)
+	_settings_code_row.visible = false
+	box.add_child(_settings_code_row)
 	var bottom := HBoxContainer.new()
 	box.add_child(bottom)
 	var reset := Button.new()
@@ -1211,7 +1229,9 @@ var _controls_hid: Control     # the menu we hid while Controls is open
 
 
 func _open_controls() -> void:
-	_controls_hid = menu_panel if menu_panel.visible else (pause_panel if pause_panel.visible else null)
+	_settings_code_row.visible = net != null and _room_code != ""
+	_settings_code_label.text = "Room code:  %s" % _room_code
+	_controls_hid = menu_panel if menu_panel.visible else (pause_panel if pause_panel.visible else (lobby_panel if lobby_panel.visible else null))
 	if _controls_hid:
 		_controls_hid.visible = false
 	_rebinding = ""
@@ -1348,6 +1368,7 @@ func _build_lobby() -> void:
 		if net:
 			net.start_building())
 	lobby_build.tooltip_text = "Everyone goes into Creative on this map and builds it together."
+	_button(box, "Settings & controls", _open_controls)
 	_button(box, "Leave", func(): _show_menu(""))
 	lobby_panel.visible = false
 
@@ -1590,6 +1611,7 @@ func _on_join_pressed() -> void:
 	_make_net()
 	# Five letters/numbers is a room code; anything else is an address.
 	var code := RelayProtocol.normalize_code(address)
+	_room_code = code
 	var err: Error
 	if code != "":
 		var r := _relay_address()
@@ -1858,6 +1880,7 @@ func _process(delta: float) -> void:
 	_update_shrine(delta)
 	_update_chat(delta)
 	_update_hud(delta)
+	_update_room_watermark()
 
 
 # ---------- online (called by net_game.gd) ----------
@@ -3400,10 +3423,28 @@ func _make_label(size: int) -> Label:
 	return l
 
 
+func _update_room_watermark() -> void:
+	var show := mode == "online" and state == State.LOBBY and _room_code != "" and net != null
+	_room_watermark.visible = show
+	if show:
+		_room_watermark.text = "ROOM  %s" % _room_code
+
+
 func _build_hud() -> void:
 	var hud := CanvasLayer.new()
 	hud_layer = hud
 	add_child(hud)
+
+	# The room code, big and faint behind everything while in the lobby (so it's there when friends ask).
+	_room_watermark = Label.new()
+	_room_watermark.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_room_watermark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_room_watermark.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	_room_watermark.add_theme_font_size_override("font_size", 130)
+	_room_watermark.modulate = Color(1, 1, 1, 0.13)
+	_room_watermark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_room_watermark.visible = false
+	hud.add_child(_room_watermark)
 
 	# Burning in Hellfire: the whole view wobbles and swims with heat (HUD stays readable).
 	heat_rect = ColorRect.new()

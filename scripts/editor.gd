@@ -9,6 +9,8 @@
 #   V extend a structure: drag and it repeats end to end (walls, fences), posts and all
 #     while doing it: X / Y / Z stick to one axis, L local or world axes,
 #     hold Alt for no snapping, click or Enter to finish, Esc or right-click to undo it
+#   Shift + mouse wheel: turn the piece you're about to place (or the selected one) around
+#   Arrow keys nudge the selected piece one snap step (Alt: 1 cm), Page Up / Page Down raise and lower it
 #   Ctrl+D copy   Delete remove   F fly to it   Ctrl+Z / Ctrl+Y undo / redo   Ctrl+S save
 # The panel on the right takes exact numbers. 0, 0, 0 is the middle of the map, on the ground.
 #
@@ -34,7 +36,8 @@ const PIECES := [
 const ROTATES := ["block", "cylinder", "prop", "model"]       # the others always sit upright
 const RESIZES := ["block", "cylinder", "model"]       # (a model's "size" is how much it's scaled on each axis)
 const ONLY_ONE := ["shrine", "angel_spawn", "demon_spawn"]
-const GRID_STEPS := [0.25, 0.5, 1.0, 2.0]
+const GRID_STEPS := [0.05, 0.1, 0.25, 0.5, 1.0, 2.0]
+const WHEEL_TURN := 15.0       # Shift + wheel turns this many degrees a notch (Alt held: 1 degree)
 const ANGLE_STEP := 15.0
 const MAX_UNDO := 200
 const FLY_SPEED := 12.0
@@ -85,6 +88,7 @@ var _id_count := 0
 var _id_prefix := ""
 var _preview: Node3D           # the see-through copy of the armed piece, under the mouse
 var _preview_kind := ""
+var place_yaw := 0.0           # degrees: how the next placed piece is turned (Shift + wheel)
 
 # Building together online
 const BUILDER_COLORS := [Color(0.3, 0.8, 1.0), Color(1.0, 0.45, 0.8), Color(0.5, 1.0, 0.4), Color(1.0, 0.6, 0.2),
@@ -421,6 +425,8 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 		p["size"] = [2.0, 3.0, 2.0]
 		p["pos"][1] = at.y + 1.5
 		p["color"] = "#8c8c99"
+	if p["type"] in ROTATES and place_yaw != 0.0:
+		p["rot"] = [0.0, place_yaw, 0.0]
 	return p
 
 
@@ -902,8 +908,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _grabbing:
 				_end_drag(true)   # let go: drop it there
 			get_viewport().set_input_as_handled()
+		elif mb.pressed and mb.shift_pressed and drag == "" and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			var turn := (1.0 if mb.alt_pressed else WHEEL_TURN) * (1.0 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0)
+			wheel_turn(turn)
+			get_viewport().set_input_as_handled()
 		elif mb.pressed and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
-			var step := 2.0 * (3.0 if mb.shift_pressed else 1.0)
+			var step := 2.0
 			camera.position += -camera.global_basis.z * (step if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -step)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
@@ -957,6 +967,11 @@ func _key(ev: InputEventKey) -> void:
 			KEY_V: begin("extend")
 			KEY_L: _toggle_local()
 			KEY_F: focus_selected()
+			KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_PAGEUP, KEY_PAGEDOWN:
+				if selected >= 0:
+					nudge(k, ev.alt_pressed)
+				else:
+					handled = false
 			KEY_DELETE, KEY_BACKSPACE: delete_selected()
 			KEY_ESCAPE:
 				if placing != "":
@@ -1588,6 +1603,34 @@ func _online_tick(delta: float) -> void:
 # ---------------- the placement preview ----------------
 # With a piece picked on the left, a see-through copy follows the mouse to show where a click puts it.
 
+# Shift + wheel: turn the piece about to be placed, or else the selected one, around the up axis
+# (relative to the map, whatever way it already faces).
+func wheel_turn(degrees: float) -> void:
+	if placing != "":
+		place_yaw = wrapf(place_yaw + degrees, -180.0, 180.0)
+		_say("Turned to %d degrees (Shift + wheel; hold Alt for fine)" % roundi(place_yaw), 2.0)
+		return
+	if selected < 0 or not piece(selected)["type"] in ROTATES:
+		return
+	var b := Basis(Vector3.UP, deg_to_rad(degrees)) * Basis.from_euler(MapData.rot_rad(piece(selected)))
+	var e := b.get_euler()
+	set_value(selected, "rot", Vector3(rad_to_deg(e.x), rad_to_deg(e.y), rad_to_deg(e.z)), "wheel-turn")
+
+
+# Arrow keys: move the selected piece one snap step, along the map's axis nearest to where we're looking.
+func nudge(key: Key, fine: bool) -> void:
+	var step := 0.01 if fine else grid
+	var fwd := -camera.global_basis.z
+	fwd.y = 0.0
+	var ax := Vector3.FORWARD
+	if fwd.length() > 0.01:
+		ax = Vector3(signf(fwd.x), 0, 0) if absf(fwd.x) > absf(fwd.z) else Vector3(0, 0, signf(fwd.z))
+	var right := ax.cross(Vector3.UP)
+	var move: Vector3 = {KEY_UP: ax, KEY_DOWN: -ax, KEY_RIGHT: right, KEY_LEFT: -right,
+			KEY_PAGEUP: Vector3.UP, KEY_PAGEDOWN: Vector3.DOWN}[key]
+	set_value(selected, "pos", MapData.vec(piece(selected)["pos"]) + move * step, "nudge")
+
+
 func _update_preview() -> void:
 	if placing == "" or flying or drag != "" or not can_edit or _mouse_over_ui():
 		_clear_preview()
@@ -1599,7 +1642,9 @@ func _update_preview() -> void:
 		_ghostify(_preview)
 		_preview_kind = placing
 	var at := _place_point(_mouse())
-	_preview.position = MapData.vec(_new_piece(placing, at)["pos"])
+	var np := _new_piece(placing, at)
+	_preview.position = MapData.vec(np["pos"])
+	_preview.rotation = MapData.rot_rad(np)
 
 
 func _ghostify(n: Node3D) -> void:
@@ -2006,4 +2051,4 @@ func _say(text: String, seconds: float) -> void:
 
 
 func _help_text() -> String:
-	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   V extend   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
+	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   V extend   Shift+wheel turn   Arrows nudge   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
