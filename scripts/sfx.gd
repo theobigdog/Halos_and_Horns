@@ -98,6 +98,66 @@ static func caught_sound() -> AudioStreamWAV:
 	return tone([[392.0, 0.35], [494.0, 0.3], [587.0, 0.3], [784.0, 0.15]], 1.2, 0.12, 0.12, 8.0, 0.05, 1.12)
 
 
+# A redeemed demon blowing up: a sharp crack into a deep, rolling rumble. (Its own random numbers:
+# never the game's shared ones.)
+static func boom_sound() -> AudioStreamWAV:
+	var seconds := 1.6
+	var n := int(RATE * seconds)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4242
+	var low := 0.0
+	var low2 := 0.0
+	var ph := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var u := float(i) / n
+		var white := rng.randf_range(-1.0, 1.0)
+		low = lerpf(low, white, 0.04)          # rumble: heavily smoothed noise
+		low2 = lerpf(low2, low, 0.06)
+		ph += TAU * lerpf(70.0, 32.0, u) / RATE   # a falling thump underneath
+		var crack := white * exp(-t * 40.0) * 0.6
+		var rumble := low2 * 9.0 * exp(-t * 2.2)
+		var thump := sin(ph) * exp(-t * 4.0) * 0.8
+		var s := (crack + rumble + thump) * minf(t / 0.004, 1.0) * pow(1.0 - u, 0.8)
+		data.encode_s16(i * 2, int(clampf(s * 0.75, -1.0, 1.0) * 32767.0))
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = RATE
+	wav.data = data
+	return wav
+
+
+# Hit as a demon (Ted, Nov 20: "I don't know when I'm hit"): an unmistakable yelp of distress, a
+# rising squeal that breaks and drops, rough in the throat. (Its own random numbers.)
+static func distress_sound() -> AudioStreamWAV:
+	var seconds := 0.55
+	var n := int(RATE * seconds)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 777
+	var ph := 0.0
+	var grit := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var u := float(i) / n
+		# pitch: up fast, then it cracks and drops
+		var f := 520.0 + 680.0 * sin(minf(u / 0.35, 1.0) * PI * 0.5) if u < 0.35 else lerpf(1200.0, 380.0, (u - 0.35) / 0.65)
+		f *= 1.0 + 0.04 * sin(t * TAU * 28.0)
+		ph += TAU * f / RATE
+		grit = lerpf(grit, rng.randf_range(-1.0, 1.0), 0.3)
+		var wave := sin(ph) * 0.6 + sin(ph * 2.0) * 0.25 + sin(ph * 3.0) * 0.12
+		var s := (wave * (1.0 + grit * 0.5) + grit * 0.15) * minf(t / 0.01, 1.0) * pow(1.0 - u, 1.3)
+		data.encode_s16(i * 2, int(clampf(s * 0.7, -1.0, 1.0) * 32767.0))
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = RATE
+	wav.data = data
+	return wav
+
+
 static func possess_sound() -> AudioStreamWAV:
 	# low, smooth demonic "whumm"
 	return tone([[98.0, 0.7], [147.0, 0.3]], 0.5, 0.22, 0.04, 12.0, 0.35, 0.75)

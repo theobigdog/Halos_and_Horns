@@ -242,6 +242,7 @@ const TUNING_SLIDERS := [
 
 
 func _ready() -> void:
+	add_to_group("main_game")   # (projectiles report demon hits here)
 	var numbers := Updater.version_numbers(game_version)
 	while numbers.size() < 3:   # "dev" has no numbers and "0.4" has two: the rest count as 0
 		numbers.append(0)
@@ -2045,6 +2046,7 @@ func _end_round(message: String) -> void:
 func _on_bot_caught(bot) -> void:
 	_play("caught")
 	if is_instance_valid(bot):
+		demon_explosion(bot.global_position)
 		powerups.demon_caught(bot.global_position)
 	bots_left -= 1
 	if bots_left <= 0 and state == State.HUNTING:
@@ -2198,9 +2200,11 @@ func online_count(n: int) -> void:
 
 func online_you_hit(health_fraction: float) -> void:
 	if health_fraction < my_health - 0.001:   # (Unholy Mending also lands here: no "ouch" for a heal)
-		_hurt_time = 0.25
+		# Hit! Make it impossible to miss (Ted, Nov 20): a big red flash, a jolt, and a yelp.
+		_hurt_time = 0.45
 		_play("hurt")
-		player.shake(0.25)
+		_sounds["distress"].play()
+		player.shake(0.45)
 	my_health = health_fraction
 
 
@@ -2239,7 +2243,7 @@ func online_you_were_caught(pos: Vector3, by_name := "") -> void:
 
 func online_caught_fx(pos: Vector3) -> void:
 	_play("caught")
-	Effects.puff(self, pos + Vector3.UP * 0.5, Color(0.8, 0.1, 0.1, 0.9), 1.6)
+	demon_explosion(pos)
 	if role == "angel" and bots_left > 0:
 		_toast("A demon was redeemed! %d left" % bots_left, 2.0)
 
@@ -3179,6 +3183,11 @@ func puff_at(pos: Vector3, color: Color, size: float) -> void:
 
 func fx(kind: String, args: Array) -> void:
 	match kind:
+		"hit_blast":
+			var hb := DemonBlast.new()
+			hb.small = true
+			_fx_parent().add_child(hb)
+			hb.global_position = args[0]
 		"teleport":
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.8, Color(0.15, 0.02, 0.05, 0.85), 1.8)
 			Effects.puff(_fx_parent(), args[1] + Vector3.UP * 0.5, Color(0.15, 0.02, 0.05, 0.6), 0.9)
@@ -3977,6 +3986,8 @@ func _build_sounds() -> void:
 	var streams := {
 		"hit": Sfx.hit_sound(),
 		"caught": Sfx.caught_sound(),
+		"boom": Sfx.boom_sound(),
+		"distress": Sfx.distress_sound(),
 		"possess": Sfx.possess_sound(),
 		# Cherub Sense alarm: the cherub's little horn fanfare.
 		"sense": Sfx.voice([[784, 784, 0.09, 1.0, 0.02], [988, 988, 0.09, 1.0, 0.02], [1175, 1175, 0.22, 1.0, 0.0]], 0.24, 0.0, 0.03, 0.03),
@@ -4022,6 +4033,32 @@ func _play(sound_name: String) -> void:
 	# A little random pitch each time so repeated sounds don't feel robotic.
 	asp.pitch_scale = randf_range(0.94, 1.06)
 	asp.play()
+
+
+# A redeemed demon goes off like a bomb (demon_blast.gd): fire, a shockwave, flying chunks, a boom, the
+# camera shaking if you're close, and loose props blown away. Every screen runs the same thing.
+const DemonBlast = preload("res://scripts/demon_blast.gd")
+const BLAST_RADIUS := 4.5        # props within this get blown back (first guess)
+const BLAST_SHOVE := 7.0
+
+
+# A blessing hit a demon: a small burst of fire and sparks there, on every screen.
+func demon_hit_fx(pos: Vector3) -> void:
+	if is_authority():
+		broadcast_fx("hit_blast", [pos])
+
+
+func demon_explosion(pos: Vector3) -> void:
+	var b := DemonBlast.new()
+	add_child(b)
+	b.global_position = pos
+	var asp: AudioStreamPlayer = _sounds["boom"]
+	asp.play()   # (no random pitch: _play's would use the shared random numbers)
+	var d := player.global_position.distance_to(pos)
+	if d < 16.0:
+		player.shake(lerpf(0.6, 0.1, d / 16.0))
+	if round_root:
+		_blast_props(pos, BLAST_RADIUS, BLAST_SHOVE)
 
 
 # Our throw hit a demon: ding, and flash a red X on the crosshair.
