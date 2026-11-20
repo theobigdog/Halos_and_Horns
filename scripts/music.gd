@@ -84,8 +84,8 @@ static func setup_bus() -> void:
 static func set_volume(linear: float) -> void:
 	setup_bus()
 	var idx := AudioServer.get_bus_index(BUS)
-	AudioServer.set_bus_mute(idx, linear <= 0.001)
-	AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(linear, 0.001)))
+	AudioServer.set_bus_mute(idx, linear <= 0.000001)
+	AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(linear, 0.00001)))
 
 
 # ---------- playing ----------

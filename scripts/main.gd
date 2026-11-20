@@ -1157,7 +1157,7 @@ func _build_menu() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
 	var version := Label.new()
-	version.text = "version %s (%s)" % [game_version, GAME_CODENAME]
+	version.text = "version %s" % game_version   # (the old "(Power-ups)" nickname was stale)
 	version.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(version)
 	# Hidden unless a newer version is out (see _refresh_update_row).
@@ -1169,6 +1169,7 @@ func _build_menu() -> void:
 	update_note.visible = false
 	box.add_child(update_note)
 	name_edit = _field(box, "Your name", "Name")
+	name_edit.text_changed.connect(func(_t): if _settings_loaded: _save_settings())   # (kept between games and updates)
 	_build_loadout(box)
 	_button(box, "Practice (single player)", start_practice)
 	_button(box, "Creative (build maps)", open_editor)
@@ -1200,7 +1201,9 @@ func _build_menu() -> void:
 		tb.pressed.connect(func(): _step_ui_scale(dir))
 		text_row.add_child(tb)
 	_button(box, "Settings & controls", _open_controls)
-	_button(box, "Quit", func(): get_tree().quit())
+	_button(box, "Quit", func():
+		_save_settings()
+		get_tree().quit())
 	menu_status = Label.new()
 	menu_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	menu_status.add_theme_color_override("font_color", Color(1.0, 0.7, 0.5))
@@ -1378,7 +1381,7 @@ func _volume_row(grid: GridContainer, text: String, on_change: Callable) -> HSli
 	var slider := HSlider.new()
 	slider.min_value = 0.0
 	slider.max_value = 1.0
-	slider.step = 0.05
+	slider.step = 0.01   # (fine steps: the quiet end matters most)
 	slider.custom_minimum_size.x = 260
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1596,6 +1599,8 @@ func _on_loadout_pick(team: String, slot: int, id: String) -> void:
 func _apply_loadout() -> void:
 	player.loadout = loadout.duplicate(true)
 	_sync_loadout_buttons()
+	if _settings_loaded:
+		_save_settings()
 	if net:
 		net.send_loadout(loadout)
 
@@ -1610,6 +1615,7 @@ func _sync_loadout_buttons() -> void:
 
 
 func _load_settings() -> void:
+	_settings_loaded = false   # (nothing saves until it's all read back in, or half-loaded settings would overwrite the file)
 	_settings.load(SETTINGS_PATH)
 	name_edit.text = _settings.get_value("player", "name", "")
 	address_edit.text = _settings.get_value("net", "address", "")
@@ -1643,8 +1649,23 @@ func _load_settings() -> void:
 			if typeof(p) == TYPE_DICTIONARY and p.get("team") in ["angel", "demon"] and typeof(p.get("name")) == TYPE_STRING:
 				wardrobe_presets.append({"name": str(p["name"]).substr(0, 30), "team": p["team"], "outfit": Characters.clean_outfit(p.get("outfit"), p["team"])})
 	set_outfits(_settings.get_value("wardrobe", "outfits", {}) if typeof(_settings.get_value("wardrobe", "outfits", {})) == TYPE_DICTIONARY else {})
+	_settings_loaded = true
 	_chat_size_pick.set_value_no_signal(clampi(int(_settings.get_value("options", "chat_size", 22)), 12, 40))
 	_set_chat_size(int(_chat_size_pick.value))
+
+
+var _settings_loaded := false
+
+
+# Whatever closes the game (Quit, the window's X, the updater restarting it), what you chose is kept.
+func _exit_tree() -> void:
+	if _settings_loaded:
+		_save_settings()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and _settings_loaded:
+		_save_settings()
 
 
 func _save_settings() -> void:
@@ -3519,11 +3540,14 @@ func _round_sting(message: String) -> void:
 	music.sting("win" if angels_won == (role == "angel") else "lose")
 
 
+# The sliders run on a squared curve (Ted, Nov 20: the lowest setting was still too loud): the bottom
+# of the slider gets properly quiet, the middle sounds about as before.
 func _apply_volumes() -> void:
-	Music.set_volume(_music_volume)
+	Music.set_volume(_music_volume * _music_volume)
 	var idx := AudioServer.get_bus_index(Sfx.BUS)
 	if idx != -1:
-		AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(_sound_volume, 0.001)))
+		var gain := _sound_volume * _sound_volume
+		AudioServer.set_bus_volume_db(idx, linear_to_db(maxf(gain, 0.00001)))
 		AudioServer.set_bus_mute(idx, _sound_volume <= 0.001)
 
 

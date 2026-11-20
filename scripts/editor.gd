@@ -347,23 +347,130 @@ func _add_pick_box(n: Node3D, size: Vector3, y_from := 0.0) -> void:
 	n.add_child(body)
 
 
+# Where each team starts (Creative only): angels a golden circle under a soft beam of light with a
+# halo floating in it, demons a scorched circle with a glowing red star and a pair of horns above.
 func _add_marker(n: Node3D, angel: bool) -> void:
-	var color := Color(1.0, 0.85, 0.35) if angel else Color(0.9, 0.2, 0.15)
-	var mi := MeshInstance3D.new()
-	var mesh := CylinderMesh.new()
-	mesh.top_radius = 0.6
-	mesh.bottom_radius = 0.6
-	mesh.height = 2.0
-	mi.mesh = mesh
-	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(color, 0.45)
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.emission_enabled = true
-	m.emission = color
-	m.emission_energy_multiplier = 0.8
-	mi.material_override = m
-	mi.position.y = 1.0
-	n.add_child(mi)
+	var color := Color(1.0, 0.85, 0.35) if angel else Color(0.95, 0.18, 0.1)
+	var glow := StandardMaterial3D.new()
+	glow.albedo_color = color
+	glow.emission_enabled = true
+	glow.emission = color
+	glow.emission_energy_multiplier = 1.8
+	# the circle on the ground
+	var disc := MeshInstance3D.new()
+	var dm := CylinderMesh.new()
+	dm.top_radius = 1.25
+	dm.bottom_radius = 1.25
+	dm.height = 0.03
+	disc.mesh = dm
+	var floor_m := StandardMaterial3D.new()
+	floor_m.albedo_color = Color(1.0, 0.95, 0.8, 0.35) if angel else Color(0.08, 0.02, 0.02, 0.75)
+	floor_m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	disc.material_override = floor_m
+	disc.position.y = 0.02
+	n.add_child(disc)
+	var ring := MeshInstance3D.new()
+	var rm := TorusMesh.new()
+	rm.inner_radius = 1.18
+	rm.outer_radius = 1.3
+	ring.mesh = rm
+	ring.material_override = glow
+	ring.scale.y = 0.3
+	ring.position.y = 0.04
+	n.add_child(ring)
+	if angel:
+		# a soft beam of light
+		var beam := MeshInstance3D.new()
+		var bm := CylinderMesh.new()
+		bm.top_radius = 0.75
+		bm.bottom_radius = 1.15
+		bm.height = 4.5
+		beam.mesh = bm
+		var bmat := StandardMaterial3D.new()
+		bmat.albedo_color = Color(1.0, 0.93, 0.7, 0.14)
+		bmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		bmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+		bmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		bmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		beam.material_override = bmat
+		beam.position.y = 2.25
+		n.add_child(beam)
+		var halo := MeshInstance3D.new()
+		var hm := TorusMesh.new()
+		hm.inner_radius = 0.32
+		hm.outer_radius = 0.42
+		halo.mesh = hm
+		halo.material_override = glow
+		halo.position.y = 2.0
+		halo.rotation.x = 0.25
+		n.add_child(halo)
+		for side in [-1.0, 1.0]:   # little wings either side of the halo
+			var wing := MeshInstance3D.new()
+			var wm := BoxMesh.new()
+			wm.size = Vector3(0.5, 0.16, 0.03)
+			wing.mesh = wm
+			var white := StandardMaterial3D.new()
+			white.albedo_color = Color(1, 1, 0.97)
+			white.emission_enabled = true
+			white.emission = Color(1, 0.97, 0.9)
+			white.emission_energy_multiplier = 0.6
+			wing.material_override = white
+			wing.position = Vector3(0.62 * side, 2.05, 0)
+			wing.rotation.z = 0.35 * side
+			n.add_child(wing)
+	else:
+		# a five-pointed star in the circle, drawn in glowing red lines
+		var pts := []
+		for k in 5:
+			var a := TAU * k / 5.0 - PI / 2.0
+			pts.append(Vector3(cos(a), 0.05, sin(a)) * 1.1)
+		for k in 5:
+			var p0: Vector3 = pts[k]
+			var p1: Vector3 = pts[(k + 2) % 5]
+			var line := MeshInstance3D.new()
+			var lm := BoxMesh.new()
+			lm.size = Vector3(p0.distance_to(p1), 0.02, 0.06)
+			line.mesh = lm
+			line.material_override = glow
+			line.position = (p0 + p1) * 0.5
+			line.rotation.y = -atan2(p1.z - p0.z, p1.x - p0.x)
+			n.add_child(line)
+		# a pair of horns floating above
+		var dark := StandardMaterial3D.new()
+		dark.albedo_color = Color(0.15, 0.06, 0.06)
+		dark.emission_enabled = true
+		dark.emission = Color(0.5, 0.05, 0.02)
+		for side in [-1.0, 1.0]:
+			var horn := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.0
+			cm.bottom_radius = 0.12
+			cm.height = 0.6
+			horn.mesh = cm
+			horn.material_override = dark
+			horn.position = Vector3(0.22 * side, 1.9, 0)
+			horn.rotation.z = -0.5 * side
+			n.add_child(horn)
+		var eye_m := StandardMaterial3D.new()
+		eye_m.albedo_color = Color(1.0, 0.3, 0.1)
+		eye_m.emission_enabled = true
+		eye_m.emission = Color(1.0, 0.3, 0.1)
+		eye_m.emission_energy_multiplier = 3.0
+		for side in [-1.0, 1.0]:
+			var eye := MeshInstance3D.new()
+			var em := SphereMesh.new()
+			em.radius = 0.06
+			em.height = 0.12
+			eye.mesh = em
+			eye.material_override = eye_m
+			eye.position = Vector3(0.12 * side, 1.62, 0)
+			n.add_child(eye)
+	var light := OmniLight3D.new()
+	light.light_color = color
+	light.light_energy = 0.8
+	light.omni_range = 3.5
+	light.position.y = 1.0
+	n.add_child(light)
 	var tag := Label3D.new()
 	tag.text = "ANGELS START HERE" if angel else "DEMONS START HERE"
 	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -371,7 +478,7 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 	tag.outline_size = 8
 	tag.pixel_size = 0.01
 	tag.modulate = color.lightened(0.3)
-	tag.position.y = 2.6
+	tag.position.y = 2.9
 	n.add_child(tag)
 	_add_pick_box(n, Vector3(1.2, 2.0, 1.2))
 
