@@ -111,6 +111,23 @@ func _run() -> void:
 	check(map["pieces"].any(func(p): return p["type"] == "bouncy_super"), "super-bouncy pads are a map piece")
 	check(MapData.clean(MapData.from_text(MapData.to_text(map))) == map, "a map with structures saves and loads unchanged")
 
+	# Time of day, lights, grime, round music
+	var night := MapData.clean({"time": "night", "pieces": [{"type": "light", "pos": [0, 3, 0], "range": 999, "color": "#00ff00"}]})
+	var lamp_p: Dictionary = night["pieces"].filter(func(q): return q["type"] == "light")[0]
+	check(night["time"] == "night" and MapData.clean({"time": "noon"})["time"] == "day", "maps can be day, dusk or night (anything else is day)")
+	check(lamp_p["range"] == 40.0 and lamp_p["color"] == "#00ff00", "a placed light keeps its colour, with its reach capped (%s)" % lamp_p["range"])
+	main.load_map(night)
+	await frames(2)
+	check(main.graphics.time_of_day == "night" and main.graphics.sun.light_energy < 0.5, "a night map darkens the sky and sun")
+	check(main.world_root.find_children("*", "OmniLight3D", true, false).size() >= 1, "...and its placed lights shine")
+	var lantern := Models.instance("halloween/lantern_standing")
+	check(lantern.find_children("*", "OmniLight3D", true, false).size() == 1, "lit things (lanterns, torches, jack-o'-lanterns) give off light")
+	var grimy: MeshInstance3D = lantern.find_children("*", "MeshInstance3D", true, false)[0]
+	check(grimy.material_overlay != null, "models get a layer of grime on Medium graphics")
+	lantern.free()
+	main._reset_round_props(7)
+	check(main.round_theme in main.ROUND_THEMES and main.round_theme == main.ROUND_THEMES[7 % main.ROUND_THEMES.size()], "each round picks its hunt music from the round seed (%s)" % main.round_theme)
+
 	main.role = "demon"
 	main.load_map(raw)
 	main.start_practice()

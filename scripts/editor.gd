@@ -32,7 +32,7 @@ const PIECES := [
 	["block", "Block"], ["cylinder", "Cylinder"],
 	["bouncy", "Bouncy (metal, stays)"], ["bouncy_once", "Bouncy (wooden, one use a round)"],
 	["bouncy_super", "Super bouncy (magic, stays)"],
-	["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
+	["light", "Light"], ["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
 ]
 const ROTATES := ["block", "cylinder", "prop", "model"]       # the others always sit upright
 const RESIZES := ["block", "cylinder", "model"]       # (a model's "size" is how much it's scaled on each axis)
@@ -51,6 +51,9 @@ var dirty := false
 var selected := -1
 var _size_title: Label
 var _palette_sections := []    # [header button, VBox of buttons] for each category
+var _palette_groups := []      # [label, "Props" / "Structures"]
+var _palette_scroll: ScrollContainer
+var _palette_where: Label
 var _palette_buttons := []     # [button, lowercase search text, its section]
 var placing := ""              # armed palette piece: "block", "prop:barrel", ...
 var drag := ""                 # "", "move", "rotate", "scale"
@@ -114,6 +117,9 @@ var _new_button: Button
 var _test_button: Button
 var _extend_button: Button
 var _top_panel: Control
+var _light_range: SpinBox
+var _light_energy: SpinBox
+var _time_pick: OptionButton
 var _right_panel: Control
 
 # UI
@@ -297,6 +303,9 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			n.add_child(body)
 		"model":
 			n.add_child(Models.make_row(p["model"], MapData.vec(p["size"]) if p.has("size") else Vector3.ONE, int(p.get("repeat", 1)), int(p.get("repeat2", 1))))
+		"light":
+			n.add_child(main.make_lamp(p, Vector3.ZERO))
+			_add_pick_box(n, Vector3(0.5, 0.5, 0.5), -0.25)
 		"bouncy", "bouncy_once", "bouncy_super":
 			var b := Bouncy.new()
 			b.one_use = t == "bouncy_once"
@@ -316,13 +325,13 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 
 
 # Something to click on, for pieces that are mostly air.
-func _add_pick_box(n: Node3D, size: Vector3) -> void:
+func _add_pick_box(n: Node3D, size: Vector3, y_from := 0.0) -> void:
 	var body := StaticBody3D.new()
 	var cs := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = size
 	cs.shape = box
-	cs.position.y = size.y / 2.0
+	cs.position.y = size.y / 2.0 + y_from
 	body.add_child(cs)
 	n.add_child(body)
 
@@ -425,6 +434,11 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 		p["size"] = [4.0, 2.0, 4.0]
 		p["pos"][1] = at.y + 1.0
 		p["color"] = "#a09080"
+	elif kind == "light":
+		p["pos"][1] = at.y + 2.5
+		p["color"] = "#ffd9a0"
+		p["range"] = 8.0
+		p["energy"] = 1.5
 	elif kind == "cylinder":
 		p["size"] = [2.0, 3.0, 2.0]
 		p["pos"][1] = at.y + 1.5
@@ -574,7 +588,7 @@ func set_setting(key: String, value) -> void:
 	_begin_change("setting:" + key)
 	map[key] = value
 	map = MapData.clean(map)
-	if key in ["size", "ground_color", "wall_color"]:
+	if key in ["size", "ground_color", "wall_color", "time"]:
 		_rebuild_ground()
 	_after_change()
 
@@ -1133,6 +1147,7 @@ func _process(delta: float) -> void:
 			var b := Basis(Vector3.UP, _yaw) * Basis(Vector3.RIGHT, _pitch)
 			camera.position += (b * move.normalized() + Vector3.UP * up) * speed * delta
 	_update_preview()
+	_update_palette_where()
 	if online:
 		_online_tick(delta)
 	# The side panels start below the top bar, however tall it's grown (big text wraps it)
@@ -1827,6 +1842,13 @@ func _build_ui() -> void:
 	_wall_pick.edit_alpha = false
 	_wall_pick.color_changed.connect(func(c): set_setting("wall_color", "#" + c.to_html(false)))
 	bar.add_child(_wall_pick)
+	_label(bar, "Time:")
+	_time_pick = OptionButton.new()
+	for tn in MapData.TIMES:
+		_time_pick.add_item(tn.capitalize())
+	_time_pick.item_selected.connect(func(i): set_setting("time", MapData.TIMES[i]))
+	_time_pick.focus_mode = Control.FOCUS_NONE
+	bar.add_child(_time_pick)
 
 	var bar2 := HFlowContainer.new()
 	bar2.add_theme_constant_override("separation", 8)
@@ -1874,9 +1896,18 @@ func _build_ui() -> void:
 	left.offset_bottom = -40
 	left.custom_minimum_size.x = 250
 	ui.add_child(left)
+	var lcol := VBoxContainer.new()
+	left.add_child(lcol)
+	# Where you are in the list, always showing at the top (e.g. "Props > Furniture") however far down you scroll
+	_palette_where = Label.new()
+	_palette_where.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+	_palette_where.text = "Place"
+	lcol.add_child(_palette_where)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	left.add_child(scroll)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lcol.add_child(scroll)
+	_palette_scroll = scroll
 	var pal := VBoxContainer.new()
 	pal.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(pal)
@@ -1891,7 +1922,9 @@ func _build_ui() -> void:
 		_palette_button(special, p[1], kind)
 	# Props (demons can be these), then structures (solid scenery), each by category
 	for group in [["Props", PropLib.type_names(), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
-		_label(pal, "  " + group[0] + " (%d)" % group[1].size())
+		var glabel := _label(pal, "  " + group[0] + " (%d)" % group[1].size())
+		glabel.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+		_palette_groups.append([glabel, group[0]])
 		var by_cat := {}
 		for t in group[1]:
 			var cat: String = PropLib.category(t) if group[2] == "prop:" else Models.category(t)
@@ -1954,6 +1987,23 @@ func _build_ui() -> void:
 	crow.add_child(_color_pick)
 	_inspector.add_child(crow)
 	_rows["color"] = crow
+	var lrow := HBoxContainer.new()
+	_label(lrow, "Reach (m)")
+	_light_range = SpinBox.new()
+	_light_range.min_value = 1
+	_light_range.max_value = 40
+	_light_range.step = 0.5
+	_light_range.value_changed.connect(func(v): set_value(selected, "range", v, "light-range"))
+	lrow.add_child(_light_range)
+	_label(lrow, "Brightness")
+	_light_energy = SpinBox.new()
+	_light_energy.min_value = 0.1
+	_light_energy.max_value = 8
+	_light_energy.step = 0.1
+	_light_energy.value_changed.connect(func(v): set_value(selected, "energy", v, "light-energy"))
+	lrow.add_child(_light_energy)
+	_inspector.add_child(lrow)
+	_rows["light"] = lrow
 	var prow := HBoxContainer.new()
 	_label(prow, "Prop")
 	_prop_pick = OptionButton.new()
@@ -1988,6 +2038,35 @@ func _build_ui() -> void:
 	_refresh_open_list()
 
 
+# The palette's "you are here": the group and section of the topmost visible row.
+func _update_palette_where() -> void:
+	if _palette_scroll == null or not _palette_scroll.is_visible_in_tree():
+		return
+	var top := float(_palette_scroll.scroll_vertical) + 4.0
+	var group := ""
+	var section := ""
+	var section_y := -1.0
+	for g in _palette_groups:
+		if g[0].visible and g[0].position.y <= top:
+			group = g[1]
+	for sec in _palette_sections:
+		var hdr: Control = sec[0]
+		if hdr.visible and hdr.position.y <= top and hdr.position.y > section_y:
+			section_y = hdr.position.y
+			section = sec[2]
+	var group_y := -1.0
+	for g in _palette_groups:
+		if g[1] == group:
+			group_y = g[0].position.y
+	var text := section
+	if group != "":
+		text = group if section_y < group_y else "%s  >  %s" % [group, section]
+	if text == "":
+		text = "Place"
+	if _palette_where.text != text:
+		_palette_where.text = text
+
+
 # A foldable list in the palette: click its header to open or close it.
 func _palette_section(pal: Control, title: String, open: bool) -> VBoxContainer:
 	var header := Button.new()
@@ -2002,7 +2081,7 @@ func _palette_section(pal: Control, title: String, open: bool) -> VBoxContainer:
 	header.pressed.connect(func():
 		box.visible = not box.visible
 		header.text = ("▼ " if box.visible else "▶ ") + title)
-	_palette_sections.append([header, box])
+	_palette_sections.append([header, box, title.get_slice(" (", 0)])
 	return box
 
 
@@ -2095,6 +2174,8 @@ func _sync_settings() -> void:
 		_setting_spins[k].set_value_no_signal(map[k])
 	_ground_pick.color = Color(map["ground_color"])
 	_wall_pick.color = Color(map["wall_color"])
+	_time_pick.select(MapData.TIMES.find(map["time"]))
+	main.graphics.set_time_of_day(map["time"])
 
 
 func _sync_inspector() -> void:
@@ -2125,9 +2206,13 @@ func _sync_inspector() -> void:
 	_rows["size"].visible = t in RESIZES
 	_extend_button.visible = t == "model"
 	_size_title.text = "Scale (× normal)" if t == "model" else "Size (m)"
-	_rows["color"].visible = t in ["block", "cylinder"]
+	_rows["color"].visible = t in ["block", "cylinder", "light"]
+	_rows["light"].visible = t == "light"
+	if t == "light":
+		_light_range.set_value_no_signal(p["range"])
+		_light_energy.set_value_no_signal(p["energy"])
 	_rows["prop"].visible = t == "prop"
-	if t in ["block", "cylinder"]:
+	if t in ["block", "cylinder", "light"]:
 		_color_pick.color = Color(p["color"])
 	if t == "prop":
 		for idx in _prop_pick.item_count:

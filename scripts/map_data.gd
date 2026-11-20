@@ -33,8 +33,10 @@ const MAX_GRID := 400            # copies in one floor, at most
 #   model: a solid structure from the model catalog ("model": id, rot, "size": scale on each axis, 1 = normal,
 #          "repeat": how many copies end to end, for walls and fences dragged longer)
 #   bouncy_super: a bouncy pad that throws you much higher
+#   light: a lamp (color, "range" in metres, "energy" brightness)
+#   (map settings also include "time": "day", "dusk" or "night")
 #   bouncy / bouncy_once, shrine, angel_spawn, demon_spawn: special pieces (pos, rot)
-const TYPES := ["block", "cylinder", "prop", "model", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
+const TYPES := ["block", "cylinder", "prop", "model", "light", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
 const SHAPED := ["block", "cylinder"]
 
 
@@ -148,6 +150,7 @@ static func clean(raw: Dictionary) -> Dictionary:
 		"ground_color": _color(raw.get("ground_color"), "#598c4c"),
 		"wall_color": _color(raw.get("wall_color"), "#807a85"),
 		"random_props": int(_num(raw.get("random_props"), 0, 300, 0)),
+		"time": raw.get("time") if raw.get("time") in TIMES else "day",
 		"pieces": [],
 	}
 	var pieces = raw.get("pieces", [])
@@ -168,6 +171,10 @@ static func clean(raw: Dictionary) -> Dictionary:
 		if t in SHAPED:
 			c["size"] = _arr(_vec(p.get("size"), 0.05, 400.0, Vector3.ONE))
 			c["color"] = _color(p.get("color"), "#a09080")
+		elif t == "light":
+			c["color"] = _color(p.get("color"), "#ffd9a0")
+			c["range"] = snappedf(_num(p.get("range"), 1.0, 40.0, 8.0), 0.1)
+			c["energy"] = snappedf(_num(p.get("energy"), 0.1, 8.0, 1.5), 0.05)
 		elif t == "model":
 			if typeof(p.get("model")) != TYPE_STRING or not Models.has(p["model"]):
 				continue
@@ -210,7 +217,8 @@ static func clean_piece(p) -> Dictionary:
 	return {}
 
 
-const SETTING_KEYS := ["name", "author", "size", "ceiling", "ground_color", "wall_color", "random_props"]
+const SETTING_KEYS := ["name", "author", "size", "ceiling", "ground_color", "wall_color", "random_props", "time"]
+const TIMES := ["day", "dusk", "night"]
 
 
 # One map setting, checked. null if the key isn't a setting.

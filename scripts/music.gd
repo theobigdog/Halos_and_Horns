@@ -52,7 +52,7 @@ func _ready() -> void:
 	# Headless (tests, servers): no speakers, so don't spend seconds rendering.
 	enabled = DisplayServer.get_name() != "headless"
 	if enabled:
-		prepare(["lobby", "hiding", "hunt", "win", "lose"])
+		prepare(["lobby", "hiding", "hunt", "win", "lose", "shuffle", "tango", "bones"])
 
 
 func _exit_tree() -> void:
@@ -670,6 +670,60 @@ const SONGS := {
 				"k! h s h k k s h", "k h s h k k s o", "k! h s h k k s h", "k h s h t t t t",
 				"k! h s h k k s h", "k h s h k k s o", "k! h s h k k s h", "k h s h k k s o",
 				"k! h s h k k s h", "k h s h k k s o", "k! h s h k k s h", "s s s s k! . k! ."]},
+		]},
+
+	# Round themes (Ted, Nov 19: three more in the spirit of the waltz, picked at random each round
+	# and played during the hunt until maps get their own music).
+
+	# "The Graveyard Shuffle": G minor, a swinging wheezy organ over a walking bass and offbeat plucks.
+	"shuffle": {
+		"bpm": 128, "beats": 4, "steps": 2, "bars": 16,
+		"parts": [
+			{"inst": "organ", "vol": 0.34, "pan": 0.15, "bars": [
+				"g4 . bb4 . d5 - c5 bb4", "a4 - g4 - f#4 - d4 .", "g4 . bb4 . d5 - eb5 d5", "c5 - - - . . . .", "eb5 . d5 . c5 . bb4 .", "a4 . c5 . bb4 - a4 .", "g4 . f#4 . g4 . a4 .", "d4 - - - . . d5 c5", "bb4 . d5 . g5 - f5 eb5", "d5 - c5 - bb4 - a4 .", "bb4 . d5 . g5 - a5 bb5", "a5 - - - f#5 - - .", "g5 . f5 . eb5 . d5 .", "c5 . eb5 . d5 - c5 .", "bb4 . a4 . g4 . f#4 .", "g4 - - - . . . ."]},
+			{"inst": "bass", "vol": 0.55, "pan": -0.15, "bars": [
+				"g2 . bb2 . d3 . bb2 .", "d2 . f#2 . a2 . f#2 .", "g2 . bb2 . d3 . bb2 .", "c2 . eb2 . g2 . eb2 .", "c2 . eb2 . g2 . eb2 .", "d2 . f#2 . a2 . f#2 .", "g2 . bb2 . d3 . bb2 .", "d2 . f#2 . a2 . f#2 .", "g2 . bb2 . d3 . bb2 .", "d2 . f#2 . a2 . f#2 .", "g2 . bb2 . d3 . bb2 .", "d2 . f#2 . a2 . f#2 .", "c2 . eb2 . g2 . eb2 .", "c2 . eb2 . g2 . eb2 .", "d2 . f#2 . a2 . f#2 .", "g2 . bb2 . d3 . bb2 ."]},
+			{"inst": "pizz", "vol": 0.26, "pan": -0.4, "bars": [
+				". g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4", ". d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3", ". g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4", ". c3+eb3+g3 . c3+eb3+g3 . c3+eb3+g3 . c3+eb3+g3", ". c3+eb3+g3 . c3+eb3+g3 . c3+eb3+g3 . c3+eb3+g3", ". d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3", ". g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4", ". d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3", ". g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4", ". d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3", ". g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4", ". d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3", ". c3+eb3+g3 . c3+eb3+g3 . c3+eb3+g3 . c3+eb3+g3", ". c3+eb3+g3 . c3+eb3+g3 . c3+eb3+g3 . c3+eb3+g3", ". d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3 . d3+f#3+a3", ". g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4 . g3+bb3+d4"]},
+			{"inst": "choir", "vol": 0.14, "pan": 0.0, "bars": [
+				"", "", "", "", "", "", "", "", "g3+bb3+d4 - - - - - - -", "f#3+a3+d4 - - - - - - -", "g3+bb3+d4 - - - - - - -", "f#3+a3+d4 - - - - - - -", "g3+c4+eb4 - - - - - - -", "g3+c4+eb4 - - - - - - -", "f#3+a3+d4 - - - - - - -", "g3+bb3+d4 - - - - - - -"]},
+			{"inst": "box", "vol": 0.16, "pan": 0.5, "bars": [
+				"", "", "", "", "", "", "", "", "g6 . . . . . . .", ". . . . a6 . . .", "bb6 . . . . . . .", ". . . . f#6 . . .", "eb6 . . . . . . .", "c6 . . . . . . .", "d6 . . . . . . .", "g6 . . . . . . ."]},
+			{"inst": "drums", "vol": 0.34, "bars": ["k . h' s . k h s", "k . h' s . k h s", "k . h' s . k h s", "k . h' s k . s s"]},
+		]},
+
+	# "Phantom Tango": A minor. The theremin croons over a tango bass, stabbing strings and a choir.
+	"tango": {
+		"bpm": 112, "beats": 4, "steps": 2, "bars": 16,
+		"parts": [
+			{"inst": "theremin", "legato": true, "vol": 0.4, "pan": 0.1, "vibrato": 0.018, "bars": [
+				"e5 - - - - - d5 c5", "b4 - - - a4 - - -", "e5 - - - - - f5 e5", "d#5 - - - - - - -", "d5 - - - - - c5 b4", "a4 - - - g#4 - - -", "a4 - b4 - c5 - d5 -", "e5 - - - - - - -", "a5 - - - - - g5 f5", "e5 - - - - - d5 c5", "d5 - - - - - c5 b4", "c5 - - - b4 - - -", "a4 - - - c5 - e5 -", "f5 - - - e5 - d5 -", "e5 - - - g#4 - b4 -", "a4 - - - - - - -"]},
+			{"inst": "bass", "vol": 0.55, "pan": -0.1, "bars": [
+				"a1 - - a1 c2 . e2 .", "a1 - - a1 c2 . e2 .", "a1 - - a1 c2 . e2 .", "e1 - - e1 g#1 . b1 .", "d2 - - d2 f2 . a2 .", "e1 - - e1 g#1 . b1 .", "a1 - - a1 c2 . e2 .", "e1 - - e1 g#1 . b1 .", "f1 - - f1 a1 . c2 .", "a1 - - a1 c2 . e2 .", "d2 - - d2 f2 . a2 .", "a1 - - a1 c2 . e2 .", "a1 - - a1 c2 . e2 .", "d2 - - d2 f2 . a2 .", "e1 - - e1 g#1 . b1 .", "a1 - - a1 c2 . e2 ."]},
+			{"inst": "pizz", "vol": 0.3, "pan": -0.35, "bars": [
+				"a3+c4+e4 . . . a3+c4+e4 . a3+c4+e4' .", "a3+c4+e4 . . . a3+c4+e4 . a3+c4+e4' .", "a3+c4+e4 . . . a3+c4+e4 . a3+c4+e4' .", "g#3+b3+e4 . . . g#3+b3+e4 . g#3+b3+e4' .", "a3+d4+f4 . . . a3+d4+f4 . a3+d4+f4' .", "g#3+b3+e4 . . . g#3+b3+e4 . g#3+b3+e4' .", "a3+c4+e4 . . . a3+c4+e4 . a3+c4+e4' .", "g#3+b3+e4 . . . g#3+b3+e4 . g#3+b3+e4' .", "a3+c4+f4 . . . a3+c4+f4 . a3+c4+f4' .", "a3+c4+e4 . . . a3+c4+e4 . a3+c4+e4' .", "a3+d4+f4 . . . a3+d4+f4 . a3+d4+f4' .", "a3+c4+e4 . . . a3+c4+e4 . a3+c4+e4' .", "a3+c4+e4 . . . a3+c4+e4 . a3+c4+e4' .", "a3+d4+f4 . . . a3+d4+f4 . a3+d4+f4' .", "g#3+b3+e4 . . . g#3+b3+e4 . g#3+b3+e4' .", "a3+c4+e4 . . . a3+c4+e4 . a3+c4+e4' ."]},
+			{"inst": "choir", "vol": 0.15, "pan": 0.0, "bars": [
+				"", "", "", "", "", "", "", "", "a3+c4+f4 - - - - - - -", "a3+c4+e4 - - - - - - -", "a3+d4+f4 - - - - - - -", "a3+c4+e4 - - - - - - -", "a3+c4+e4 - - - - - - -", "a3+d4+f4 - - - - - - -", "g#3+b3+e4 - - - - - - -", "a3+c4+e4 - - - - - - -"]},
+			{"inst": "box", "vol": 0.15, "pan": 0.45, "bars": [
+				"", "", "", "", "", "", "", "", "a6 e6 c6 e6 a6 . . .", ". . . . . . . .", "f6 d6 a5 d6 f6 . . .", ". . . . . . . .", "e6 c6 a5 c6 e6 . . .", ". . . . . . . .", "e6 b5 g#5 b5 e6 . . .", ". . . . . . . ."]},
+			{"inst": "drums", "vol": 0.34, "bars": ["k . . k s . . .", "k . . k s . . .", "k . . k s . . .", "k . . k s . c c"]},
+		]},
+
+	# "Dance of the Bones": an E minor jig (6/8). A rattling music-box lead, oom-pa bass, a clap on two.
+	"bones": {
+		"bpm": 116, "beats": 2, "steps": 3, "bars": 32,
+		"parts": [
+			{"inst": "box", "vol": 0.3, "pan": 0.2, "bars": [
+				"e5 . g5 b5 . g5", "a5 . f#5 d5 . f#5", "e5 . g5 b5 . e6", "d#6 . b5 f#5 . .", "e5 . g5 b5 . g5", "c6 . a5 e5 . g5", "g5 . e5 d#5 . f#5", "e5 . . e5 . .", "b5 . c6 b5 a5 g5", "a5 . b5 a5 g5 f#5", "g5 . a5 g5 f#5 e5", "d#5 . e5 f#5 . .", "b5 . c6 b5 a5 g5", "a5 . f#5 d6 . c6", "b5 . g5 f#5 . d#5", "e5 . . e5 . ."]},
+			{"inst": "pizz", "vol": 0.42, "pan": -0.2, "bars": [
+				". . e3+g3+b3 . . e3+g3+b3", ". . d3+f#3+a3 . . d3+f#3+a3", ". . e3+g3+b3 . . e3+g3+b3", ". . d#3+f#3+b3 . . d#3+f#3+b3", ". . e3+g3+b3 . . e3+g3+b3", ". . c3+e3+g3 . . c3+e3+g3", ". . e3+g3+b3 . . e3+g3+b3", ". . e3+g3+b3 . . e3+g3+b3", ". . e3+g3+b3 . . e3+g3+b3", ". . d3+f#3+a3 . . d3+f#3+a3", ". . e3+g3+b3 . . e3+g3+b3", ". . d#3+f#3+b3 . . d#3+f#3+b3", ". . e3+g3+b3 . . e3+g3+b3", ". . d3+f#3+a3 . . d3+f#3+a3", ". . d#3+f#3+b3 . . d#3+f#3+b3", ". . e3+g3+b3 . . e3+g3+b3"]},
+			{"inst": "bass", "vol": 0.52, "pan": -0.1, "bars": [
+				"e2 . . b1 . .", "d2 . . a1 . .", "e2 . . b1 . .", "b1 . . f#2 . .", "e2 . . b1 . .", "c2 . . g1 . .", "e2 . . b1 . .", "e2 . . b1 . .", "e2 . . b1 . .", "d2 . . a1 . .", "e2 . . b1 . .", "b1 . . f#2 . .", "e2 . . b1 . .", "d2 . . a1 . .", "b1 . . f#2 . .", "e2 . . b1 . ."]},
+			{"inst": "organ", "vol": 0.12, "pan": 0.3, "bars": [
+				"", "", "", "", "", "", "", "", "e3+b3 - - - - -", "d3+a3 - - - - -", "e3+b3 - - - - -", "b2+f#3 - - - - -", "e3+b3 - - - - -", "d3+a3 - - - - -", "b2+f#3 - - - - -", "e3+b3 - - - - -"]},
+			{"inst": "choir", "vol": 0.13, "pan": 0.0, "bars": [
+				"", "", "", "", "", "", "", "", "e4+g4+b4 - - - - -", "d4+f#4+a4 - - - - -", "e4+g4+b4 - - - - -", "d#4+f#4+b4 - - - - -", "e4+g4+b4 - - - - -", "d4+f#4+a4 - - - - -", "d#4+f#4+b4 - - - - -", "e4+g4+b4 - - - - -"]},
+			{"inst": "drums", "vol": 0.34, "bars": ["k . x c . x", "k . x c . x", "k . x c . x", "k . x c c c"]},
 		]},
 
 	# Your side won: a bright little fanfare in D major.

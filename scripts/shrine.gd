@@ -1,8 +1,8 @@
 # The one shrine on each map: the only place to swap skills mid-round.
 # A carved two-step stone dais with a gold rim and a slowly turning ring of runes (holy gold on one
 # half, demonic red on the other), two angel pillars with gold orbs and two horned demon pillars,
-# gold sparkles and red embers drifting up, and a floating crystal (half heavenly, half hellish)
-# under a halo. Ted, Nov 19: "much more ornate". Only the look: its size and use are the same.
+# gold sparkles and red embers drifting up, and a floating orb (gold on top, red underneath)
+# inside two turning rings. Ted, Nov 19: "much more ornate". Only the look: its size and use are the same.
 # When anyone uses it, a pillar of light shoots up and it chimes, so everyone
 # on the map knows someone is standing there (and where to go pester them).
 extends Node3D
@@ -19,7 +19,7 @@ var _pillar_mat: StandardMaterial3D
 var _voice: AudioStreamPlayer3D
 var _glow := 0.0
 var _runes: Node3D
-var _halo: MeshInstance3D
+var _rings := []               # the orb's two turning rings
 var _rune_mats := []
 var _motes := []               # [mesh, base, speed, phase, drift]
 
@@ -52,24 +52,55 @@ func _ready() -> void:
 	_crystal = Node3D.new()
 	_crystal.position.y = 1.6
 	add_child(_crystal)
-	for half in [[Color(1.0, 0.95, 0.7), 1.0], [Color(0.9, 0.15, 0.1), -1.0]]:
+	# The orb (Ted, Nov 19: the old floating diamond and halo were a confusing shape): a glowing ball,
+	# heavenly gold on top and hellish red underneath, inside two rings turning different ways.
+	for half in [[Color(1.0, 0.88, 0.45), false], [Color(0.9, 0.12, 0.06), true]]:
 		var mi := MeshInstance3D.new()
-		var cone := CylinderMesh.new()
-		cone.top_radius = 0.0
-		cone.bottom_radius = 0.3
-		cone.height = 0.55
-		cone.radial_segments = 6
-		mi.mesh = cone
+		var ball := SphereMesh.new()
+		ball.radius = 0.26
+		ball.height = 0.26
+		ball.is_hemisphere = true
+		mi.mesh = ball
 		var m := StandardMaterial3D.new()
 		m.albedo_color = half[0]
 		m.emission_enabled = true
 		m.emission = half[0]
-		m.emission_energy_multiplier = 1.2
+		m.emission_energy_multiplier = 1.6
 		mi.material_override = m
-		mi.position.y = 0.275 * half[1]
-		if half[1] < 0.0:
-			mi.rotation.x = PI
+		if half[1]:
+			mi.rotation.x = PI   # (the bottom half, upside down)
 		_crystal.add_child(mi)
+	var core := MeshInstance3D.new()
+	var cm := SphereMesh.new()
+	cm.radius = 0.12
+	cm.height = 0.24
+	core.mesh = cm
+	var cmat := StandardMaterial3D.new()
+	cmat.albedo_color = Color(1, 1, 1)
+	cmat.emission_enabled = true
+	cmat.emission = Color(1.0, 0.95, 0.9)
+	cmat.emission_energy_multiplier = 3.0
+	core.material_override = cmat
+	_crystal.add_child(core)
+	for r in [[Color(1.0, 0.8, 0.3), 0.42, Vector3(PI / 2, 0, 0.35)], [Color(0.85, 0.12, 0.08), 0.36, Vector3(PI / 2, 0, -0.6)]]:
+		var ring_holder := Node3D.new()
+		_crystal.add_child(ring_holder)
+		var ring := MeshInstance3D.new()
+		var tm := TorusMesh.new()
+		tm.inner_radius = r[1]
+		tm.outer_radius = r[1] + 0.035
+		ring.mesh = tm
+		var rm := StandardMaterial3D.new()
+		rm.albedo_color = r[0]
+		rm.metallic = 0.8
+		rm.roughness = 0.25
+		rm.emission_enabled = true
+		rm.emission = r[0]
+		rm.emission_energy_multiplier = 0.8
+		ring.material_override = rm
+		ring.rotation = r[2]
+		ring_holder.add_child(ring)
+		_rings.append(ring_holder)
 
 	_pillar = MeshInstance3D.new()
 	var pm := CylinderMesh.new()
@@ -200,11 +231,6 @@ func _build_ornaments() -> void:
 			ember.radius = 0.06
 			ember.height = 0.12
 			_mesh(ember, _glow_mat(HELL, 2.5), Vector3(0, 1.36, 0), pil)
-	# A halo over the crystal
-	var halo := TorusMesh.new()
-	halo.inner_radius = 0.32
-	halo.outer_radius = 0.38
-	_halo = _mesh(halo, _glow_mat(HOLY, 1.6), Vector3(0, 2.25, 0))
 	# Gold sparkles rising on the holy side, red embers on the hellish side
 	_add_motes(HOLY, Vector3(0, 0.4, -0.7), 0.3)
 	_add_motes(HELL, Vector3(0, 0.4, 0.7), -0.3)
@@ -259,9 +285,10 @@ func flare() -> void:
 
 
 func _process(delta: float) -> void:
-	_crystal.rotation.y += delta * (4.0 if _glow > 0.0 else 0.8)
+	_crystal.rotation.y += delta * (4.0 if _glow > 0.0 else 0.6)
+	for i in _rings.size():
+		_rings[i].rotation.x += delta * (1.1 if i == 0 else -0.8) * (3.0 if _glow > 0.0 else 1.0)
 	_runes.rotation.y -= delta * (1.5 if _glow > 0.0 else 0.15)
-	_halo.position.y = 2.25 + sin(Time.get_ticks_msec() / 600.0) * 0.1
 	var pulse := 1.1 + 0.4 * sin(Time.get_ticks_msec() / 400.0) + (2.0 if _glow > 0.0 else 0.0)
 	for m in _rune_mats:
 		m.emission_energy_multiplier = pulse

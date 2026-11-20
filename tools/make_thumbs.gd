@@ -102,6 +102,19 @@ func _special(kind: String) -> Node3D:
 			root.add_child(b)
 		"shrine":
 			root.add_child(Shrine.new())
+		"light":
+			var mi := MeshInstance3D.new()
+			var sm := SphereMesh.new()
+			sm.radius = 0.4
+			sm.height = 0.8
+			mi.mesh = sm
+			var m := StandardMaterial3D.new()
+			m.albedo_color = Color("#ffd9a0")
+			m.emission_enabled = true
+			m.emission = Color("#ffd9a0")
+			m.emission_energy_multiplier = 2.0
+			mi.material_override = m
+			root.add_child(mi)
 		"angel_spawn", "demon_spawn":
 			var mi := MeshInstance3D.new()
 			var c := CylinderMesh.new()

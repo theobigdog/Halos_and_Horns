@@ -728,6 +728,7 @@ func load_map(map: Dictionary, path := "") -> void:
 			"bouncy_once": ONE_USE_BOUNCIES.append(pos)
 			"prop": PLACED_PROPS.append([p["prop"], pos, MapData.rot_rad(p)])
 	_build_map()
+	graphics.set_time_of_day(map_data["time"])
 
 
 func _build_map() -> void:
@@ -778,6 +779,8 @@ func _build_map() -> void:
 				structures.append([Vector2(pos.x, pos.z), 1.6])
 			"bouncy_once", "prop":
 				structures.append([Vector2(pos.x, pos.z), 1.6])   # (made fresh each round)
+			"light":
+				world_root.add_child(make_lamp(p, pos))
 			"model":
 				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
 				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
@@ -800,6 +803,32 @@ const DASH_TRAIL := 4.5          # length of the sparkle trail others see behind
 const WORLD_LAYER := 1         # everything real you can see and hit
 const BOUNDS_LAYER := 2        # invisible map walls and ceiling
 var CEILING := 24.0
+
+
+# A placed light: a little glowing bulb and the light itself (no shadows: lots of them stay cheap).
+static func make_lamp(p: Dictionary, pos: Vector3) -> Node3D:
+	var n := Node3D.new()
+	n.position = pos
+	var c := Color(p.get("color", "#ffd9a0"))
+	var l := OmniLight3D.new()
+	l.light_color = c
+	l.light_energy = float(p.get("energy", 1.5))
+	l.omni_range = float(p.get("range", 8.0))
+	n.add_child(l)
+	var bulb := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.12
+	sm.height = 0.24
+	bulb.mesh = sm
+	var m := StandardMaterial3D.new()
+	m.albedo_color = c
+	m.emission_enabled = true
+	m.emission = c
+	m.emission_energy_multiplier = 2.5
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bulb.material_override = m
+	n.add_child(bulb)
+	return n
 
 
 func _add_invisible(center: Vector3, size: Vector3) -> void:
@@ -859,7 +888,13 @@ func _spawn_prop(type_name: String, pos: Vector3, rot = null) -> void:
 
 # Fresh props for a round. The same seed gives the same layout on every computer,
 # which is how everyone in an online match sees an identical map.
+# The hunt's music: one of these each round, from the round's seed (so everyone online hears the same).
+const ROUND_THEMES := ["hunt", "shuffle", "tango", "bones"]
+var round_theme := "hunt"
+
+
 func _reset_round_props(seed_value: int) -> void:
+	round_theme = ROUND_THEMES[absi(seed_value) % ROUND_THEMES.size()]
 	if round_root:
 		round_root.free()
 	round_root = Node3D.new()
@@ -3339,7 +3374,7 @@ func _update_music() -> void:
 	elif mode != "menu":
 		match state:
 			State.HIDING: song = "hiding"
-			State.HUNTING: song = "hunt"
+			State.HUNTING: song = round_theme
 			State.ENDED: song = ""
 	music.play(song)
 

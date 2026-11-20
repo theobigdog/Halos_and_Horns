@@ -4,6 +4,7 @@ extends Node
 
 const Surfaces = preload("res://scripts/surfaces.gd")
 const Effects = preload("res://scripts/effects.gd")
+const Models = preload("res://scripts/models.gd")
 
 const QUALITY_NAMES := ["Low", "Medium", "High"]
 
@@ -18,6 +19,7 @@ uniform vec3 horizon_color = vec3(1.0, 0.58, 0.38);
 uniform vec3 ground_color = vec3(0.28, 0.16, 0.14);
 uniform vec3 cloud_color = vec3(1.0, 0.86, 0.9);
 uniform float cloud_amount = 0.5;
+uniform float stars = 0.0;
 
 float hash(vec2 p) {
 	vec3 q = fract(vec3(p.xyx) * 0.1031);
@@ -56,6 +58,10 @@ void sky() {
 		float c = smoothstep(0.45 - cloud_amount * 0.2, 0.95, fbm(uv));
 		c *= smoothstep(0.02, 0.25, y);
 		col = mix(col, cloud_color * mix(0.85, 1.05, fbm(uv * 2.0)), c * 0.75);
+		// stars at night, hidden behind the clouds
+		vec2 cell = floor(EYEDIR.xz / max(y, 0.08) * 60.0);
+		float star = step(0.9965, hash(cell)) * (0.5 + 0.5 * hash(cell + 7.0));
+		col += vec3(star) * stars * smoothstep(0.08, 0.35, y) * (1.0 - c);
 	} else {
 		col = mix(horizon_color * 0.8, ground_color, smoothstep(0.0, -0.3, y));
 	}
@@ -67,6 +73,25 @@ void sky() {
 """
 
 static var quality := 1
+
+# Time of day (a map setting: Ted, Nov 19). Day is the original look.
+const TIMES := {
+	"day": {"sun_rot": -50.0, "sun_color": Color(1.0, 0.93, 0.82), "sun_energy": 1.15, "fill": 0.22,
+		"top": Color(0.32, 0.27, 0.62), "mid": Color(0.62, 0.5, 0.82), "horizon": Color(1.0, 0.58, 0.38),
+		"ground": Color(0.28, 0.16, 0.14), "cloud": Color(1.0, 0.86, 0.9), "stars": 0.0,
+		"ambient": 1.0, "fog": Color(0.85, 0.62, 0.62), "exposure": 1.05},
+	"dusk": {"sun_rot": -9.0, "sun_color": Color(1.0, 0.55, 0.32), "sun_energy": 0.85, "fill": 0.28,
+		"top": Color(0.14, 0.1, 0.32), "mid": Color(0.45, 0.25, 0.5), "horizon": Color(1.0, 0.42, 0.2),
+		"ground": Color(0.18, 0.08, 0.08), "cloud": Color(1.0, 0.55, 0.5), "stars": 0.25,
+		"ambient": 0.7, "fog": Color(0.6, 0.32, 0.36), "exposure": 1.05},
+	"night": {"sun_rot": -38.0, "sun_color": Color(0.55, 0.65, 1.0), "sun_energy": 0.3, "fill": 0.1,
+		"top": Color(0.01, 0.01, 0.05), "mid": Color(0.03, 0.03, 0.1), "horizon": Color(0.14, 0.06, 0.14),
+		"ground": Color(0.03, 0.02, 0.03), "cloud": Color(0.16, 0.16, 0.24), "stars": 1.0,
+		"ambient": 0.45, "fog": Color(0.08, 0.07, 0.14), "exposure": 1.15},
+}
+const TIME_NAMES := ["day", "dusk", "night"]
+var time_of_day := "day"
+var sky_mat: ShaderMaterial
 
 var env: Environment
 var sun: DirectionalLight3D
@@ -81,6 +106,7 @@ func _ready() -> void:
 	var shader := Shader.new()
 	shader.code = SKY_SHADER
 	mat.shader = shader
+	sky_mat = mat
 	sky.sky_material = mat
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
@@ -128,12 +154,29 @@ func _ready() -> void:
 	apply(quality)
 
 
+func set_time_of_day(name: String) -> void:
+	var t: Dictionary = TIMES.get(name, TIMES["day"])
+	time_of_day = name if TIMES.has(name) else "day"
+	sun.rotation = Vector3(deg_to_rad(t["sun_rot"]), deg_to_rad(30), 0)
+	sun.light_color = t["sun_color"]
+	sun.light_energy = t["sun_energy"]
+	fill.light_energy = t["fill"]
+	for k in ["top", "mid", "horizon", "ground", "cloud"]:
+		var c: Color = t[k]
+		sky_mat.set_shader_parameter(k + "_color", Vector3(c.r, c.g, c.b))
+	sky_mat.set_shader_parameter("stars", t["stars"])
+	env.ambient_light_energy = t["ambient"]
+	env.fog_light_color = t["fog"]
+	env.tonemap_exposure = t["exposure"]
+
+
 # Low: no ambient occlusion, sharper/cheaper shadows, FXAA, fewer
 # particles. Medium: soft shadows, ambient occlusion, 2x MSAA. High: adds bounce
 # light, light shafts in the haze and 4x MSAA.
 func apply(level: int) -> void:
 	quality = clampi(level, 0, 2)
 	Effects.quality = quality
+	Models.set_grime(quality >= 1)
 	var vp := get_viewport()
 	env.ssao_enabled = quality >= 1
 	env.ssao_radius = 1.2
