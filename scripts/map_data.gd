@@ -33,10 +33,12 @@ const MAX_GRID := 400            # copies in one floor, at most
 #   model: a solid structure from the model catalog ("model": id, rot, "size": scale on each axis, 1 = normal,
 #          "repeat": how many copies end to end, for walls and fences dragged longer)
 #   bouncy_super: a bouncy pad that throws you much higher
-#   light: a lamp (color, "range" in metres, "energy" brightness)
-#   (map settings also include "time": "day", "dusk" or "night")
+#   ice: a slippery sheet ("size": x and z; anyone running on it can slip and fall)
+#   light: a lamp (color, "range" in metres, "energy" brightness; "spot": true + "angle" for a spotlight)
+#   (map settings also include "time": "day", "dusk" or "night", "weather" (WEATHERS) and "cycle":
+#   minutes for a day/night cycle, 0 = off)
 #   bouncy / bouncy_once, shrine, angel_spawn, demon_spawn: special pieces (pos, rot)
-const TYPES := ["block", "cylinder", "prop", "model", "light", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
+const TYPES := ["block", "cylinder", "prop", "model", "light", "ice", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
 const SHAPED := ["block", "cylinder"]
 
 
@@ -151,6 +153,8 @@ static func clean(raw: Dictionary) -> Dictionary:
 		"wall_color": _color(raw.get("wall_color"), "#807a85"),
 		"random_props": int(_num(raw.get("random_props"), 0, 300, 0)),
 		"time": raw.get("time") if raw.get("time") in TIMES else "day",
+		"weather": raw.get("weather") if raw.get("weather") in WEATHERS else "sunny_cloudy",
+		"cycle": int(raw.get("cycle", 0)) if typeof(raw.get("cycle")) in [TYPE_INT, TYPE_FLOAT] and int(raw.get("cycle")) in CYCLES else 0,
 		"pieces": [],
 	}
 	var pieces = raw.get("pieces", [])
@@ -171,10 +175,16 @@ static func clean(raw: Dictionary) -> Dictionary:
 		if t in SHAPED:
 			c["size"] = _arr(_vec(p.get("size"), 0.05, 400.0, Vector3.ONE))
 			c["color"] = _color(p.get("color"), "#a09080")
+		elif t == "ice":
+			var isz := _vec(p.get("size"), 0.5, 100.0, Vector3(4, 0.06, 4))
+			c["size"] = _arr(Vector3(isz.x, 0.06, isz.z))   # a slippery sheet: always thin
 		elif t == "light":
 			c["color"] = _color(p.get("color"), "#ffd9a0")
 			c["range"] = snappedf(_num(p.get("range"), 1.0, 40.0, 8.0), 0.1)
 			c["energy"] = snappedf(_num(p.get("energy"), 0.1, 8.0, 1.5), 0.05)
+			if p.get("spot", false) == true:
+				c["spot"] = true   # a spotlight: shines one way (its rotation), in a cone this wide
+				c["angle"] = snappedf(_num(p.get("angle"), 5.0, 85.0, 35.0), 0.5)
 		elif t == "model":
 			if typeof(p.get("model")) != TYPE_STRING or not Models.has(p["model"]):
 				continue
@@ -185,6 +195,11 @@ static func clean(raw: Dictionary) -> Dictionary:
 			var rep := int(_num(p.get("repeat"), 1, MAX_REPEAT, 1))
 			if rep > 1:
 				c["repeat"] = rep   # copies end to end (a wall dragged longer)
+			if p.get("lights", false) == true and Models.is_car(c["model"]):
+				c["lights"] = true   # headlights and tail lights on
+			var look := int(_num(p.get("look"), 0, LOOKS - 1, 0))
+			if look > 0:
+				c["look"] = look   # weathered (0), clean, mossy, charred... (models.gd LOOK_NAMES)
 			var rep2 := int(_num(p.get("repeat2"), 1, MAX_REPEAT, 1))
 			if rep2 > 1 and Models.is_flat(c["model"]):
 				c["repeat2"] = mini(rep2, MAX_GRID / maxi(rep, 1))   # and side by side (a floor pulled out)
@@ -217,8 +232,11 @@ static func clean_piece(p) -> Dictionary:
 	return {}
 
 
-const SETTING_KEYS := ["name", "author", "size", "ceiling", "ground_color", "wall_color", "random_props", "time"]
+const SETTING_KEYS := ["name", "author", "size", "ceiling", "ground_color", "wall_color", "random_props", "time", "weather", "cycle"]
 const TIMES := ["day", "dusk", "night"]
+const WEATHERS := ["clear", "sunny_cloudy", "cloudy", "fog", "snow", "rain"]
+const CYCLES := [0, 5, 10, 20, 30]    # minutes for a whole day/night cycle (0: off)
+const LOOKS := 8                      # a structure's look: models.gd LOOK_NAMES
 
 
 # One map setting, checked. null if the key isn't a setting.

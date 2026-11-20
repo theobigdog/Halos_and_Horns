@@ -32,10 +32,10 @@ const PIECES := [
 	["block", "Block"], ["cylinder", "Cylinder"],
 	["bouncy", "Bouncy (metal, stays)"], ["bouncy_once", "Bouncy (wooden, one use a round)"],
 	["bouncy_super", "Super bouncy (magic, stays)"],
-	["light", "Light"], ["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
+	["light", "Light"], ["ice", "Ice (slippery)"], ["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
 ]
-const ROTATES := ["block", "cylinder", "prop", "model"]       # the others always sit upright
-const RESIZES := ["block", "cylinder", "model"]       # (a model's "size" is how much it's scaled on each axis)
+const ROTATES := ["block", "cylinder", "prop", "model", "light", "ice"]       # the others always sit upright
+const RESIZES := ["block", "cylinder", "model", "ice"]       # (a model's "size" is how much it's scaled on each axis)
 const ONLY_ONE := ["shrine", "angel_spawn", "demon_spawn"]
 const GRID_STEPS := [0.05, 0.1, 0.25, 0.5, 1.0, 2.0]
 const WHEEL_TURN := 15.0       # Shift + wheel turns this many degrees a notch (Alt held: 1 degree)
@@ -119,6 +119,12 @@ var _extend_button: Button
 var _top_panel: Control
 var _light_range: SpinBox
 var _light_energy: SpinBox
+var _light_spot: CheckBox
+var _look_pick: OptionButton
+var _car_lights: CheckBox
+var _weather_pick: OptionButton
+var _cycle_pick: OptionButton
+var _light_angle: SpinBox
 var _time_pick: OptionButton
 var _right_panel: Control
 
@@ -302,7 +308,12 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			body.add_child(cs)
 			n.add_child(body)
 		"model":
-			n.add_child(Models.make_row(p["model"], MapData.vec(p["size"]) if p.has("size") else Vector3.ONE, int(p.get("repeat", 1)), int(p.get("repeat2", 1))))
+			var msc := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+			n.add_child(Models.make_row(p["model"], msc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0))))
+			if p.get("lights", false):
+				n.add_child(Models.car_lights(p["model"], msc))
+		"ice":
+			n.add_child(main.make_ice(p))
 		"light":
 			n.add_child(main.make_lamp(p, Vector3.ZERO))
 			_add_pick_box(n, Vector3(0.5, 0.5, 0.5), -0.25)
@@ -434,6 +445,9 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 		p["size"] = [4.0, 2.0, 4.0]
 		p["pos"][1] = at.y + 1.0
 		p["color"] = "#a09080"
+	elif kind == "ice":
+		p["size"] = [4.0, 0.06, 4.0]
+		p["pos"][1] = at.y + 0.03
 	elif kind == "light":
 		p["pos"][1] = at.y + 2.5
 		p["color"] = "#ffd9a0"
@@ -588,7 +602,7 @@ func set_setting(key: String, value) -> void:
 	_begin_change("setting:" + key)
 	map[key] = value
 	map = MapData.clean(map)
-	if key in ["size", "ground_color", "wall_color", "time"]:
+	if key in ["size", "ground_color", "wall_color", "time", "weather", "cycle"]:
 		_rebuild_ground()
 	_after_change()
 
@@ -761,6 +775,8 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 					pos.x = snappedf(pos.x, grid)
 					pos.z = snappedf(pos.z, grid)
 			elif axis == "":
+				if absf(ray_dir.y) < 0.03:
+					return   # looking level with the ground: the hit would be miles away
 				var hit = Plane(Vector3.UP, start.y).intersects_ray(ray_from, ray_dir)
 				if hit == null:
 					return
@@ -770,10 +786,16 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 					pos.z = snappedf(pos.z, grid)
 			else:
 				var d := _axis_dir(axis)
+				if absf(d.dot(ray_dir)) > 0.985:
+					return   # looking straight along the axis: no sensible answer
 				var t := _along_axis(start, d, ray_from, ray_dir) - _drag_t0
 				if snap:
 					t = snappedf(t, grid)
 				pos = start + d * t
+			# (Ted, Nov 20: pieces sometimes shot to y = -500. A ray almost parallel to the plane or axis
+			# lands absurdly far away; never jump a piece that far in one mouse move.)
+			if not pos.is_finite() or pos.distance_to(start) > 250.0 or absf(pos.y) > 300.0:
+				return
 			p["pos"] = [snappedf(pos.x, 0.001), snappedf(pos.y, 0.001), snappedf(pos.z, 0.001)]
 			nodes[selected].position = pos
 		"extend":
@@ -784,8 +806,10 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 			var dir := ax / w
 			var key := "repeat" if _ext_axis == 0 else "repeat2"
 			var n0 := int(_drag_piece.get(key, 1))
+			if absf(ray_dir.y) < 0.03:
+				return
 			var hit = Plane(Vector3.UP, start.y + 0.01).intersects_ray(ray_from, ray_dir)
-			if hit == null:
+			if hit == null or (hit - start).length() > 250.0:
 				return
 			var count := 1
 			var first := start
@@ -872,6 +896,8 @@ func _rest_height(p: Dictionary) -> float:
 		return float(p["size"][1]) / 2.0
 	if p["type"] in ["angel_spawn", "demon_spawn"]:
 		return 0.1
+	if p["type"] == "ice":
+		return 0.03
 	return 0.0
 
 
@@ -937,6 +963,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			_press_piece = -1
 			if _grabbing:
 				_end_drag(true)   # let go: drop it there
+			get_viewport().set_input_as_handled()
+		elif mb.pressed and mb.ctrl_pressed and drag == "" and selected >= 0 and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			cycle_look(1 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
+			get_viewport().set_input_as_handled()
+		elif mb.pressed and mb.alt_pressed and not mb.shift_pressed and drag == "" and selected >= 0 and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+			wheel_size(1.1 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / 1.1)
 			get_viewport().set_input_as_handled()
 		elif mb.pressed and mb.shift_pressed and drag == "" and mb.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
 			var turn := (1.0 if mb.alt_pressed else WHEEL_TURN) * (1.0 if mb.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0)
@@ -1731,6 +1763,32 @@ func wheel_turn(degrees: float) -> void:
 	set_value(selected, "rot", Vector3(rad_to_deg(e.x), rad_to_deg(e.y), rad_to_deg(e.z)), "wheel-turn")
 
 
+# Ctrl + wheel: the selected structure's look (weathered, clean, mossy, charred...).
+func cycle_look(dir: int) -> void:
+	if selected < 0 or piece(selected)["type"] != "model":
+		_say("Looks are for structures (walls, floors, buildings...).", 2.5)
+		return
+	var look := posmod(int(piece(selected).get("look", 0)) + dir, MapData.LOOKS)
+	set_value(selected, "look", look, "look")
+	_say("Look: %s  (Ctrl + wheel for the next)" % Models.LOOK_NAMES[look], 2.5)
+
+
+# Alt + wheel: the selected piece bigger or smaller, keeping its proportions.
+func wheel_size(factor: float) -> void:
+	if selected < 0:
+		return
+	var p := piece(selected)
+	match p["type"]:
+		"model":
+			var s := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+			s = (s * factor).clamp(Vector3.ONE * 0.1, Vector3.ONE * 10.0)
+			set_value(selected, "size", s, "wheel-size")
+		"block", "cylinder", "ice":
+			set_value(selected, "size", MapData.vec(p["size"]) * factor, "wheel-size")
+		"prop":
+			_say("Props stay their real size (a demon disguised as one has to match it).", 3.0)
+
+
 # Arrow keys: move the selected piece one snap step, along the map's axis nearest to where we're looking.
 func nudge(key: Key, fine: bool) -> void:
 	var step := 0.01 if fine else grid
@@ -1849,6 +1907,21 @@ func _build_ui() -> void:
 	_time_pick.item_selected.connect(func(i): set_setting("time", MapData.TIMES[i]))
 	_time_pick.focus_mode = Control.FOCUS_NONE
 	bar.add_child(_time_pick)
+	_label(bar, "Weather:")
+	_weather_pick = OptionButton.new()
+	for wn in ["Sunny, clear", "Sunny, some clouds", "Cloudy", "Light fog", "Snow", "Rain"]:
+		_weather_pick.add_item(wn)
+	_weather_pick.item_selected.connect(func(i): set_setting("weather", MapData.WEATHERS[i]))
+	_weather_pick.focus_mode = Control.FOCUS_NONE
+	bar.add_child(_weather_pick)
+	_label(bar, "Day cycle:")
+	_cycle_pick = OptionButton.new()
+	for cm in MapData.CYCLES:
+		_cycle_pick.add_item("Off" if cm == 0 else "%d min" % cm)
+	_cycle_pick.item_selected.connect(func(i): set_setting("cycle", MapData.CYCLES[i]))
+	_cycle_pick.focus_mode = Control.FOCUS_NONE
+	_cycle_pick.tooltip_text = "Time passes: day, dusk, night, dawn and round again, starting from the Time above"
+	bar.add_child(_cycle_pick)
 
 	var bar2 := HFlowContainer.new()
 	bar2.add_theme_constant_override("separation", 8)
@@ -2004,6 +2077,53 @@ func _build_ui() -> void:
 	lrow.add_child(_light_energy)
 	_inspector.add_child(lrow)
 	_rows["light"] = lrow
+	var look_row := HBoxContainer.new()
+	_label(look_row, "Look")
+	_look_pick = OptionButton.new()
+	for ln in Models.LOOK_NAMES:
+		_look_pick.add_item(ln)
+	_look_pick.focus_mode = Control.FOCUS_NONE
+	_look_pick.tooltip_text = "Ctrl + mouse wheel cycles through them"
+	_look_pick.item_selected.connect(func(i): set_value(selected, "look", i, "look"))
+	look_row.add_child(_look_pick)
+	_car_lights = CheckBox.new()
+	_car_lights.text = "Lights on"
+	_car_lights.focus_mode = Control.FOCUS_NONE
+	_car_lights.toggled.connect(func(on): set_value(selected, "lights", on))
+	look_row.add_child(_car_lights)
+	_inspector.add_child(look_row)
+	_rows["look"] = look_row
+	var srow := HBoxContainer.new()
+	_light_spot = CheckBox.new()
+	_light_spot.text = "Spotlight"
+	_light_spot.tooltip_text = "Shine one way, in a cone (turn it with R or Shift + wheel), instead of all around"
+	_light_spot.focus_mode = Control.FOCUS_NONE
+	_light_spot.toggled.connect(func(on):
+		if selected < 0:
+			return
+		var p := piece(selected).duplicate(true)
+		if on:
+			p["spot"] = true
+			p["angle"] = p.get("angle", 35.0)
+			if not p.has("rot"):
+				p["rot"] = [-90.0, 0.0, 0.0]   # pointing down to start with
+		else:
+			p.erase("spot")
+		_begin_change()
+		map["pieces"][selected] = _cleaned_piece(p)
+		_refresh_piece(selected)
+		_sync_inspector()
+		_after_change())
+	srow.add_child(_light_spot)
+	_label(srow, "Cone (°)")
+	_light_angle = SpinBox.new()
+	_light_angle.min_value = 5
+	_light_angle.max_value = 85
+	_light_angle.step = 1
+	_light_angle.value_changed.connect(func(v): set_value(selected, "angle", v, "light-angle"))
+	srow.add_child(_light_angle)
+	_inspector.add_child(srow)
+	_rows["spot"] = srow
 	var prow := HBoxContainer.new()
 	_label(prow, "Prop")
 	_prop_pick = OptionButton.new()
@@ -2175,7 +2295,11 @@ func _sync_settings() -> void:
 	_ground_pick.color = Color(map["ground_color"])
 	_wall_pick.color = Color(map["wall_color"])
 	_time_pick.select(MapData.TIMES.find(map["time"]))
+	_weather_pick.select(MapData.WEATHERS.find(map["weather"]))
+	_cycle_pick.select(MapData.CYCLES.find(map["cycle"]))
 	main.graphics.set_time_of_day(map["time"])
+	main.graphics.set_weather(map["weather"])
+	main.graphics.set_day_cycle(map["cycle"])
 
 
 func _sync_inspector() -> void:
@@ -2207,10 +2331,21 @@ func _sync_inspector() -> void:
 	_extend_button.visible = t == "model"
 	_size_title.text = "Scale (× normal)" if t == "model" else "Size (m)"
 	_rows["color"].visible = t in ["block", "cylinder", "light"]
+	if t == "ice":
+		_size_title.text = "Size (m; ice is always thin)"
+	_rows["look"].visible = t == "model"
+	if t == "model":
+		_look_pick.select(int(p.get("look", 0)))
+		_car_lights.visible = Models.is_car(p["model"])
+		_car_lights.set_pressed_no_signal(p.get("lights", false))
 	_rows["light"].visible = t == "light"
+	_rows["spot"].visible = t == "light"
 	if t == "light":
 		_light_range.set_value_no_signal(p["range"])
 		_light_energy.set_value_no_signal(p["energy"])
+		_light_spot.set_pressed_no_signal(p.get("spot", false))
+		_light_angle.set_value_no_signal(p.get("angle", 35.0))
+		_light_angle.editable = p.get("spot", false)
 	_rows["prop"].visible = t == "prop"
 	if t in ["block", "cylinder", "light"]:
 		_color_pick.color = Color(p["color"])
@@ -2235,4 +2370,4 @@ func _say(text: String, seconds: float) -> void:
 
 
 func _help_text() -> String:
-	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend   Shift+wheel turn   Arrows nudge   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
+	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend   Shift+wheel turn   Alt+wheel size   Ctrl+wheel look   Arrows nudge   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"

@@ -10002,5 +10002,24 @@
 -0.0,
 0.0
 ]
+},
+{
+"id": "city/road_crossing_end",
+"path": "res://assets/kaykit/city/road_straight.gltf",
+"label": "Road crossing (at the end)",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+9.0,
+0.45,
+9.0
+],
+"offset": [
+-0.0,
+-0.0,
+-0.0
+],
+"extra": "crosswalk_end"
 }
 ]

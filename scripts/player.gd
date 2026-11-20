@@ -503,6 +503,12 @@ func _physics_process(delta: float) -> void:
 			rate = tuning["ground_decel"]
 		else:
 			rate = tuning["ground_accel"]
+		if on_floor and _on_ice:
+			rate *= ICE_GRIP   # ice: hard to get going, harder to stop or turn
+			# Running and turning hard on ice: you slip and fall for a moment.
+			if current.length() > ICE_SLIP_SPEED and target.length() > 0.5 and current.normalized().dot(target.normalized()) < -0.2 \
+					and _slip_cooldown <= 0.0 and stunned <= 0.0:
+				slip()
 		current = current.move_toward(target, rate * delta)
 		_update_dash_momentum(delta, input_dir, on_floor)
 		velocity.x = current.x + _momentum.x
@@ -513,6 +519,13 @@ func _physics_process(delta: float) -> void:
 		velocity = Vector3(0.0, -Skills.STOMP_SPEED, 0.0)
 	var before_slide := velocity
 	move_and_slide()
+	_slip_cooldown = maxf(_slip_cooldown - delta, 0.0)
+	_on_ice = false
+	if is_on_floor():
+		var q := PhysicsRayQueryParameters3D.create(global_position + Vector3.UP * 0.2, global_position + Vector3.DOWN * 0.4)
+		q.exclude = [get_rid()]
+		var under := get_world_3d().direct_space_state.intersect_ray(q)
+		_on_ice = not under.is_empty() and under["collider"] is Node and (under["collider"] as Node).is_in_group("ice")
 	_check_bumps(before_slide)
 	_slide_off_heads()
 	if role == "angel" and not is_on_floor() and is_on_wall() and input_dir != Vector2.ZERO and not frozen:
@@ -886,7 +899,26 @@ func _is_leaper() -> bool:
 # A demon's Fear caught us: panic for a few seconds.
 # Holy Word struck us out of the sky: slammed down, can't fly again until we land, frozen stiff for a moment.
 var stunned := 0.0
+var _on_ice := false
+var _slip_cooldown := 0.0
+const ICE_GRIP := 0.12            # ice: this much of the normal grip (first guess)
+const ICE_SLIP_SPEED := 6.0       # turning back on yourself faster than this on ice: you slip and fall
+const ICE_FALL_TIME := 0.9        # ...and lie there this long
 var _struck_down := false
+
+
+# Slipped on ice: down for a moment (either team), then back up.
+func slip() -> void:
+	stunned = maxf(stunned, ICE_FALL_TIME)
+	_slip_cooldown = 3.0
+	velocity.x *= 0.5
+	velocity.z *= 0.5
+	shake(0.25)
+	slipped.emit()
+	print("[player] slipped on the ice")
+
+
+signal slipped
 
 
 func strike_down(seconds: float) -> void:

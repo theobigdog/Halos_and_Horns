@@ -732,6 +732,8 @@ func load_map(map: Dictionary, path := "") -> void:
 			"prop": PLACED_PROPS.append([p["prop"], pos, MapData.rot_rad(p)])
 	_build_map()
 	graphics.set_time_of_day(map_data["time"])
+	graphics.set_weather(map_data["weather"])
+	graphics.set_day_cycle(map_data["cycle"])
 
 
 func _build_map() -> void:
@@ -744,7 +746,10 @@ func _build_map() -> void:
 	shrine = null
 	var half: float = MAP_HALF
 	# Ground and boundary walls
-	_add_block(Vector3(0, -0.5, 0), Vector3(half * 2 + 2, 1, half * 2 + 2), Color(map_data["ground_color"]), Vector3.ZERO, false, false, "ground")
+	var ground := Color(map_data["ground_color"])
+	if map_data["weather"] == "snow":
+		ground = ground.lerp(Color(0.92, 0.94, 0.98), 0.75)   # snow on the ground
+	_add_block(Vector3(0, -0.5, 0), Vector3(half * 2 + 2, 1, half * 2 + 2), ground, Vector3.ZERO, false, false, "ground")
 	var wall_color := Color(map_data["wall_color"])
 	var span := half * 2 + 2
 	_add_block(Vector3(0, 2, half + 1), Vector3(span, 4, 1), wall_color, Vector3.ZERO, false)
@@ -782,12 +787,21 @@ func _build_map() -> void:
 				structures.append([Vector2(pos.x, pos.z), 1.6])
 			"bouncy_once", "prop":
 				structures.append([Vector2(pos.x, pos.z), 1.6])   # (made fresh each round)
+			"ice":
+				var ice := make_ice(p)
+				ice.position = pos
+				ice.rotation = MapData.rot_rad(p)
+				world_root.add_child(ice)
 			"light":
-				world_root.add_child(make_lamp(p, pos))
+				var lamp := make_lamp(p, pos, false)   # (the bulb only shows in Creative)
+				lamp.rotation = MapData.rot_rad(p)
+				world_root.add_child(lamp)
 			"model":
 				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
 				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
-				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)))
+				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)))
+				if p.get("lights", false):
+					body.add_child(Models.car_lights(p["model"], sc))
 				body.position = pos
 				body.rotation = MapData.rot_rad(p)
 				world_root.add_child(body)
@@ -808,16 +822,55 @@ const BOUNDS_LAYER := 2        # invisible map walls and ceiling
 var CEILING := 24.0
 
 
-# A placed light: a little glowing bulb and the light itself (no shadows: lots of them stay cheap).
-static func make_lamp(p: Dictionary, pos: Vector3) -> Node3D:
+# A sheet of ice: glassy pale blue, solid to stand on, and in the "ice" group, which makes it
+# slippery (player.gd).
+static func make_ice(p: Dictionary) -> StaticBody3D:
+	var sz := MapData.vec(p.get("size", [4, 0.06, 4]))
+	var body := StaticBody3D.new()
+	body.add_to_group("ice")
+	var cs := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = sz
+	cs.shape = box
+	body.add_child(cs)
+	var mi := MeshInstance3D.new()
+	var mesh := BoxMesh.new()
+	mesh.size = sz
+	mi.mesh = mesh
+	var m := StandardMaterial3D.new()
+	m.albedo_color = Color(0.78, 0.9, 1.0, 0.72)
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.metallic = 0.3
+	m.roughness = 0.04
+	m.clearcoat_enabled = true
+	m.rim_enabled = true
+	m.rim = 0.4
+	mi.material_override = m
+	body.add_child(mi)
+	return body
+
+
+# A placed light: the light itself (no shadows: lots of them stay cheap), plus, in Creative only, a
+# little glowing bulb to grab it by (and a cone showing which way a spotlight points).
+static func make_lamp(p: Dictionary, pos: Vector3, show_bulb := true) -> Node3D:
 	var n := Node3D.new()
 	n.position = pos
 	var c := Color(p.get("color", "#ffd9a0"))
-	var l := OmniLight3D.new()
-	l.light_color = c
-	l.light_energy = float(p.get("energy", 1.5))
-	l.omni_range = float(p.get("range", 8.0))
-	n.add_child(l)
+	if p.get("spot", false):
+		var sl := SpotLight3D.new()
+		sl.light_color = c
+		sl.light_energy = float(p.get("energy", 1.5)) * 2.0
+		sl.spot_range = float(p.get("range", 8.0))
+		sl.spot_angle = float(p.get("angle", 35.0))
+		n.add_child(sl)
+	else:
+		var l := OmniLight3D.new()
+		l.light_color = c
+		l.light_energy = float(p.get("energy", 1.5))
+		l.omni_range = float(p.get("range", 8.0))
+		n.add_child(l)
+	if not show_bulb:
+		return n
 	var bulb := MeshInstance3D.new()
 	var sm := SphereMesh.new()
 	sm.radius = 0.12
@@ -831,6 +884,17 @@ static func make_lamp(p: Dictionary, pos: Vector3) -> Node3D:
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	bulb.material_override = m
 	n.add_child(bulb)
+	if p.get("spot", false):
+		var cone := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.0
+		cm.bottom_radius = 0.18
+		cm.height = 0.4
+		cone.mesh = cm
+		cone.material_override = m
+		cone.rotation.x = PI / 2   # pointing the way the light shines (-Z)
+		cone.position.z = -0.25
+		n.add_child(cone)
 	return n
 
 

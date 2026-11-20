@@ -20,6 +20,7 @@ var _voice: AudioStreamPlayer3D
 var _glow := 0.0
 var _runes: Node3D
 var _rings := []               # the orb's two turning rings
+var _halos := []               # the halos over the angel pillars
 var _rune_mats := []
 var _motes := []               # [mesh, base, speed, phase, drift]
 
@@ -204,33 +205,38 @@ func _build_ornaments() -> void:
 			ring.inner_radius = 0.06
 			ring.outer_radius = 0.085
 			_mesh(ring, mat, Vector3(0, 0, -0.17), glyph).scale.y = 0.2
-	# Four pillars at the corners of the dais: two angelic (white, gold orb), two demonic (black, horns)
+	# Four pillars at the corners of the dais, angels and demons facing each other across it (Ted, Nov 20):
+	# ivory angel pillars with a floating halo, dark demon pillars topped with horns and a trident.
+	var ivory := PropLib.mat(Color(1.0, 0.96, 0.86), "marble")
+	ivory.roughness = 0.25
+	var iron := PropLib.mat(Color(0.2, 0.17, 0.17), "metal")
 	for k in 4:
 		var a := TAU * k / 4.0 + PI / 4.0
 		var at := Vector3(cos(a), 0, sin(a)) * 1.45
-		var holy := k < 2
+		var holy := k % 2 == 0   # opposite corners match
 		var pil := Node3D.new()
 		pil.position = at + Vector3(0, 0.25, 0)
 		add_child(pil)
-		_mesh(_cyl(0.11, 0.15, 0.12, 8), gold if holy else dark, Vector3(0, 0.06, 0), pil)
-		_mesh(_cyl(0.08, 0.1, 1.1, 8), stone if holy else dark, Vector3(0, 0.67, 0), pil)
-		_mesh(_cyl(0.13, 0.1, 0.1, 8), gold if holy else dark, Vector3(0, 1.27, 0), pil)
+		_mesh(_cyl(0.11, 0.15, 0.12, 12 if holy else 8), gold if holy else dark, Vector3(0, 0.06, 0), pil)
+		_mesh(_cyl(0.08, 0.1, 1.1, 12 if holy else 8), ivory if holy else dark, Vector3(0, 0.67, 0), pil)
+		_mesh(_cyl(0.13, 0.1, 0.1, 12 if holy else 8), gold if holy else dark, Vector3(0, 1.27, 0), pil)
 		if holy:
-			var orb := SphereMesh.new()
-			orb.radius = 0.12
-			orb.height = 0.24
-			_mesh(orb, _glow_mat(HOLY, 2.0), Vector3(0, 1.45, 0), pil)
-			for side in [-1.0, 1.0]:   # little wings
-				var wing := _mesh(_box(Vector3(0.22, 0.12, 0.02)), _glow_mat(Color(1.0, 0.97, 0.88), 0.6), Vector3(0.16 * side, 1.4, 0), pil)
-				wing.rotation.z = 0.5 * side
+			var halo := TorusMesh.new()
+			halo.inner_radius = 0.1
+			halo.outer_radius = 0.135
+			var h := _mesh(halo, _glow_mat(HOLY, 2.2), Vector3(0, 1.55, 0), pil)
+			h.rotation.x = 0.25
+			_halos.append(h)
 		else:
-			for side in [-1.0, 1.0]:   # horns
-				var horn := _mesh(_cyl(0.0, 0.05, 0.3, 8), _glow_mat(HELL, 1.0), Vector3(0.07 * side, 1.45, 0), pil)
-				horn.rotation.z = -0.45 * side
-			var ember := SphereMesh.new()
-			ember.radius = 0.06
-			ember.height = 0.12
-			_mesh(ember, _glow_mat(HELL, 2.5), Vector3(0, 1.36, 0), pil)
+			for side in [-1.0, 1.0]:   # horns, curling out from the top
+				var horn := _mesh(_cyl(0.0, 0.045, 0.26, 8), dark, Vector3(0.1 * side, 1.42, 0), pil)
+				horn.rotation.z = -0.7 * side
+			# a trident standing up out of the middle, its prongs glowing red-hot
+			_mesh(_cyl(0.018, 0.018, 0.5, 6), iron, Vector3(0, 1.55, 0), pil)
+			_mesh(_box(Vector3(0.2, 0.03, 0.03)), iron, Vector3(0, 1.8, 0), pil)
+			for x in [-0.09, 0.0, 0.09]:
+				var tip := _mesh(_cyl(0.0, 0.022, 0.16 if x == 0.0 else 0.13, 6), _glow_mat(HELL, 2.0), Vector3(x, 1.88 + (0.015 if x == 0.0 else 0.0), 0), pil)
+				tip.rotation.z = 0.0
 	# Gold sparkles rising on the holy side, red embers on the hellish side
 	_add_motes(HOLY, Vector3(0, 0.4, -0.7), 0.3)
 	_add_motes(HELL, Vector3(0, 0.4, 0.7), -0.3)
@@ -286,6 +292,8 @@ func flare() -> void:
 
 func _process(delta: float) -> void:
 	_crystal.rotation.y += delta * (4.0 if _glow > 0.0 else 0.6)
+	for h in _halos:
+		h.position.y = 1.55 + sin(Time.get_ticks_msec() / 500.0) * 0.04
 	for i in _rings.size():
 		_rings[i].rotation.x += delta * (1.1 if i == 0 else -0.8) * (3.0 if _glow > 0.0 else 1.0)
 	_runes.rotation.y -= delta * (1.5 if _glow > 0.0 else 0.15)

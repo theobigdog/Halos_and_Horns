@@ -20,6 +20,7 @@ uniform vec3 ground_color = vec3(0.28, 0.16, 0.14);
 uniform vec3 cloud_color = vec3(1.0, 0.86, 0.9);
 uniform float cloud_amount = 0.5;
 uniform float stars = 0.0;
+uniform float overcast = 0.0;
 
 float hash(vec2 p) {
 	vec3 q = fract(vec3(p.xyx) * 0.1031);
@@ -65,14 +66,56 @@ void sky() {
 	} else {
 		col = mix(horizon_color * 0.8, ground_color, smoothstep(0.0, -0.3, y));
 	}
-	// the sun: a bright disk with a warm halo around it
+	// overcast: a flat grey lid of cloud
+	float lum = dot(col, vec3(0.3, 0.55, 0.15));
+	col = mix(col, vec3(lum) * vec3(0.92, 0.92, 1.0), overcast * smoothstep(-0.05, 0.1, y));
+	// the sun: a bright disk with a warm halo around it (hidden by heavy cloud)
 	float sun = max(dot(EYEDIR, LIGHT0_DIRECTION), 0.0);
-	col += LIGHT0_COLOR * (pow(sun, 900.0) * 6.0 + pow(sun, 12.0) * 0.25);
+	col += LIGHT0_COLOR * (pow(sun, 900.0) * 6.0 + pow(sun, 12.0) * 0.25) * (1.0 - overcast);
 	COLOR = col;
 }
 """
 
 static var quality := 1
+
+# Falling snow or rain: one mesh of many little quads, moved entirely in the shader (no particle
+# system: those draw from the game's shared random numbers). Each drop has a fixed spot in a box
+# that wraps around the camera, so it looks still in the world as you move through it.
+const FALL_SHADER := """
+shader_type spatial;
+render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled, world_vertex_coords;
+
+uniform vec3 center;
+uniform vec3 box = vec3(44.0, 26.0, 44.0);
+uniform float speed = 2.0;
+uniform float drift = 0.6;
+uniform float size = 0.06;
+uniform float stretch = 1.0;     // rain: long thin streaks
+uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 0.85);
+uniform float round_drop = 1.0;  // snow: soft round flakes
+varying vec2 uv;
+
+void vertex() {
+	vec4 seed = INSTANCE_CUSTOM;
+	vec3 s = seed.xyz * box;
+	float t = TIME * speed * (0.75 + seed.w * 0.5);
+	vec3 moved = s + vec3(sin(TIME * 0.7 + seed.w * 20.0) * drift, -t, cos(TIME * 0.5 + seed.w * 11.0) * drift);
+	vec3 corner = center - box * 0.5;
+	vec3 p = corner + mod(moved - corner, box);
+	vec3 right = normalize(INV_VIEW_MATRIX[0].xyz);
+	vec3 up = stretch > 1.0 ? vec3(0.0, 1.0, 0.0) : normalize(INV_VIEW_MATRIX[1].xyz);
+	uv = UV;
+	// (the quad's own corners, -0.5..0.5, come in as VERTEX before the model matrix: it's identity here)
+	VERTEX = p + right * (UV.x - 0.5) * size + up * (UV.y - 0.5) * size * stretch;
+}
+
+void fragment() {
+	vec2 d = uv - 0.5;
+	float a = round_drop > 0.5 ? 1.0 - smoothstep(0.2, 0.5, length(d)) : 1.0 - smoothstep(0.25, 0.5, abs(d.x));
+	ALBEDO = tint.rgb;
+	ALPHA = tint.a * a * smoothstep(1.2, 3.5, length(VERTEX));   // (no huge blobs right in your face)
+}
+"""
 
 # Time of day (a map setting: Ted, Nov 19). Day is the original look.
 const TIMES := {
@@ -92,6 +135,20 @@ const TIMES := {
 const TIME_NAMES := ["day", "dusk", "night"]
 var time_of_day := "day"
 var sky_mat: ShaderMaterial
+
+# Weather (a map setting: Ted, Nov 20). Each changes the clouds, sun, haze, and maybe adds snow or rain.
+const WEATHER := {
+	"clear": {"clouds": 0.12, "overcast": 0.0, "sun": 1.0, "fog": 1.0, "fall": ""},
+	"sunny_cloudy": {"clouds": 0.5, "overcast": 0.0, "sun": 1.0, "fog": 1.0, "fall": ""},
+	"cloudy": {"clouds": 1.0, "overcast": 0.75, "sun": 0.45, "fog": 1.6, "fall": ""},
+	"fog": {"clouds": 0.7, "overcast": 0.5, "sun": 0.65, "fog": 9.0, "fall": ""},
+	"snow": {"clouds": 1.0, "overcast": 0.8, "sun": 0.5, "fog": 4.0, "fall": "snow"},
+	"rain": {"clouds": 1.0, "overcast": 0.9, "sun": 0.35, "fog": 3.0, "fall": "rain"},
+}
+var weather := "sunny_cloudy"
+var day_cycle := 0.0             # minutes for a whole day, night and back (0: the map's time stays put)
+var _fall: MultiMeshInstance3D
+var _fall_mat: ShaderMaterial
 
 var env: Environment
 var sun: DirectionalLight3D
@@ -155,19 +212,101 @@ func _ready() -> void:
 
 
 func set_time_of_day(name: String) -> void:
-	var t: Dictionary = TIMES.get(name, TIMES["day"])
 	time_of_day = name if TIMES.has(name) else "day"
+	_apply_look(TIMES[time_of_day])
+
+
+func set_weather(name: String) -> void:
+	weather = name if WEATHER.has(name) else "sunny_cloudy"
+	_apply_look(_cycle_look() if day_cycle > 0.0 else TIMES[time_of_day])
+	_make_fall(WEATHER[weather]["fall"])
+
+
+# A day/night cycle (a map setting, in minutes): day, dusk, night, dawn, day... Driven by the
+# computer's clock, so everyone online sees the same time of day whenever they joined.
+func set_day_cycle(minutes: float) -> void:
+	day_cycle = maxf(minutes, 0.0)
+	_apply_look(_cycle_look() if day_cycle > 0.0 else TIMES[time_of_day])
+
+
+const CYCLE_KEYS := ["day", "dusk", "night", "dusk"]   # (dawn looks like dusk)
+
+
+func _cycle_look() -> Dictionary:
+	var start := float(TIME_NAMES.find(time_of_day)) / 4.0
+	var phase := fposmod(start + Time.get_unix_time_from_system() / (day_cycle * 60.0), 1.0) * 4.0
+	var i := int(phase) % 4
+	var k := smoothstep(0.55, 1.0, phase - floor(phase))   # hold each, then ease into the next
+	var a: Dictionary = TIMES[CYCLE_KEYS[i]]
+	var b: Dictionary = TIMES[CYCLE_KEYS[(i + 1) % 4]]
+	var out := {}
+	for key in a:
+		out[key] = lerp(a[key], b[key], k)
+	return out
+
+
+func _process(_delta: float) -> void:
+	if day_cycle > 0.0:
+		_apply_look(_cycle_look())
+	if _fall:
+		var cam := get_viewport().get_camera_3d()
+		if cam:
+			_fall_mat.set_shader_parameter("center", cam.global_position)
+
+
+func _apply_look(t: Dictionary) -> void:
+	var w: Dictionary = WEATHER[weather]
 	sun.rotation = Vector3(deg_to_rad(t["sun_rot"]), deg_to_rad(30), 0)
 	sun.light_color = t["sun_color"]
-	sun.light_energy = t["sun_energy"]
+	sun.light_energy = t["sun_energy"] * w["sun"]
 	fill.light_energy = t["fill"]
 	for k in ["top", "mid", "horizon", "ground", "cloud"]:
 		var c: Color = t[k]
 		sky_mat.set_shader_parameter(k + "_color", Vector3(c.r, c.g, c.b))
-	sky_mat.set_shader_parameter("stars", t["stars"])
-	env.ambient_light_energy = t["ambient"]
+	sky_mat.set_shader_parameter("stars", t["stars"] * (1.0 - w["overcast"]))
+	sky_mat.set_shader_parameter("cloud_amount", w["clouds"])
+	sky_mat.set_shader_parameter("overcast", w["overcast"])
+	env.ambient_light_energy = t["ambient"] * (1.0 + w["overcast"] * 0.25)
 	env.fog_light_color = t["fog"]
+	env.fog_density = 0.0045 * w["fog"]
 	env.tonemap_exposure = t["exposure"]
+
+
+func _make_fall(kind: String) -> void:
+	if _fall:
+		_fall.queue_free()
+		_fall = null
+	if kind == "":
+		return
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_custom_data = true
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE
+	mm.mesh = quad
+	mm.instance_count = [600, 1500, 2600][quality] * (2 if kind == "rain" else 1)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 90210   # (its own numbers, never the game's)
+	for i in mm.instance_count:
+		mm.set_instance_transform(i, Transform3D.IDENTITY)
+		mm.set_instance_custom_data(i, Color(rng.randf(), rng.randf(), rng.randf(), rng.randf()))
+	_fall = MultiMeshInstance3D.new()
+	_fall.multimesh = mm
+	_fall.custom_aabb = AABB(Vector3(-1000, -1000, -1000), Vector3(2000, 2000, 2000))
+	_fall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_fall_mat = ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = FALL_SHADER
+	_fall_mat.shader = sh
+	if kind == "rain":
+		_fall_mat.set_shader_parameter("speed", 16.0)
+		_fall_mat.set_shader_parameter("drift", 0.05)
+		_fall_mat.set_shader_parameter("size", 0.025)
+		_fall_mat.set_shader_parameter("stretch", 22.0)
+		_fall_mat.set_shader_parameter("tint", Color(0.75, 0.8, 0.95, 0.35))
+		_fall_mat.set_shader_parameter("round_drop", 0.0)
+	_fall.material_override = _fall_mat
+	add_child(_fall)
 
 
 # Low: no ambient occlusion, sharper/cheaper shadows, FXAA, fewer
@@ -178,6 +317,8 @@ func apply(level: int) -> void:
 	Effects.quality = quality
 	Models.set_grime(quality >= 1)
 	var vp := get_viewport()
+	if _fall:
+		_make_fall(WEATHER[weather]["fall"])   # (more drops on higher settings)
 	env.ssao_enabled = quality >= 1
 	env.ssao_radius = 1.2
 	env.ssao_intensity = 1.6

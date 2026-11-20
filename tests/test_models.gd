@@ -120,6 +120,35 @@ func _run() -> void:
 	await frames(2)
 	check(main.graphics.time_of_day == "night" and main.graphics.sun.light_energy < 0.5, "a night map darkens the sky and sun")
 	check(main.world_root.find_children("*", "OmniLight3D", true, false).size() >= 1, "...and its placed lights shine")
+	check(main.world_root.find_children("*", "MeshInstance3D", true, false).filter(func(mi): return mi.get_parent() != null and mi.get_parent().get_child(0) is OmniLight3D).is_empty(),
+		"...with no bulb showing outside Creative")
+	var spot: Dictionary = MapData.clean({"pieces": [{"type": "light", "pos": [0, 3, 0], "spot": true, "angle": 200}]})["pieces"].filter(func(q): return q["type"] == "light")[0]
+	check(spot.get("spot", false) and spot["angle"] == 85.0 and main.make_lamp(spot, Vector3.ZERO, false).get_child(0) is SpotLight3D, "lights can be spotlights (cone capped at %s degrees)" % spot["angle"])
+	# Weather and the day cycle
+	var wet := MapData.clean({"weather": "rain", "cycle": 10})
+	check(wet["weather"] == "rain" and wet["cycle"] == 10 and MapData.clean({"weather": "hail", "cycle": 7})["weather"] == "sunny_cloudy", "maps have weather and a day cycle (junk falls back to the default)")
+	main.load_map(MapData.clean({"weather": "snow", "pieces": []}))
+	await frames(2)
+	check(main.graphics.weather == "snow" and main.graphics._fall != null, "a snowy map has snow falling")
+	main.load_map(MapData.clean({"weather": "clear", "cycle": 5, "pieces": []}))
+	await frames(2)
+	check(main.graphics._fall == null and main.graphics.day_cycle == 5.0, "...a clear one doesn't, and the day cycle runs")
+	# Looks, the end crosswalk, cars and traffic lights
+	var mossy := Models.instance("dungeon/wall", Vector3.ONE, 2)
+	var mm: MeshInstance3D = mossy.find_children("*", "MeshInstance3D", true, false)[0]
+	check(int(mm.get_instance_shader_parameter("look")) == 2 and MapData.clean({"pieces": [{"type": "model", "model": "dungeon/wall", "pos": [0, 0, 0], "look": 99}]})["pieces"][0]["look"] == MapData.LOOKS - 1,
+		"structures can have a look (mossy, charred...), kept in range")
+	mossy.free()
+	var cross := Models.instance("city/road_crossing_end")
+	check(Models.has("city/road_crossing_end") and cross.get_child_count() > 6, "there's a road with the crosswalk at one end")
+	cross.free()
+	var car := Models.car_lights("city/car_sedan")
+	check(car.find_children("*", "SpotLight3D", true, false).size() == 1, "cars can have their lights on")
+	car.free()
+	# Ice: slippery, and you can fall
+	var iced: Node3D = main.make_ice({"size": [4, 0.06, 4]})
+	check(iced.is_in_group("ice"), "ice is a slippery sheet")
+	iced.free()
 	var lantern := Models.instance("halloween/lantern_standing")
 	check(lantern.find_children("*", "OmniLight3D", true, false).size() == 1, "lit things (lanterns, torches, jack-o'-lanterns) give off light")
 	var grimy: MeshInstance3D = lantern.find_children("*", "MeshInstance3D", true, false)[0]
@@ -149,6 +178,29 @@ func _run() -> void:
 	check(player.visual_root.find_children("*", "MeshInstance3D", true, false).size() > 0, "...and its look")
 	player.unpossess()
 	await frames(3)
+
+	# ---- Ice: slide about, and running then turning hard makes you fall ----
+	var ice_sheet: Node3D = main.make_ice({"size": [14, 0.06, 14]})
+	ice_sheet.position = Vector3(14, 0.03, -2)
+	main.world_root.add_child(ice_sheet)
+	player.global_position = Vector3(14, 0.3, 3)
+	player.velocity = Vector3.ZERO
+	player.rotation = Vector3.ZERO
+	player.pivot.rotation = Vector3.ZERO
+	await frames(10)
+	player.test_input = {"dir": Vector2(0, -1), "run": true}
+	await frames(70)
+	var on_ice: bool = player._on_ice
+	player.test_input = {"dir": Vector2(0, 1), "run": true}
+	var fell := false
+	for k in 40:
+		await frames(1)
+		fell = fell or player.stunned > 0.0
+	player.test_input = {}
+	check(on_ice and fell, "running on ice then turning hard makes you slip and fall (on ice %s, fell %s)" % [on_ice, fell])
+	ice_sheet.queue_free()
+	player.stunned = 0.0
+	await frames(30)
 
 	# ---- Bouncy pads: wooden one-use, metal, and the magic super one ----
 	var kinds := {}

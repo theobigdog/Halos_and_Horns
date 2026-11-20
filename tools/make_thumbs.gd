@@ -102,6 +102,8 @@ func _special(kind: String) -> Node3D:
 			root.add_child(b)
 		"shrine":
 			root.add_child(Shrine.new())
+		"ice":
+			root.add_child(load("res://scripts/main.gd").make_ice({"size": [4, 0.06, 4]}))
 		"light":
 			var mi := MeshInstance3D.new()
 			var sm := SphereMesh.new()

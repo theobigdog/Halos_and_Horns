@@ -100,6 +100,12 @@ def main():
         if kind == "prop" and any(re.search(p, key) for p in ROUND):
             entry["round"] = True
         out.append(entry)
+    # Our own variations on a model (built in models.gd): the road with the crosswalk at one end.
+    for e in list(out):
+        if e["id"] == "city/road_straight":
+            extra = dict(e)
+            extra.update({"id": "city/road_crossing_end", "label": "Road crossing (at the end)", "extra": "crosswalk_end"})
+            out.append(extra)
     with open(os.path.join(ROOT, "assets", "kaykit", "catalog.json"), "w", newline="\n") as f:
         json.dump(out, f, indent=0)
     props = sum(1 for e in out if e["kind"] == "prop")
