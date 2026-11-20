@@ -233,6 +233,10 @@ func c_hello(player_name: String, version: int, angel_skills: Array, demon_skill
 	_broadcast_lobby()
 	if phase == "hiding" or phase == "hunting":
 		_add_late_joiner(id)
+	elif phase == "building":
+		build_can[id] = true
+		_build_color(id)
+		_send_build_start(id)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -240,6 +244,9 @@ func _on_peer_disconnected(id: int) -> void:
 		return
 	var rec: Dictionary = peers[id]
 	peers.erase(id)
+	build_claims.erase(id)
+	build_cams.erase(id)
+	build_can.erase(id)
 	print("[host] %s left" % rec["name"])
 	if rec["in_round"]:
 		main.authority_release(id, rec["pos"], rec["yaw"])
@@ -651,7 +658,7 @@ func _host_tick(delta: float) -> void:
 	if _score_accum >= SCOREBOARD_RATE:
 		_score_accum = 0.0
 		_send_scoreboards()
-	if phase != "lobby":
+	if phase in ["hiding", "hunting", "ended"]:   # (not "lobby" or "building")
 		phase_time -= delta
 		if phase_time <= 0.0:
 			if phase == "hiding":
@@ -661,6 +668,8 @@ func _host_tick(delta: float) -> void:
 				_end_round("Time's up! %d demon%s survived. Demons win!" % [n, "" if n == 1 else "s"])
 			elif phase == "ended":
 				_back_to_lobby()
+	if phase == "building":
+		_build_tick(delta)
 	_check_idle()
 	# Host's own player into the shared state.
 	var me: Dictionary = peers[1]
@@ -2117,3 +2126,330 @@ func _clear_remotes() -> void:
 	for eid in remotes:
 		remotes[eid].queue_free()
 	remotes.clear()
+
+
+# ---------------- building together (Creative, online) ----------------
+# The host picks "Build together" in the lobby and everyone goes into Creative on the same map.
+# The host's editor holds the real map. Builders send small edits (editor.gd's _diff_ops); the
+# host checks each one (a real piece, not someone else's selected piece, one shrine, not too many
+# pieces, not too fast, and only from players allowed to build), applies it, and passes it on.
+# Anything it refuses, it puts right on that builder's screen. The host can make anyone view-only.
+
+const BUILD_MAX_OPS := 400          # edits in one message
+const BUILD_MSGS_PER_SEC := 30      # messages a second, at most, from one builder
+const BUILD_CAM_RATE := 10.0        # where-everyone-is updates a second
+
+var build_can := {}                 # host: peer -> allowed to build
+var build_claims := {}              # host: peer -> the piece id they have selected
+var build_cams := {}                # host: peer -> [position, Vector2(pitch, yaw)]
+var build_colors := {}              # host: peer -> colour number
+var _build_window := {}             # host: peer -> [window start, messages in it]
+var _build_cam_accum := 0.0
+var build_refused := 0              # host: edits refused (for tests)
+
+
+func is_building() -> bool:
+	return phase == "building"
+
+
+# Host: everyone into Creative, on the lobby's map.
+func start_building() -> void:
+	if not is_host or phase != "lobby":
+		return
+	phase = "building"
+	build_claims.clear()
+	build_cams.clear()
+	for id in peers:
+		if not build_can.has(id):
+			build_can[id] = true
+		_build_color(id)
+	main.begin_building_host()
+	for id in _client_ids():
+		_send_build_start(id)
+	_broadcast_lobby()
+	print("[host] building together")
+
+
+func _build_color(id: int) -> int:
+	if not build_colors.has(id):
+		build_colors[id] = build_colors.size()
+	return build_colors[id]
+
+
+func _send_build_start(id: int) -> void:
+	s_build_start.rpc_id(id, MapData.to_text(main.editor.map), build_can.get(id, true))
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_build_start(text: String, allowed: bool) -> void:
+	var m := MapData.from_text(text)
+	if m.is_empty():
+		return
+	main.online_build_start(m, allowed)
+
+
+# Host: done building. The map goes back to the lobby, ready to play (or save).
+func build_end() -> void:
+	if not is_host or phase != "building":
+		return
+	phase = "lobby"
+	build_claims.clear()
+	main.end_building_host()
+	for id in _client_ids():
+		send_map(id)
+		s_build_end.rpc_id(id)
+	_broadcast_lobby()
+	print("[host] done building")
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_build_end() -> void:
+	main.online_build_end()
+
+
+# Host: try the map out: back to the lobby and straight into a round.
+func build_test_play() -> void:
+	if not is_host or phase != "building":
+		return
+	if peers.size() < 2:
+		main.editor._say("A test round needs at least 2 players. (On your own, use Creative from the main menu.)", 5.0)
+		return
+	build_end()
+	start_round()
+
+
+# Ours: send our edits (the host applies its own directly).
+func build_send_ops(ops: Array) -> void:
+	if ops.is_empty():
+		return
+	if is_host:
+		_build_broadcast(1, ops)
+		return
+	for i in range(0, ops.size(), BUILD_MAX_OPS):
+		c_build_ops.rpc_id(1, JSON.stringify(ops.slice(i, i + BUILD_MAX_OPS)))
+
+
+func _build_broadcast(author: int, ops: Array) -> void:
+	var text := JSON.stringify(ops)
+	for id in _client_ids():
+		if id != author:
+			s_build_ops.rpc_id(id, text)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func c_build_ops(text: String) -> void:
+	if not is_host:
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if not peers.has(id) or phase != "building" or text.length() > 200000:
+		return
+	var t := now()
+	var w: Array = _build_window.get(id, [t, 0])
+	if t - w[0] > 1.0:
+		w = [t, 0]
+	w[1] += 1
+	_build_window[id] = w
+	var parsed = JSON.parse_string(text)
+	if typeof(parsed) != TYPE_ARRAY:
+		return
+	if w[1] > BUILD_MSGS_PER_SEC or not build_can.get(id, true) or parsed.size() > BUILD_MAX_OPS:
+		_build_refuse(id, parsed, "too fast" if w[1] > BUILD_MSGS_PER_SEC else ("view-only" if not build_can.get(id, true) else "too many edits at once"))
+		return
+	var ok := []
+	var refused := []
+	for op in parsed:
+		var c := _build_check(id, op)
+		if c.is_empty():
+			refused.append(op)
+		else:
+			ok.append(c)
+			main.editor.apply_remote([c])   # (one at a time, so the next check sees this one)
+	if not ok.is_empty():
+		_build_broadcast(id, ok)
+	if not refused.is_empty():
+		_build_refuse(id, refused, "")
+
+
+# Host: is this edit fine? Returns it, cleaned, or {} if not.
+func _build_check(id: int, op) -> Dictionary:
+	if typeof(op) != TYPE_DICTIONARY:
+		return {}
+	var ed = main.editor
+	match op.get("o"):
+		"set":
+			var v = MapData.clean_setting(op.get("k"), op.get("v"))
+			if v == null:
+				return {}
+			return {"o": "set", "k": op["k"], "v": v}
+		"put":
+			var p := MapData.clean_piece(op.get("p"))
+			var pid: String = p.get("id", "")
+			if p.is_empty() or pid == "" or pid != str(op.get("id", "")) or _build_claimed_by_other(id, pid):
+				return {}
+			var i: int = ed.index_of(pid)
+			if i < 0 and ed.map["pieces"].size() >= MapData.MAX_PIECES:
+				return {}
+			if p["type"] in ["shrine", "angel_spawn", "demon_spawn"]:
+				for q in ed.map["pieces"]:
+					if q["type"] == p["type"] and q.get("id", "") != pid:
+						return {}   # one of each
+			if i >= 0 and ed.map["pieces"][i]["type"] != p["type"] and ed.map["pieces"][i]["type"] in ["angel_spawn", "demon_spawn"]:
+				return {}   # a start can't be turned into something else
+			return {"o": "put", "id": pid, "p": p}
+		"del":
+			var pid := str(op.get("id", ""))
+			var i: int = ed.index_of(pid)
+			if i < 0:
+				return {"o": "del", "id": pid}   # already gone: fine
+			if _build_claimed_by_other(id, pid) or ed.map["pieces"][i]["type"] in ["angel_spawn", "demon_spawn"]:
+				return {}
+			return {"o": "del", "id": pid}
+	return {}
+
+
+func _build_claimed_by_other(id: int, pid: String) -> bool:
+	for other in build_claims:
+		if other != id and build_claims[other] == pid:
+			return true
+	return false
+
+
+# Host: tell a builder how things really are, for the edits we didn't accept.
+func _build_refuse(id: int, ops: Array, why: String) -> void:
+	build_refused += ops.size()
+	var ed = main.editor
+	var fix := []
+	var seen := {}
+	for op in ops:
+		if typeof(op) != TYPE_DICTIONARY:
+			continue
+		if op.get("o") == "set" and op.get("k") in MapData.SETTING_KEYS:
+			fix.append({"o": "set", "k": op["k"], "v": ed.map[op["k"]]})
+			continue
+		var pid := str(op.get("id", ""))
+		if pid == "" or seen.has(pid):
+			continue
+		seen[pid] = true
+		var i: int = ed.index_of(pid)
+		fix.append({"o": "put", "id": pid, "p": ed.map["pieces"][i]} if i >= 0 else {"o": "del", "id": pid})
+	if not fix.is_empty():
+		s_build_ops.rpc_id(id, JSON.stringify(fix))
+	print("[host] refused %d of %s's edits%s" % [ops.size(), peers[id]["name"], (" (" + why + ")") if why != "" else ""])
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_build_ops(text: String) -> void:
+	var parsed = JSON.parse_string(text)
+	if typeof(parsed) == TYPE_ARRAY and main.editor != null:
+		main.editor.apply_remote(parsed)
+
+
+# Host: opened another map or started a new one: everyone gets it.
+func build_reset() -> void:
+	if not is_host or phase != "building":
+		return
+	build_claims.clear()
+	var text := MapData.to_text(main.editor.map)
+	for id in _client_ids():
+		s_build_map.rpc_id(id, text)
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_build_map(text: String) -> void:
+	var m := MapData.from_text(text)
+	if not m.is_empty() and main.editor != null:
+		main.editor.load_shared(m)
+
+
+# Selecting a piece claims it. The host says no if someone else has it.
+func build_claim(pid: String) -> void:
+	if is_host:
+		_take_claim(1, pid)
+	else:
+		c_build_claim.rpc_id(1, pid)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func c_build_claim(pid: String) -> void:
+	if not is_host:
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if peers.has(id) and phase == "building" and pid.length() <= 24:
+		_take_claim(id, pid)
+
+
+func _take_claim(id: int, pid: String) -> void:
+	if pid == "":
+		build_claims.erase(id)
+		return
+	if _build_claimed_by_other(id, pid) or (id != 1 and not build_can.get(id, true)):
+		build_claims.erase(id)
+		if id == 1:
+			main.editor.claim_denied(pid)
+		else:
+			s_build_denied.rpc_id(id, pid)
+		return
+	build_claims[id] = pid
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_build_denied(pid: String) -> void:
+	if main.editor != null:
+		main.editor.claim_denied(pid)
+
+
+# Host: let someone build, or make them view-only.
+func build_set_can(id: int, allowed: bool) -> void:
+	if not is_host or not peers.has(id) or id == 1:
+		return
+	build_can[id] = allowed
+	if not allowed:
+		build_claims.erase(id)
+	s_build_can.rpc_id(id, allowed)
+	print("[host] %s %s" % [peers[id]["name"], "can build" if allowed else "is view-only"])
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_build_can(allowed: bool) -> void:
+	if main.editor != null:
+		main.editor.set_can_edit(allowed)
+
+
+# Where we're looking from (so the others see our marker).
+func build_send_cam(pos: Vector3, rot: Vector2) -> void:
+	if is_host:
+		build_cams[1] = [pos, rot]
+	else:
+		c_build_cam.rpc_id(1, pos, rot)
+
+
+@rpc("any_peer", "call_remote", "unreliable_ordered")
+func c_build_cam(pos: Vector3, rot: Vector2) -> void:
+	if not is_host:
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if not peers.has(id) or phase != "building" or not pos.is_finite() or not rot.is_finite():
+		return
+	build_cams[id] = [pos.clamp(Vector3.ONE * -1000.0, Vector3.ONE * 1000.0), rot]
+
+
+func _build_tick(delta: float) -> void:
+	_build_cam_accum += delta
+	if _build_cam_accum < 1.0 / BUILD_CAM_RATE:
+		return
+	_build_cam_accum = 0.0
+	var all := []
+	for id in peers:
+		var cam: Array = build_cams.get(id, [Vector3(0, 20, 30), Vector2.ZERO])
+		all.append([id, peers[id]["name"], cam[0], cam[1], build_claims.get(id, ""), _build_color(id), build_can.get(id, true)])
+	var others := func(viewer): return all.filter(func(e): return e[0] != viewer)
+	if main.editor != null:
+		main.editor.apply_builders(others.call(1))
+	for id in _client_ids():
+		s_builders.rpc_id(id, others.call(id))
+
+
+@rpc("authority", "call_remote", "unreliable_ordered")
+func s_builders(list: Array) -> void:
+	if main.editor != null and main.editor.online:
+		main.editor.apply_builders(list)

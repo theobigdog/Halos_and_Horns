@@ -24,7 +24,7 @@ if [ "${RELAY:-0}" = 1 ]; then
 	NET="--relay=127.0.0.1:24699"
 fi
 
-"$GODOT" --headless -- $HOST_ARG $NET --name=Abe --autobot --give-sense --autostart=5 --hide=14 --hunt=150 --quit-after-round --skills=possess,fear 	--roles=Abe:demon,Ava:angel,Ben:demon,Cal:angel,Dee:demon > "$OUT/host.log" 2>&1 &
+"$GODOT" --headless -- $HOST_ARG $NET --name=Abe --autobot --give-sense --sure-drops --autostart=5 --hide=14 --hunt=150 --quit-after-round --skills=possess,fear 	--roles=Abe:demon,Ava:angel,Ben:demon,Cal:angel,Dee:demon > "$OUT/host.log" 2>&1 &
 PIDS=($!)
 sleep 3
 if [ -n "$RELAY_PID" ]; then

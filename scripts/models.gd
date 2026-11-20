@@ -117,6 +117,26 @@ static func _collect(node: Node, xf: Transform3D, out: PackedVector3Array) -> vo
 		_collect(c, xf, out)
 
 
+# How far apart repeated copies of a structure sit (a wall extended by dragging): its own length,
+# along whichever way it's longer.
+static func row_step(id: String, extra_scale := Vector3.ONE) -> Vector3:
+	var s := size(id) * extra_scale
+	return Vector3(s.x, 0, 0) if s.x >= s.z else Vector3(0, 0, s.z)
+
+
+# A structure repeated end to end: count copies, each exactly like the first (posts, columns and all).
+static func make_row(id: String, extra_scale := Vector3.ONE, count := 1) -> Node3D:
+	if count <= 1:
+		return make_structure(id, extra_scale)
+	var row := Node3D.new()
+	var step := row_step(id, extra_scale)
+	for i in count:
+		var b := make_structure(id, extra_scale)
+		b.position = step * i
+		row.add_child(b)
+	return row
+
+
 # A solid structure: the model plus collision matching its real shape.
 static func make_structure(id: String, extra_scale := Vector3.ONE) -> StaticBody3D:
 	var body := StaticBody3D.new()

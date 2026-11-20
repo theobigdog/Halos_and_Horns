@@ -11,6 +11,7 @@
 #   "ground_color": "#598c4c", "wall_color": "#807a85",
 #   "random_props": 45,     # props scattered at random each round, on top of placed ones
 #   "pieces": [ {"type": "block", "pos": [x, y, z], "size": [x, y, z], "rot": [x, y, z] (degrees), "color": "#rrggbb"}, ... ]
+#   (each piece may also have an "id", used when building together online)
 # }
 extends RefCounted
 
@@ -23,11 +24,13 @@ const USER_DIR := "user://maps"
 const MAX_BYTES := 2 * 1024 * 1024
 const MAX_PIECES := 5000
 const MAX_COORD := 500.0
+const MAX_REPEAT := 100
 
 # Piece types and what each one needs.
 #   block / cylinder: solid shapes (size, rot, color)
 #   prop: a real, possessable prop placed by hand ("prop": type, rot)
-#   model: a solid structure from the model catalog ("model": id, rot, "size": scale on each axis, 1 = normal)
+#   model: a solid structure from the model catalog ("model": id, rot, "size": scale on each axis, 1 = normal,
+#          "repeat": how many copies end to end, for walls and fences dragged longer)
 #   bouncy_super: a bouncy pad that throws you much higher
 #   bouncy / bouncy_once, shrine, angel_spawn, demon_spawn: special pieces (pos, rot)
 const TYPES := ["block", "cylinder", "prop", "model", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
@@ -155,6 +158,9 @@ static func clean(raw: Dictionary) -> Dictionary:
 			continue
 		var t: String = p["type"]
 		var c := {"type": t, "pos": _arr(_vec(p.get("pos"), -MAX_COORD, MAX_COORD, Vector3.ZERO))}
+		var pid := _id(p.get("id"))
+		if pid != "":
+			c["id"] = pid
 		var rot := _vec(p.get("rot"), -360.0, 360.0, Vector3.ZERO)
 		if rot != Vector3.ZERO:
 			c["rot"] = _arr(rot)
@@ -168,6 +174,9 @@ static func clean(raw: Dictionary) -> Dictionary:
 			var sc := _vec(p.get("size"), 0.1, 10.0, Vector3.ONE)
 			if sc != Vector3.ONE:
 				c["size"] = _arr(sc)
+			var rep := int(_num(p.get("repeat"), 1, MAX_REPEAT, 1))
+			if rep > 1:
+				c["repeat"] = rep   # copies end to end (a wall dragged longer)
 		elif t == "prop":
 			if not PropLib.TYPES.has(p.get("prop")):
 				continue
@@ -184,6 +193,50 @@ static func clean(raw: Dictionary) -> Dictionary:
 	if not has.call("demon_spawn"):
 		m["pieces"].append({"type": "demon_spawn", "pos": [0, 0.1, 0]})
 	return m
+
+
+# One piece, checked the same way a loaded map's pieces are. {} if it isn't a valid piece.
+static func clean_piece(p) -> Dictionary:
+	if typeof(p) != TYPE_DICTIONARY:
+		return {}
+	var m := clean({"pieces": [p]})
+	for q in m["pieces"]:
+		if q["type"] == p.get("type") and q.get("id", "") == _id(p.get("id")):
+			return q
+	return {}
+
+
+const SETTING_KEYS := ["name", "author", "size", "ceiling", "ground_color", "wall_color", "random_props"]
+
+
+# One map setting, checked. null if the key isn't a setting.
+static func clean_setting(key, value):
+	if not key in SETTING_KEYS:
+		return null
+	return clean({key: value, "pieces": []})[key]
+
+
+# A piece's id (for building together online): up to 24 letters, digits, - and _. Anything else: no id.
+static func _id(v) -> String:
+	if typeof(v) != TYPE_STRING or v.length() == 0 or v.length() > 24:
+		return ""
+	for ch in v:
+		if not ((ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or (ch >= "0" and ch <= "9") or ch == "-" or ch == "_"):
+			return ""
+	return v
+
+
+# Gives every piece a unique id (keeping the ones it has), so pieces can be named in edits sent online.
+static func ensure_ids(map: Dictionary, prefix := "m") -> void:
+	var seen := {}
+	var n := 0
+	for p in map["pieces"]:
+		var pid: String = p.get("id", "")
+		while pid == "" or seen.has(pid):
+			n += 1
+			pid = "%s%d" % [prefix, n]
+		p["id"] = pid
+		seen[pid] = true
 
 
 static func _arr(v: Vector3) -> Array:

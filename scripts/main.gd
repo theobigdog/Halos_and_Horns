@@ -42,6 +42,7 @@ var map_path := ""
 var world_root: Node3D           # everything the map file built (rebuilt when the map changes)
 var editor                       # Creative mode (made the first time it's opened)
 var _editor_map := {}            # the last map built in Creative (reopened next time)
+var building_online := false     # in Creative with everyone (net_game.gd's "building together")
 var _back_to_editor: Button
 var SHRINE_POS := Vector3(0, -1000, 0)   # the map's one shrine (far away if it has none)
 var BOUNCIES := []               # permanent bouncy spots
@@ -188,6 +189,7 @@ var lobby_panel: PanelContainer
 var lobby_players: Label
 var lobby_info: Label
 var lobby_start: Button
+var lobby_build: Button
 var _public_ip := ""
 var _room_code := ""          # relay hosting: the code friends join with
 var _relay_override := ""     # --relay=HOST[:PORT]
@@ -303,6 +305,9 @@ func _setup_input() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if mode == "editor":
+		if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE and controls_panel.visible:
+			_close_controls()
+			get_viewport().set_input_as_handled()
 		return   # Creative handles its own keys
 	if mode == "menu":
 		if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE and controls_panel.visible:
@@ -767,12 +772,15 @@ func _build_map() -> void:
 			"model":
 				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
 				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
-				var body := Models.make_structure(p["model"], sc)
+				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)))
 				body.position = pos
 				body.rotation = MapData.rot_rad(p)
 				world_root.add_child(body)
 				var sz := Models.size(p["model"]) * sc
-				structures.append([Vector2(pos.x, pos.z), maxf(sz.x, sz.z) / 2.0 + 1.0])
+				var step := Basis.from_euler(MapData.rot_rad(p)) * Models.row_step(p["model"], sc)
+				for k in int(p.get("repeat", 1)):
+					var at := pos + step * k
+					structures.append([Vector2(at.x, at.z), maxf(sz.x, sz.z) / 2.0 + 1.0])
 
 
 const CHERUB_PAD_SIDEWAYS := 3.0  # m/s a cherub at least drifts off a bouncy pad (first guess)
@@ -1140,6 +1148,8 @@ func _open_controls() -> void:
 func _close_controls() -> void:
 	_rebinding = ""
 	controls_panel.visible = false
+	if mode == "editor" and editor != null and editor.active():
+		editor.ui.visible = true
 	if _controls_hid:
 		_controls_hid.visible = true
 		_controls_hid = null
@@ -1241,6 +1251,10 @@ func _build_lobby() -> void:
 			net.hide_time = HIDE_CHOICES[_time_pick["Hiding time"]]
 			net.hunt_time = HUNT_CHOICES[_time_pick["Hunting time"]]
 			net.start_round())
+	lobby_build = _button(box, "Build together (Creative)", func():
+		if net:
+			net.start_building())
+	lobby_build.tooltip_text = "Everyone goes into Creative on this map and builds it together."
 	_button(box, "Leave", func(): _show_menu(""))
 	lobby_panel.visible = false
 
@@ -1372,6 +1386,7 @@ func _show_menu(message: String) -> void:
 		net.queue_free()
 		net = null
 	var was_building: bool = editor != null and (editor.active() or editor.testing)
+	building_online = false
 	if editor:
 		editor.leave()
 	if _back_to_editor:
@@ -1496,6 +1511,7 @@ func _on_join_pressed() -> void:
 	lobby_players.text = ("Joining room %s..." % code) if code != "" else ("Connecting to %s..." % address)
 	lobby_info.text = ""
 	lobby_start.visible = false
+	lobby_build.visible = false
 	lobby_panel.visible = true
 	_refresh_mouse()
 
@@ -1539,7 +1555,7 @@ func _local_ips() -> Array:
 
 # ---------- Creative mode ----------
 
-func open_editor() -> void:
+func _enter_editor_mode() -> void:
 	_hide_menus()
 	if round_root:
 		round_root.free()
@@ -1553,6 +1569,10 @@ func open_editor() -> void:
 		editor = Editor.new()
 		editor.main = self
 		add_child(editor)
+
+
+func open_editor() -> void:
+	_enter_editor_mode()
 	var start: Dictionary = _editor_map if not _editor_map.is_empty() else MapData.empty_map()
 	if _editor_map.is_empty():
 		start["author"] = name_edit.text.strip_edges()
@@ -1587,6 +1607,58 @@ func back_to_editor() -> void:
 	hud_layer.visible = false
 	editor.wake()
 	_refresh_mouse()
+
+
+# Building together online (net_game.gd): the host starts it from the lobby, on the lobby's map.
+func begin_building_host() -> void:
+	_enter_editor_mode()
+	building_online = true
+	editor.enter_online(map_data, map_path, true, true)
+	_refresh_mouse()
+
+
+func online_build_start(m: Dictionary, allowed: bool) -> void:
+	_enter_editor_mode()
+	building_online = true
+	editor.enter_online(m, "", false, allowed)
+	_refresh_mouse()
+
+
+# Host: done building. The map becomes the lobby's map, ready to play.
+func end_building_host() -> void:
+	var m: Dictionary = editor.map.duplicate(true)
+	var p: String = editor.path if editor.path != "" else map_path
+	_back_from_building()
+	load_map(m, p)
+	online_lobby(lobby_names, "lobby")
+
+
+func online_build_end() -> void:
+	_back_from_building()
+	online_lobby(lobby_names, "lobby")
+
+
+func _back_from_building() -> void:
+	if controls_panel.visible:
+		_close_controls()
+	editor.leave()
+	building_online = false
+	mode = "online"
+	state = State.LOBBY
+	hud_layer.visible = true
+	player.camera.current = true
+	player.frozen = true
+
+
+# A joined builder leaving: that's leaving the game.
+func leave_online_building() -> void:
+	_show_menu("")
+
+
+# Creative's Settings button: music, sound effects, graphics, keys, without leaving.
+func open_settings_from_editor() -> void:
+	editor.ui.visible = false
+	_open_controls()
 
 
 func leave_editor() -> void:
@@ -1715,14 +1787,15 @@ func online_lobby(names: Array, host_phase: String) -> void:
 		_kick_pick.clear()
 		for n in names.slice(1):   # everyone but the host (always first)
 			_kick_pick.add_item(n)
-	if state != State.LOBBY:
-		return   # mid-round: the list updates, the panel stays hidden
+	if state != State.LOBBY or building_online:
+		return   # mid-round (or building): the list updates, the panel stays hidden
 	lobby_players.text = "Players (%d):\n  %s" % [names.size(), "\n  ".join(_lobby_lines(names))]
 	lobby_map_label.text = "Map: %s" % map_data.get("name", "?") + ((" by " + map_data["author"]) if map_data.get("author", "") != "" else "")
 	var is_host: bool = net != null and net.is_host
 	if is_host and _map_pick.item_count == 0:
 		refresh_map_list()
 	lobby_start.visible = is_host
+	lobby_build.visible = is_host
 	lobby_times.visible = is_host
 	if is_host:
 		lobby_start.disabled = names.size() < 2
@@ -1742,6 +1815,8 @@ func online_lobby(names: Array, host_phase: String) -> void:
 			lobby_info.text = "\n".join(lines)
 	elif host_phase == "lobby":
 		lobby_info.text = "Waiting for the host to start the round..."
+	elif host_phase == "building":
+		lobby_info.text = "The host is building a map. Joining in..."
 	else:
 		lobby_info.text = "A round is in progress. You'll join it as an angel in a moment..."
 	lobby_panel.visible = true
@@ -3185,6 +3260,13 @@ func _handle_command_line() -> void:
 		autobot.main = self
 		autobot.options = args
 		add_child(autobot)
+	if args.has("sure-drops"):   # tests: every redeemed demon drops an angel power-up
+		powerups.catch_drop = 1.0
+	if args.has("buildbot"):   # tests/test_building.sh
+		var bb: Node = load("res://tests/build_bot.gd").new()
+		bb.set("main", self)
+		bb.set("role", args["buildbot"])
+		add_child(bb)
 	if args.has("practice"):
 		start_practice()
 	elif args.has("host") or args.has("host-relay"):

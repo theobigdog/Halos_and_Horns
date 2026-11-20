@@ -20,6 +20,7 @@ var super_bouncy := false
 var _magic: StandardMaterial3D    # the super pad's cushion: its colour drifts
 var _magic_time := 0.0
 var _runes: Node3D
+var _sparkles := []            # [mesh, spot, phase]
 var on_used: Callable             # main: a one-use bouncy was used
 var _used := false
 var _top: MeshInstance3D
@@ -158,25 +159,19 @@ func _build_look() -> void:
 			core.material_override = _mat(Color(1.0, 0.9, 1.0), true)
 			core.position.y = 0.065
 			_top.add_child(core)
-			var sparkles := CPUParticles3D.new()
-			sparkles.amount = 18
-			sparkles.lifetime = 1.4
-			sparkles.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
-			sparkles.emission_sphere_radius = RADIUS * 0.8
-			sparkles.direction = Vector3.UP
-			sparkles.spread = 15.0
-			sparkles.gravity = Vector3.ZERO
-			sparkles.initial_velocity_min = 0.4
-			sparkles.initial_velocity_max = 1.0
-			sparkles.scale_amount_min = 0.5
-			sparkles.scale_amount_max = 1.0
+			# Sparkles rising off it, animated by hand (particle systems would use the shared random numbers)
 			var mote := SphereMesh.new()
 			mote.radius = 0.035
 			mote.height = 0.07
+			mote.radial_segments = 6
+			mote.rings = 3
 			mote.material = _mat(Color(1.0, 0.9, 1.0), true)
-			sparkles.mesh = mote
-			sparkles.position.y = 0.35
-			add_child(sparkles)
+			for i in 10:
+				var mi := MeshInstance3D.new()
+				mi.mesh = mote
+				add_child(mi)
+				var a := TAU * i / 10.0
+				_sparkles.append([mi, Vector3(cos(a), 0, sin(a)) * RADIUS * (0.3 + 0.5 * fmod(i * 0.37, 1.0)), fmod(i * 0.618, 1.0)])
 
 
 func _disc(top_r: float, bottom_r: float, h: float, y: float) -> MeshInstance3D:
@@ -248,6 +243,10 @@ func _process(delta: float) -> void:
 		_magic.albedo_color = c
 		_magic.emission = c
 		_runes.rotation.y = _magic_time * 0.6
+		for sp in _sparkles:
+			var k := fmod(_magic_time * 0.7 + sp[2], 1.0)
+			sp[0].position = sp[1] + Vector3(0, 0.35 + k * 1.4, 0)
+			sp[0].scale = Vector3.ONE * sin(k * PI)
 	if _squish > 0.0:
 		_squish -= delta
 		var s := 1.0 - 0.5 * sin(clampf(_squish / 0.25, 0.0, 1.0) * PI)

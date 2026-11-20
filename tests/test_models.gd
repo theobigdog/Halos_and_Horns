@@ -175,6 +175,38 @@ func _run() -> void:
 	check(shown.size() >= 2 and shown.all(func(t): return "coffin" in t.to_lower()), "the palette search finds coffins %s" % [shown])
 	ed._filter_palette("")
 	check(ed._palette_buttons.all(func(e): return e[0].visible), "...and clearing it shows everything again")
+	# Extending a fence: dragging adds whole copies end to end (posts and all), either way.
+	var fi: int = ed.place("model:halloween/fence", Vector3(0, 0, 10))
+	ed.select(fi)
+	var step: float = Models.row_step("halloween/fence").length()
+	var f0 := Vector3(0, 0, 10)
+	ed.begin("extend")
+	ed._drag_t0 = 0.0
+	ed.drag_update(f0 + Vector3(step * 2.6, 30, 0), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	var fp: Dictionary = ed.map["pieces"][fi]
+	check(int(fp.get("repeat", 1)) == 4 and fp["pos"] == [0.0, 0.0, 10.0], "dragging a fence longer repeats it end to end (%s in a row)" % fp.get("repeat", 1))
+	var posts: int = ed.nodes[fi].find_children("*", "StaticBody3D", true, false).size()
+	check(posts == 4, "...each copy whole and solid (%d)" % posts)
+	ed.begin("extend")
+	ed._drag_t0 = 0.0
+	ed.drag_update(f0 + Vector3(-step * 5.0, 30, 0), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	fp = ed.map["pieces"][fi]
+	check(int(fp.get("repeat", 1)) == 3 and fp["pos"][0] < -step * 1.5, "...and dragging back past the start grows it the other way (%s, from x %.1f)" % [fp.get("repeat", 1), fp["pos"][0]])
+	ed.undo()
+	ed.undo()
+	check(not ed.map["pieces"][fi].has("repeat"), "...undo takes it back")
+	# The see-through preview of what you're about to place
+	ed.placing = "model:halloween/crypt"
+	ed._update_preview()
+	check(is_instance_valid(ed._preview) and ed._preview.find_children("*", "CollisionObject3D", true, false).all(func(c): return c.collision_layer == 0),
+		"picking a piece shows a see-through preview that nothing bumps into")
+	ed.placing = ""
+	ed._update_preview()
+	check(ed._preview == null, "...gone once nothing's picked")
+	var with_pics: int = ed._palette_buttons.filter(func(e): return e[0].icon != null).size()
+	check(with_pics == ed._palette_buttons.size(), "every piece in the palette has a picture (%d of %d)" % [with_pics, ed._palette_buttons.size()])
 	ed.dirty = false
 	ed._try_exit()
 	await frames(3)

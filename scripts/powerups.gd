@@ -79,8 +79,11 @@ func angels_made_progress() -> void:
 	_last_angel_help = _now()
 
 
+var catch_drop := ANGEL_CATCH_DROP   # (tests set it to 1 with --sure-drops, so the drop check isn't luck)
+
+
 func demon_caught(where: Vector3) -> void:
-	if randf() < ANGEL_CATCH_DROP and _count("angel") < MAX_ANGEL_PICKUPS:
+	if randf() < catch_drop and _count("angel") < MAX_ANGEL_PICKUPS:
 		_drop("angel", ANGEL_KINDS.pick_random(), where)
 	_last_angel_help = _now()
 

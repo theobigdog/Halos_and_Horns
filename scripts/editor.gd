@@ -6,6 +6,7 @@
 # Click a piece to select it, or press on it and drag to move it around (it slides
 # over whatever's under the cursor: ground, roofs, other pieces). Or, once selected:
 #   G move   R rotate   T resize (blocks, cylinders and structures)
+#   V extend a structure: drag and it repeats end to end (walls, fences), posts and all
 #     while doing it: X / Y / Z stick to one axis, L local or world axes,
 #     hold Alt for no snapping, click or Enter to finish, Esc or right-click to undo it
 #   Ctrl+D copy   Delete remove   F fly to it   Ctrl+Z / Ctrl+Y undo / redo   Ctrl+S save
@@ -13,6 +14,9 @@
 #
 # A map is plain data (see map_data.gd). The editor only ever changes that data
 # and rebuilds what it shows from it, so what you save is exactly what you saw.
+#
+# Building together online: see "building together" below. Every change is turned
+# into small edits and sent through the host, who checks them and passes them on.
 extends Node
 
 const MapData = preload("res://scripts/map_data.gd")
@@ -74,6 +78,33 @@ var _press_at := Vector2.ZERO
 var _confirm := ""             # a button waiting for a second click ("exit", "save")
 var _lines: ImmediateMesh
 var _boxes := {}               # piece index -> local AABB (for the selection outline)
+var _undo_touched := []        # per undo step, online: the piece ids / "setting:key" we changed in it
+var _redo_touched := []
+var _undoing := false
+var _id_count := 0
+var _id_prefix := ""
+var _preview: Node3D           # the see-through copy of the armed piece, under the mouse
+var _preview_kind := ""
+
+# Building together online
+const BUILDER_COLORS := [Color(0.3, 0.8, 1.0), Color(1.0, 0.45, 0.8), Color(0.5, 1.0, 0.4), Color(1.0, 0.6, 0.2),
+		Color(0.75, 0.5, 1.0), Color(1.0, 1.0, 0.4), Color(0.3, 1.0, 0.85), Color(1.0, 0.35, 0.35)]
+const CAM_RATE := 10.0         # times a second we tell the others where we're looking
+var online := false
+var hosting := false           # ...and this is the host's game
+var can_edit := true           # false: the host made us view-only
+var _synced := {}              # the shared map as we last knew it: {"pieces": {id: piece}, "settings": {...}}
+var _my_claim := ""            # the piece we have selected (nobody else can touch it)
+var claims := {}               # other builders: peer -> the piece id they have selected
+var builders := {}             # other builders: peer -> {"name", "pos", "rot", "color", "can"}
+var _ghosts := {}              # peer -> their floating marker
+var _cam_accum := 0.0
+var _builders_box: VBoxContainer
+var _builders_sig := ""
+var _left_panel: Control
+var _new_button: Button
+var _test_button: Button
+var _extend_button: Button
 
 # UI
 var ui: CanvasLayer
@@ -106,6 +137,14 @@ func enter(start_map: Dictionary, start_path := "") -> void:
 	dirty = false
 	_undo.clear()
 	_redo.clear()
+	_undo_touched.clear()
+	_redo_touched.clear()
+	online = false
+	hosting = false
+	can_edit = true
+	claims.clear()
+	_my_claim = ""
+	_id_prefix = "l%s-" % _rand_tag()
 	if root == null:
 		_build_scene()
 		_build_ui()
@@ -117,6 +156,7 @@ func enter(start_map: Dictionary, start_path := "") -> void:
 	select(-1)
 	_sync_settings()
 	_frame_whole_map()
+	_online_ui()
 	_say("Pick a piece on the left, then click in the world to place it.", 6.0)
 
 
@@ -124,6 +164,7 @@ func enter(start_map: Dictionary, start_path := "") -> void:
 func sleep() -> void:
 	_end_drag(false)
 	placing = ""
+	_clear_preview()
 	_set_flying(false)
 	root.visible = false
 	ui.visible = false
@@ -141,6 +182,14 @@ func wake() -> void:
 func leave() -> void:
 	sleep()
 	testing = false
+	online = false
+	hosting = false
+	can_edit = true
+	claims.clear()
+	builders.clear()
+	for g in _ghosts.values():
+		g.queue_free()
+	_ghosts.clear()
 	for n in nodes:
 		if is_instance_valid(n):
 			n.free()
@@ -237,7 +286,7 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			body.add_child(cs)
 			n.add_child(body)
 		"model":
-			n.add_child(Models.make_structure(p["model"], MapData.vec(p["size"]) if p.has("size") else Vector3.ONE))
+			n.add_child(Models.make_row(p["model"], MapData.vec(p["size"]) if p.has("size") else Vector3.ONE, int(p.get("repeat", 1))))
 		"bouncy", "bouncy_once", "bouncy_super":
 			var b := Bouncy.new()
 			b.one_use = t == "bouncy_once"
@@ -325,18 +374,38 @@ func piece(i: int) -> Dictionary:
 func _begin_change(tag := "") -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	if tag == "" or tag != _change_tag or now - _change_time > 1.0:
-		_undo.append(JSON.stringify(map))
-		if _undo.size() > MAX_UNDO:
-			_undo.pop_front()
+		_push_undo(JSON.stringify(map))
 		_redo.clear()
+		_redo_touched.clear()
 	_change_tag = tag
 	_change_time = now
 	dirty = true
 	_confirm = ""
 
 
-func place(kind: String, at: Vector3) -> int:
-	_begin_change()
+func _push_undo(text: String) -> void:
+	_undo.append(text)
+	_undo_touched.append({})
+	if _undo.size() > MAX_UNDO:
+		_undo.pop_front()
+		_undo_touched.pop_front()
+
+
+func _rand_tag() -> String:
+	var chars := "abcdefghijkmnpqrstuvwxyz23456789"
+	var t := ""
+	for i in 4:
+		t += chars[randi() % chars.length()]
+	return t
+
+
+func _new_id() -> String:
+	_id_count += 1
+	return "%s%d" % [_id_prefix, _id_count]
+
+
+# A brand-new piece of this kind, standing at this spot (not added to the map).
+func _new_piece(kind: String, at: Vector3) -> Dictionary:
 	var p := {"type": kind, "pos": [at.x, at.y, at.z]}
 	if kind.begins_with("prop:"):
 		p = {"type": "prop", "prop": kind.substr(5), "pos": [at.x, at.y, at.z]}
@@ -350,18 +419,33 @@ func place(kind: String, at: Vector3) -> int:
 		p["size"] = [2.0, 3.0, 2.0]
 		p["pos"][1] = at.y + 1.5
 		p["color"] = "#8c8c99"
+	return p
+
+
+func place(kind: String, at: Vector3) -> int:
+	if not _may_edit():
+		return -1
+	var p := _new_piece(kind, at)
+	p["id"] = _new_id()
 	if kind in ONLY_ONE:
 		for i in map["pieces"].size():
 			if piece(i)["type"] == kind:
+				if _claimed_by_other(piece_id(i)) != 0:
+					_say("Someone else is working on that one right now.", 3.0)
+					return -1
+				_begin_change()
 				piece(i)["pos"] = p["pos"]
 				_refresh_piece(i)
 				select(i)
 				_say("A map has just one of those: moved it here.", 3.0)
+				_after_change()
 				return i
+	_begin_change()
 	map["pieces"].append(_cleaned_piece(p))
 	var i: int = map["pieces"].size() - 1
 	nodes.append(_make_node(piece(i), i))
 	select(i)
+	_after_change()
 	return i
 
 
@@ -375,7 +459,7 @@ func _cleaned_piece(p: Dictionary) -> Dictionary:
 
 
 func set_value(i: int, key: String, value, tag := "") -> void:
-	if i < 0 or i >= map["pieces"].size():
+	if i < 0 or i >= map["pieces"].size() or not _may_edit():
 		return
 	_begin_change(tag if tag != "" else "%d:%s" % [i, key])
 	var p := piece(i)
@@ -387,10 +471,11 @@ func set_value(i: int, key: String, value, tag := "") -> void:
 	_refresh_piece(i)
 	if i == selected:
 		_sync_inspector()
+	_after_change()
 
 
 func delete_selected() -> void:
-	if selected < 0:
+	if selected < 0 or not _may_edit():
 		return
 	var t: String = piece(selected)["type"]
 	if t in ["angel_spawn", "demon_spawn"]:
@@ -400,10 +485,11 @@ func delete_selected() -> void:
 	map["pieces"].remove_at(selected)
 	_rebuild_all()
 	select(-1)
+	_after_change()
 
 
 func duplicate_selected() -> int:
-	if selected < 0:
+	if selected < 0 or not _may_edit():
 		return -1
 	var p: Dictionary = piece(selected).duplicate(true)
 	if p["type"] in ONLY_ONE:
@@ -411,34 +497,54 @@ func duplicate_selected() -> int:
 		return -1
 	_begin_change()
 	p["pos"] = [p["pos"][0] + grid * 2.0, p["pos"][1], p["pos"][2] + grid * 2.0]
+	p["id"] = _new_id()
 	map["pieces"].append(p)
 	var i: int = map["pieces"].size() - 1
 	nodes.append(_make_node(piece(i), i))
 	select(i)
+	_after_change()
 	return i
 
 
 func undo() -> void:
+	if not _may_edit():
+		return
 	if _undo.is_empty():
 		_say("Nothing to undo.", 2.0)
 		return
+	_end_drag(true)
+	if _undo.is_empty():
+		return
+	var touched: Dictionary = _undo_touched.pop_back()
 	_redo.append(JSON.stringify(map))
-	_restore(_undo.pop_back())
+	_redo_touched.append(touched)
+	_restore(_undo.pop_back(), touched)
 	_say("Undone.", 1.5)
 
 
 func redo() -> void:
+	if not _may_edit():
+		return
 	if _redo.is_empty():
 		_say("Nothing to redo.", 2.0)
 		return
+	_end_drag(true)
+	if _redo.is_empty():
+		return
+	var touched: Dictionary = _redo_touched.pop_back()
 	_undo.append(JSON.stringify(map))
-	_restore(_redo.pop_back())
+	_undo_touched.append(touched)
+	_restore(_redo.pop_back(), touched)
 	_say("Redone.", 1.5)
 
 
-func _restore(text: String) -> void:
+# Online, undo only puts back the things we changed in that step (touched), leaving everyone else's work alone.
+func _restore(text: String, touched := {}) -> void:
 	var was_size: float = map["size"]
 	var was_ground: String = map["ground_color"] + map["wall_color"]
+	if online:
+		_restore_parts(MapData.clean(JSON.parse_string(text)), touched)
+		return
 	map = MapData.clean(JSON.parse_string(text))
 	_change_tag = ""
 	dirty = true
@@ -451,19 +557,31 @@ func _restore(text: String) -> void:
 
 
 func set_setting(key: String, value) -> void:
-	if map.get(key) == value:
+	if map.get(key) == value or not _may_edit():
 		return
 	_begin_change("setting:" + key)
 	map[key] = value
 	map = MapData.clean(map)
 	if key in ["size", "ground_color", "wall_color"]:
 		_rebuild_ground()
+	_after_change()
 
 
 # ---------------- selecting ----------------
 
 func select(i: int) -> void:
+	if online and i >= 0 and i < map["pieces"].size():
+		var who := _claimed_by_other(piece_id(i))
+		if who != 0 or not can_edit:
+			if who != 0:
+				_say("%s is working on that one." % builders.get(who, {}).get("name", "Someone"), 3.0)
+			i = -1
 	selected = i if i >= 0 and i < map["pieces"].size() else -1
+	if online:
+		var want := piece_id(selected) if selected >= 0 else ""
+		if want != _my_claim:
+			_my_claim = want
+			main.net.build_claim(want)
 	_sync_inspector()
 
 
@@ -524,12 +642,17 @@ func _place_point(screen_pos: Vector2) -> Vector3:
 # ---------------- move / rotate / resize ----------------
 
 func begin(kind: String) -> void:
+	if not _may_edit():
+		return
 	if selected < 0:
 		_say("Select a piece first (click it).", 2.0)
 		return
 	var t: String = piece(selected)["type"]
 	if kind == "rotate" and not t in ROTATES:
 		_say("That always sits upright.", 2.0)
+		return
+	if kind == "extend" and t != "model":
+		_say("Only structures (walls, fences...) can be extended. Blocks can just be resized (T).", 3.0)
 		return
 	if kind == "scale" and not t in RESIZES:
 		_say("Only blocks, cylinders and structures can be resized.", 2.0)
@@ -543,6 +666,13 @@ func begin(kind: String) -> void:
 	_drag_offset = Vector3.ZERO
 	if kind == "move":
 		_start_move_ray()
+	if kind == "extend":
+		var sc := MapData.vec(_drag_piece["size"]) if _drag_piece.has("size") else Vector3.ONE
+		var dir := (Basis.from_euler(MapData.rot_rad(_drag_piece)) * Models.row_step(_drag_piece["model"], sc)).normalized()
+		var r := _mouse_ray(_mouse())
+		_drag_t0 = _along_axis(MapData.vec(_drag_piece["pos"]), dir, r[0], r[1])
+		_say("Extending: move the mouse along it to add copies end to end. Click to finish, Esc to cancel.", 999.0)
+		return
 	_say({"move": "Moving", "rotate": "Rotating", "scale": "Resizing"}[kind] + ": X / Y / Z for one axis, L local/world, Alt no snap. Click to finish, Esc to cancel.", 999.0)
 
 
@@ -621,6 +751,25 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 				pos = start + d * t
 			p["pos"] = [snappedf(pos.x, 0.001), snappedf(pos.y, 0.001), snappedf(pos.z, 0.001)]
 			nodes[selected].position = pos
+		"extend":
+			# The far end follows the mouse: whole copies get added (or taken away), never stretched.
+			var sc := MapData.vec(_drag_piece["size"]) if _drag_piece.has("size") else Vector3.ONE
+			var b0 := Basis.from_euler(MapData.rot_rad(_drag_piece))
+			var step := b0 * Models.row_step(p["model"], sc)
+			var w := maxf(step.length(), 0.05)
+			var dir := step / w
+			var t := _along_axis(start, dir, ray_from, ray_dir) - _drag_t0
+			var r0 := int(_drag_piece.get("repeat", 1))
+			var e := clampi(r0 - 1 + int(round(t / w)), 1 - MapData.MAX_REPEAT, MapData.MAX_REPEAT - 1)
+			var count := e + 1 if e >= 0 else 1 - e
+			var first := start if e >= 0 else start + dir * w * e
+			p["pos"] = [snappedf(first.x, 0.001), snappedf(first.y, 0.001), snappedf(first.z, 0.001)]
+			if count > 1:
+				p["repeat"] = count
+			else:
+				p.erase("repeat")
+			_refresh_piece(selected)
+			_say("Extending: %d in a row. Click to finish, Esc to cancel." % count, 999.0)
 		"rotate":
 			var amount := (mouse_pos.x - _drag_mouse.x) * 0.5
 			if snap:
@@ -697,9 +846,13 @@ func _end_drag(keep: bool) -> void:
 	drag = ""
 	axis = ""
 	if keep:
-		if before != JSON.stringify(map):
-			_undo.append(before)
+		var changed := before != JSON.stringify(map)
+		if online:   # (others' edits change the map too: only our own piece counts)
+			changed = selected >= 0 and piece(selected) != _drag_piece
+		if changed:
+			_push_undo(before)
 			_redo.clear()
+			_redo_touched.clear()
 			dirty = true
 			_change_tag = ""
 		var i := selected
@@ -707,12 +860,18 @@ func _end_drag(keep: bool) -> void:
 			map["pieces"][i] = _cleaned_piece(piece(i))
 			_refresh_piece(i)
 		_say("", 0.0)
+	elif online:
+		if selected >= 0 and not _drag_piece.is_empty():
+			map["pieces"][selected] = _drag_piece.duplicate(true)
+			_refresh_piece(selected)
+		_say("Cancelled.", 1.5)
 	else:
 		map = JSON.parse_string(before)
 		map = MapData.clean(map)
 		_rebuild_all()
 		_say("Cancelled.", 1.5)
 	_sync_inspector()
+	_after_change()
 
 
 func _snap_on() -> bool:
@@ -793,6 +952,7 @@ func _key(ev: InputEventKey) -> void:
 			KEY_G: begin("move")
 			KEY_R: begin("rotate")
 			KEY_T: begin("scale")
+			KEY_V: begin("extend")
 			KEY_L: _toggle_local()
 			KEY_F: focus_selected()
 			KEY_DELETE, KEY_BACKSPACE: delete_selected()
@@ -884,6 +1044,9 @@ func _process(delta: float) -> void:
 			var speed := FLY_SPEED * (3.0 if Input.is_physical_key_pressed(KEY_SHIFT) else 1.0)
 			var b := Basis(Vector3.UP, _yaw) * Basis(Vector3.RIGHT, _pitch)
 			camera.position += (b * move.normalized() + Vector3.UP * up) * speed * delta
+	_update_preview()
+	if online:
+		_online_tick(delta)
 	_draw_lines()
 
 
@@ -904,6 +1067,17 @@ func _draw_lines() -> void:
 		if drag != "" and axis != "":
 			var d := _axis_dir(axis) if drag == "move" else (x.basis * ({"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}[axis] as Vector3)).normalized()
 			_line(n.global_position - d * 60.0, n.global_position + d * 60.0, AXIS_COLORS[axis])
+	# What the other builders have selected, in their colour
+	for peer in claims:
+		var j := index_of(claims[peer])
+		if j < 0 or j >= nodes.size() or not is_instance_valid(nodes[j]):
+			continue
+		var on: Node3D = nodes[j]
+		var ob: AABB = _boxes.get(j, AABB(Vector3(-0.5, 0, -0.5), Vector3.ONE)).grow(0.08)
+		var ox := on.global_transform
+		var oc: Color = builders.get(peer, {}).get("color", Color.WHITE)
+		for e in [[0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4], [0, 4], [1, 5], [2, 6], [3, 7]]:
+			_line(ox * ob.get_endpoint(e[0]), ox * ob.get_endpoint(e[1]), oc)
 	_lines.surface_end()
 
 
@@ -924,7 +1098,7 @@ func save() -> bool:
 		_say("There's already a map called \"%s\". Click Save again to replace it, or rename this one." % map["name"], 6.0)
 		return false
 	_confirm = ""
-	_save_button.text = "Save"
+	_save_button.text = _save_label()
 	if not MapData.save_file(map, target):
 		_say("Couldn't save to " + ProjectSettings.globalize_path(target), 6.0)
 		return false
@@ -936,6 +1110,8 @@ func save() -> bool:
 
 
 func open(file_path: String) -> bool:
+	if online and not hosting:
+		return false
 	var m := MapData.load_file(file_path)
 	if m.is_empty():
 		_say("Couldn't open that map.", 4.0)
@@ -945,6 +1121,7 @@ func open(file_path: String) -> bool:
 	map = m
 	path = file_path if file_path.begins_with(MapData.USER_DIR) else ""
 	dirty = false
+	_shared_reset()
 	_rebuild_ground()
 	_rebuild_all()
 	select(-1)
@@ -955,6 +1132,8 @@ func open(file_path: String) -> bool:
 
 
 func new_map() -> void:
+	if online and not hosting:
+		return
 	_end_drag(false)
 	_begin_change()
 	map = MapData.empty_map()
@@ -962,6 +1141,7 @@ func new_map() -> void:
 	map = MapData.clean(map)
 	path = ""
 	dirty = false
+	_shared_reset()
 	_rebuild_ground()
 	_rebuild_all()
 	select(-1)
@@ -970,20 +1150,477 @@ func new_map() -> void:
 
 
 func test_play() -> void:
+	if online:
+		if hosting:
+			main.net.build_test_play()
+		return
 	sleep()
 	testing = true
 	main.test_map_from_editor(map.duplicate(true))
 
 
 func _try_exit() -> void:
-	if dirty and _confirm != "exit":
+	if online and hosting:
+		main.net.build_end()   # everyone back to the lobby, with the map ready to play
+		return
+	if online and _confirm != "exit":
+		_confirm = "exit"
+		_exit_button.text = "Leave the game?"
+		_say("This leaves the game. (Save a copy first if you want one.) Click again to leave.", 5.0)
+		return
+	if not online and dirty and _confirm != "exit":
 		_confirm = "exit"
 		_exit_button.text = "Leave without saving?"
 		_say("You have unsaved changes. Click again to leave anyway.", 5.0)
 		return
 	_confirm = ""
-	_exit_button.text = "Exit"
+	_exit_button.text = _exit_label()
+	if online:
+		main.leave_online_building()
+		return
 	main.leave_editor()
+
+
+# ---------------- building together (online) ----------------
+# The host's copy of the map is the real one. Every change made here is turned into small edits
+# ("put this piece", "remove that one", "change this setting") by comparing the map with the last
+# shared copy (_synced), and sent to the host, who checks them and passes them on to everyone else.
+# Pieces have ids so edits can name them. A piece someone has selected is theirs until they let go.
+# Undo only takes back your own changes.
+
+func enter_online(start_map: Dictionary, start_path: String, is_host: bool, allowed: bool) -> void:
+	enter(start_map, start_path)
+	online = true
+	hosting = is_host
+	_id_prefix = "p%d%s-" % [multiplayer.get_unique_id() % 1000000000, _rand_tag()]
+	MapData.ensure_ids(map, "m")
+	_synced = _shared_view(map)
+	set_can_edit(allowed)
+	_online_ui()
+	_say("Building together! Everyone's changes show up for everyone. Whoever selects a piece has it to themselves.", 8.0)
+
+
+func _may_edit() -> bool:
+	if online and not can_edit:
+		_say("You're watching: the host hasn't let you build right now.", 3.0)
+		return false
+	return true
+
+
+func piece_id(i: int) -> String:
+	if i < 0 or i >= map["pieces"].size():
+		return ""
+	return map["pieces"][i].get("id", "")
+
+
+func index_of(id: String) -> int:
+	if id == "":
+		return -1
+	for i in map["pieces"].size():
+		if map["pieces"][i].get("id", "") == id:
+			return i
+	return -1
+
+
+# Who else has this piece selected (0: nobody).
+func _claimed_by_other(id: String) -> int:
+	if id == "":
+		return 0
+	for peer in claims:
+		if claims[peer] == id:
+			return peer
+	return 0
+
+
+func _shared_view(m: Dictionary) -> Dictionary:
+	var ps := {}
+	for p in m["pieces"]:
+		ps[p.get("id", "")] = p.duplicate(true)
+	var st := {}
+	for k in MapData.SETTING_KEYS:
+		st[k] = m[k]
+	return {"pieces": ps, "settings": st}
+
+
+# What's changed here since the last shared copy, as edits.
+func _diff_ops() -> Array:
+	var now := _shared_view(map)
+	var ops := []
+	for k in MapData.SETTING_KEYS:
+		if now["settings"][k] != _synced["settings"].get(k):
+			ops.append({"o": "set", "k": k, "v": now["settings"][k]})
+	for id in now["pieces"]:
+		if not _synced["pieces"].has(id) or _synced["pieces"][id] != now["pieces"][id]:
+			ops.append({"o": "put", "id": id, "p": now["pieces"][id]})
+	for id in _synced["pieces"]:
+		if not now["pieces"].has(id):
+			ops.append({"o": "del", "id": id})
+	return ops
+
+
+func _apply_synced(op: Dictionary) -> void:
+	match op["o"]:
+		"set": _synced["settings"][op["k"]] = op["v"]
+		"put": _synced["pieces"][op["id"]] = op["p"].duplicate(true)
+		"del": _synced["pieces"].erase(op["id"])
+
+
+static func _op_key(op: Dictionary) -> String:
+	return "setting:" + op["k"] if op["o"] == "set" else op["id"]
+
+
+# Something changed here: send it.
+func _after_change() -> void:
+	if not online or map.is_empty():
+		return
+	var ops := _diff_ops()
+	if ops.is_empty():
+		return
+	for op in ops:
+		_apply_synced(op)
+	if not _undoing and not _undo_touched.is_empty():
+		for op in ops:
+			_undo_touched.back()[_op_key(op)] = true
+	main.net.build_send_ops(ops)
+
+
+# The host opened another map or started a new one: that's everyone's map now.
+func _shared_reset() -> void:
+	if not online:
+		return
+	MapData.ensure_ids(map, "m%s-" % _rand_tag())
+	_synced = _shared_view(map)
+	_undo.clear()
+	_redo.clear()
+	_undo_touched.clear()
+	_redo_touched.clear()
+	if hosting:
+		main.net.build_reset()
+
+
+# From the host: the whole map, replaced (the host opened or started one).
+func load_shared(new_map: Dictionary) -> void:
+	_end_drag(false)
+	map = MapData.clean(new_map)
+	MapData.ensure_ids(map, "m")
+	_synced = _shared_view(map)
+	_undo.clear()
+	_redo.clear()
+	_undo_touched.clear()
+	_redo_touched.clear()
+	_rebuild_ground()
+	_rebuild_all()
+	select(-1)
+	_sync_settings()
+	_say("The host opened \"%s\"." % map["name"], 5.0)
+
+
+# Edits from someone else (or the host putting ours right): apply them without touching our undo.
+func apply_remote(ops: Array) -> void:
+	if map.is_empty():
+		return
+	var sel_id := piece_id(selected)
+	var rebuild := false
+	var ground := false
+	var settings := false
+	for op in ops:
+		if typeof(op) != TYPE_DICTIONARY:
+			continue
+		var clean_op := {}
+		match op.get("o"):
+			"set":
+				var v = MapData.clean_setting(op.get("k"), op.get("v"))
+				if v == null:
+					continue
+				map[op["k"]] = v
+				settings = true
+				if op["k"] in ["size", "ground_color", "wall_color"]:
+					ground = true
+				clean_op = {"o": "set", "k": op["k"], "v": v}
+			"put":
+				var p := MapData.clean_piece(op.get("p"))
+				if p.is_empty() or p.get("id", "") == "":
+					continue
+				var i := index_of(p["id"])
+				if i >= 0:
+					map["pieces"][i] = p
+					if i == selected and drag != "":
+						_drag_piece = p.duplicate(true)
+					if not rebuild:
+						_refresh_piece(i)
+				else:
+					map["pieces"].append(p)
+					if not rebuild:
+						nodes.append(_make_node(p, map["pieces"].size() - 1))
+				clean_op = {"o": "put", "id": p["id"], "p": p}
+			"del":
+				var id := str(op.get("id", ""))
+				var i := index_of(id)
+				if i >= 0:
+					map["pieces"].remove_at(i)
+					rebuild = true
+				clean_op = {"o": "del", "id": id}
+			_:
+				continue
+		_apply_synced(clean_op)
+	dirty = true
+	if rebuild:
+		_rebuild_all()
+	if ground:
+		_rebuild_ground()
+	if settings:
+		_sync_settings()
+	var si := index_of(sel_id)
+	if si != selected:
+		if si < 0:
+			drag = ""
+			_say("Someone removed the piece you had selected.", 3.0)
+		select(si)
+	elif selected >= 0:
+		_sync_inspector()
+
+
+# Undo/redo online: put back just these pieces and settings, as they were in that snapshot.
+func _restore_parts(old: Dictionary, touched: Dictionary) -> void:
+	var sel_id := piece_id(selected)
+	var olds := {}
+	for p in old["pieces"]:
+		olds[p.get("id", "")] = p
+	var ground := false
+	var skipped := 0
+	for key in touched:
+		if key.begins_with("setting:"):
+			var k: String = key.substr(8)
+			map[k] = old[k]
+			if k in ["size", "ground_color", "wall_color"]:
+				ground = true
+			continue
+		if _claimed_by_other(key) != 0:
+			skipped += 1   # someone's working on it right now: leave it
+			continue
+		var i := index_of(key)
+		if olds.has(key):
+			if i >= 0:
+				map["pieces"][i] = olds[key].duplicate(true)
+			else:
+				map["pieces"].append(olds[key].duplicate(true))
+		elif i >= 0:
+			map["pieces"].remove_at(i)
+	map = MapData.clean(map)
+	dirty = true
+	_change_tag = ""
+	_rebuild_all()
+	if ground:
+		_rebuild_ground()
+	_sync_settings()
+	select(index_of(sel_id))
+	if skipped > 0:
+		_say("Someone else is working on part of that, so it stayed as it is.", 3.0)
+	_undoing = true
+	_after_change()
+	_undoing = false
+
+
+func set_can_edit(allowed: bool) -> void:
+	var was := can_edit
+	can_edit = allowed
+	if not allowed:
+		_end_drag(false)
+		placing = ""
+		_clear_preview()
+		select(-1)
+	_online_ui()
+	if online and was != allowed:
+		_say("The host let you build." if allowed else "The host made you view-only: you can look around, but not change anything.", 6.0)
+
+
+# The host said no: someone else got that piece first.
+func claim_denied(id: String) -> void:
+	_my_claim = ""
+	if piece_id(selected) == id:
+		_end_drag(false)
+		selected = -1
+		_sync_inspector()
+		_say("Someone else grabbed that one first.", 3.0)
+
+
+# From the host, ten times a second: where everyone else is and what they have selected.
+# Each entry: [peer, name, camera position, Vector2(pitch, yaw), selected piece id, colour number, can build]
+func apply_builders(list: Array) -> void:
+	var seen := {}
+	claims.clear()
+	for e in list:
+		if typeof(e) != TYPE_ARRAY or e.size() < 7:
+			continue
+		var peer := int(e[0])
+		seen[peer] = true
+		var color: Color = BUILDER_COLORS[int(e[5]) % BUILDER_COLORS.size()]
+		builders[peer] = {"name": str(e[1]), "pos": e[2], "rot": e[3], "color": color, "can": bool(e[6])}
+		if str(e[4]) != "":
+			claims[peer] = str(e[4])
+		if not _ghosts.has(peer):
+			_ghosts[peer] = _make_ghost(str(e[1]), color)
+			_ghosts[peer].position = e[2]
+	for peer in builders.keys():
+		if not seen.has(peer):
+			builders.erase(peer)
+			if _ghosts.has(peer):
+				_ghosts[peer].queue_free()
+				_ghosts.erase(peer)
+	if hosting:
+		_refresh_builders_panel()
+
+
+# Another builder, as everyone sees them: a glowing ball with a pointy nose (where they're looking) and their name.
+func _make_ghost(who: String, color: Color) -> Node3D:
+	var g := Node3D.new()
+	var m := StandardMaterial3D.new()
+	m.albedo_color = color
+	m.emission_enabled = true
+	m.emission = color
+	m.emission_energy_multiplier = 0.8
+	var head := MeshInstance3D.new()
+	var sm := SphereMesh.new()
+	sm.radius = 0.35
+	sm.height = 0.7
+	head.mesh = sm
+	head.material_override = m
+	g.add_child(head)
+	var nose := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.0
+	cm.bottom_radius = 0.18
+	cm.height = 0.45
+	nose.mesh = cm
+	nose.material_override = m
+	nose.rotation.x = -PI / 2
+	nose.position.z = -0.45
+	g.add_child(nose)
+	var tag := Label3D.new()
+	tag.text = who
+	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	tag.no_depth_test = true
+	tag.font_size = 48
+	tag.outline_size = 10
+	tag.modulate = color
+	tag.position.y = 0.75
+	g.add_child(tag)
+	root.add_child(g)
+	return g
+
+
+# Host: who can build (everyone can, unless the host unticks them).
+func _refresh_builders_panel() -> void:
+	var sig := ""
+	for peer in builders:
+		sig += "%d:%s:%s;" % [peer, builders[peer]["name"], builders[peer]["can"]]
+	if sig == _builders_sig:
+		return
+	_builders_sig = sig
+	for c in _builders_box.get_children():
+		c.queue_free()
+	_label(_builders_box, "Builders")
+	if builders.is_empty():
+		_label(_builders_box, "  (nobody else here yet)")
+	for peer in builders:
+		var cb := CheckBox.new()
+		cb.text = "%s can build" % builders[peer]["name"]
+		cb.button_pressed = builders[peer]["can"]
+		cb.focus_mode = Control.FOCUS_NONE
+		cb.add_theme_color_override("font_color", builders[peer]["color"])
+		var pid: int = peer
+		cb.toggled.connect(func(on): main.net.build_set_can(pid, on))
+		_builders_box.add_child(cb)
+
+
+func _online_ui() -> void:
+	if _new_button == null:
+		return
+	var full := not online or hosting
+	_new_button.visible = full
+	_open_pick.visible = full
+	_test_button.visible = full
+	_save_button.text = _save_label()
+	_exit_button.text = _exit_label()
+	_left_panel.visible = can_edit
+	_builders_box.visible = online and hosting
+	if not (online and hosting):
+		_builders_sig = ""
+		for c in _builders_box.get_children():
+			c.queue_free()
+	elif _builders_box.get_child_count() == 0:
+		_builders_sig = "-"
+		_refresh_builders_panel()
+
+
+func _save_label() -> String:
+	return "Save a copy" if online and not hosting else "Save"
+
+
+func _exit_label() -> String:
+	if online:
+		return "Done building" if hosting else "Leave game"
+	return "Exit"
+
+
+func _online_tick(delta: float) -> void:
+	_cam_accum += delta
+	if _cam_accum >= 1.0 / CAM_RATE:
+		_cam_accum = 0.0
+		main.net.build_send_cam(camera.global_position, Vector2(_pitch, _yaw))
+	for peer in _ghosts:
+		var g: Node3D = _ghosts[peer]
+		var info: Dictionary = builders.get(peer, {})
+		if info.is_empty():
+			continue
+		g.position = g.position.lerp(info["pos"], minf(1.0, delta * 10.0))
+		var r: Vector2 = info["rot"]
+		g.rotation = Vector3(r.x, r.y, 0.0)
+
+
+# ---------------- the placement preview ----------------
+# With a piece picked on the left, a see-through copy follows the mouse to show where a click puts it.
+
+func _update_preview() -> void:
+	if placing == "" or flying or drag != "" or not can_edit or _mouse_over_ui():
+		_clear_preview()
+		return
+	if _preview_kind != placing:
+		_clear_preview()
+		_preview = _make_node(_new_piece(placing, Vector3.ZERO), -1)
+		_boxes.erase(-1)
+		_ghostify(_preview)
+		_preview_kind = placing
+	var at := _place_point(_mouse())
+	_preview.position = MapData.vec(_new_piece(placing, at)["pos"])
+
+
+func _ghostify(n: Node3D) -> void:
+	n.remove_meta("piece_index")
+	for c in n.find_children("*", "CollisionObject3D", true, false):
+		var co: CollisionObject3D = c
+		co.collision_layer = 0
+		co.collision_mask = 0
+		if co is Area3D:
+			(co as Area3D).monitoring = false
+	for c in n.find_children("*", "GeometryInstance3D", true, false):
+		var gi: GeometryInstance3D = c
+		gi.transparency = 0.5
+		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+
+
+func _clear_preview() -> void:
+	if is_instance_valid(_preview):
+		_preview.free()
+	_preview = null
+	_preview_kind = ""
+
+
+func _mouse_over_ui() -> bool:
+	var vp := get_viewport()
+	if vp.has_method("gui_get_hovered_control"):
+		return vp.call("gui_get_hovered_control") != null
+	return false
 
 
 # ---------------- the panels ----------------
@@ -1042,7 +1679,7 @@ func _build_ui() -> void:
 	var bar2 := HBoxContainer.new()
 	bar2.add_theme_constant_override("separation", 8)
 	rows.add_child(bar2)
-	_small_button(bar2, "New", new_map)
+	_new_button = _small_button(bar2, "New", new_map)
 	_open_pick = OptionButton.new()
 	_open_pick.custom_minimum_size.x = 200
 	_open_pick.item_selected.connect(func(idx):
@@ -1053,7 +1690,7 @@ func _build_ui() -> void:
 	bar2.add_child(_open_pick)
 	_save_button = _small_button(bar2, "Save", func(): save())
 	_small_button(bar2, "Open maps folder", func(): OS.shell_open(ProjectSettings.globalize_path(MapData.USER_DIR)))
-	_small_button(bar2, "Test play", test_play)
+	_test_button = _small_button(bar2, "Test play", test_play)
 	_small_button(bar2, "Undo", undo)
 	_small_button(bar2, "Redo", redo)
 	_snap_check = CheckBox.new()
@@ -1074,14 +1711,16 @@ func _build_ui() -> void:
 		local_axes = on
 		if drag == "move": _start_move_ray())
 	bar2.add_child(_local_check)
+	_small_button(bar2, "Settings", func(): main.open_settings_from_editor())
 	_exit_button = _small_button(bar2, "Exit", _try_exit)
 
 	# Left: things to place
 	var left := PanelContainer.new()
+	_left_panel = left
 	left.set_anchors_preset(Control.PRESET_LEFT_WIDE)
 	left.offset_top = 80
 	left.offset_bottom = -40
-	left.custom_minimum_size.x = 190
+	left.custom_minimum_size.x = 250
 	ui.add_child(left)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -1122,7 +1761,11 @@ func _build_ui() -> void:
 	right.custom_minimum_size.x = 250
 	ui.add_child(right)
 	_inspector = VBoxContainer.new()
-	right.add_child(_inspector)
+	var rcol := VBoxContainer.new()
+	right.add_child(rcol)
+	rcol.add_child(_inspector)
+	_builders_box = VBoxContainer.new()
+	rcol.add_child(_builders_box)
 	_insp_title = _label(_inspector, "")
 	for row in [["pos", "Position (m)", -500, 500], ["rot", "Rotation (°)", -360, 360], ["size", "Size (m)", 0.05, 400]]:
 		var box := VBoxContainer.new()
@@ -1168,6 +1811,7 @@ func _build_ui() -> void:
 	_small_button(brow, "Move (G)", func(): begin("move"))
 	_small_button(brow, "Turn (R)", func(): begin("rotate"))
 	_small_button(brow, "Size (T)", func(): begin("scale"))
+	_extend_button = _small_button(brow, "Extend (V)", func(): begin("extend"))
 	_inspector.add_child(brow)
 	_rows["buttons"] = brow
 	var brow2 := HBoxContainer.new()
@@ -1206,8 +1850,17 @@ func _palette_section(pal: Control, title: String, open: bool) -> VBoxContainer:
 
 
 func _palette_button(sec: VBoxContainer, text: String, kind: String, cat := "") -> void:
-	var b := _small_button(sec, "  " + text, func(): _arm(kind))
+	var b := _small_button(sec, " " + text, func(): _arm(kind))
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	# A little picture of it (made ahead of time by tools/make_thumbs.gd)
+	var thumb := "res://assets/thumbs/%s.png" % kind.replace(":", "_").replace("/", "__")
+	if not kind.contains(":"):
+		thumb = "res://assets/thumbs/piece_%s.png" % kind
+	if ResourceLoader.exists(thumb):
+		b.icon = load(thumb)
+		b.add_theme_constant_override("icon_max_width", 48)
+		b.custom_minimum_size.y = 52
+	b.tooltip_text = text
 	_palette_buttons.append([b, (text + " " + cat + " " + kind).to_lower(), sec])
 
 
@@ -1313,6 +1966,7 @@ func _sync_inspector() -> void:
 			_spins[k + str(a)].set_value_no_signal(vals[k][a])
 	_rows["rot"].visible = t in ROTATES
 	_rows["size"].visible = t in RESIZES
+	_extend_button.visible = t == "model"
 	_size_title.text = "Scale (× normal)" if t == "model" else "Size (m)"
 	_rows["color"].visible = t in ["block", "cylinder"]
 	_rows["prop"].visible = t == "prop"
@@ -1339,4 +1993,4 @@ func _say(text: String, seconds: float) -> void:
 
 
 func _help_text() -> String:
-	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
+	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   V extend   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
