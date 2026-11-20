@@ -779,7 +779,7 @@ func _relay_states() -> void:
 				continue
 			if peers[viewer]["role"] == "angel" and _is_vanished(id):
 				continue   # invisible: angels get nothing about this demon
-			states.append([rec["eid"], rec["pos"], rec["yaw"], rec["form"], rec["role"], _shown_aura(id), _is_flying(id)])
+			states.append([rec["eid"], rec["pos"], rec["yaw"], rec["form"], rec["role"], _shown_aura(id), _is_flying(id), _is_sneaking(id)])
 		for owner in minions:
 			if owner != viewer:
 				var m: Dictionary = minions[owner]
@@ -791,9 +791,16 @@ func _relay_states() -> void:
 		if id != 1 and rec["in_round"] and remotes.has(rec["eid"]):
 			remotes[rec["eid"]].set_aura(_shown_aura(id))
 			remotes[rec["eid"]].set_flying(_is_flying(id))
+			remotes[rec["eid"]].set_crouch(_is_sneaking(id))
 	for owner in minions:
 		if owner != 1 and remotes.has(minions[owner]["eid"]):
 			remotes[minions[owner]["eid"]].set_aura(_minion_aura(owner))
+
+
+func _is_sneaking(id: int) -> bool:
+	if peers[id]["form"] != "":
+		return false   # (a disguised demon: nothing extra goes out about it)
+	return peers[id].get("sneak", false) if id != 1 else main.player.sneaking
 
 
 # Flying makes a racket of wing beats that everyone nearby hears, even from a demon in disguise.
@@ -874,6 +881,7 @@ func s_states(states: Array) -> void:
 		r.apply_state(st[1], st[2], st[3], st[4])
 		r.set_aura(st[5] if st.size() > 5 else "")
 		r.set_flying(st.size() > 6 and st[6])
+		r.set_crouch(st.size() > 7 and st[7])
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -888,7 +896,7 @@ func _client_tick(delta: float) -> void:
 	if _send_accum >= 1.0 / SEND_RATE:
 		_send_accum = 0.0
 		var p = main.player
-		c_state.rpc_id(1, p.global_position, p.shown_yaw(), p.possessed_type, p.flying)
+		c_state.rpc_id(1, p.global_position, p.shown_yaw(), p.possessed_type, p.flying, p.sneaking)
 		if is_instance_valid(p.minion):
 			c_minion_state.rpc_id(1, p.minion.global_position, p.minion.rotation.y)
 
@@ -901,13 +909,14 @@ func _in_bounds(pos: Vector3) -> bool:
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func c_state(pos: Vector3, yaw: float, form: String, flying: bool) -> void:
+func c_state(pos: Vector3, yaw: float, form: String, flying: bool, sneaking := false) -> void:
 	if not is_host:
 		return
 	var id := multiplayer.get_remote_sender_id()
 	if not peers.has(id) or not peers[id]["in_round"]:
 		return
 	var rec: Dictionary = peers[id]
+	rec["sneak"] = sneaking
 	var t := now()
 	# (Two updates can arrive in the same instant; count at least one update's worth of time.)
 	var dt := clampf(t - rec["last_time"], 1.0 / SEND_RATE, 1.0)
@@ -1811,9 +1820,7 @@ func _shrine_swap(id: int, skills: Array) -> void:
 		return
 	rec["shrine_at"] = -100.0
 	rec["loadout"][rec["role"]] = Skills.clean_loadout(rec["role"], skills)
-	for skill in rec["loadout"][rec["role"]]:   # fresh skills start on cooldown (no swap-dancing)
-		if skill != "":
-			rec["skill_ready"][skill] = now() + Skills.cooldown(skill) - 0.5
+	rec["skill_ready"].clear()   # a swap refreshes every cooldown (Ted, Nov 20)
 	print("[host] %s swapped skills at the shrine: %s" % [rec["name"], "+".join(rec["loadout"][rec["role"]])])
 
 

@@ -71,6 +71,11 @@ func _ready() -> void:
 
 
 # Flying (the host says): loud wing beats from wherever it is, disguised or not.
+func set_crouch(on: bool) -> void:
+	if _visual and _visual.get("crouching") != null:
+		_visual.crouching = on
+
+
 # The host told us how this player (or minion) looks.
 func set_outfit(o: Dictionary) -> void:
 	if o == outfit:

@@ -12,7 +12,7 @@ const SKILLS := {
 		"desc": "Throw a cherub that stays for 9 seconds. It hovers there tooting its little horn; if a demon comes close it blasts the horn and shows its detection bubble. Hit it with a blessing to send it flying off to check further away."},
 	"vacuum": {"team": "angel", "label": "Vacuum Orb", "cooldown": 8.0,
 		"desc": "Throw into a pile of props: a vortex that sucks for 5 seconds, dragging props in and yanking any hidden demon back to its middle again and again, draining Hatred. Caught demons can't use skills until 2 seconds after it ends."},
-	"leap": {"team": "angel", "label": "Holy Leap", "cooldown": 8.0,
+	"leap": {"team": "angel", "label": "Holy Leap", "cooldown": 3.0,
 		"desc": "Having it picked makes all your jumps MUCH higher, and you steer hard in the air. Press its key while you're in the air to Cloud Stomp: slam straight down wherever you are and hurt every demon around where you land (most in the middle, more the higher you came from)."},
 	"scripture": {"team": "angel", "label": "Holy Scripture", "cooldown": 5.0,
 		"desc": "Hurl a heavy holy book that heat-seeks the nearest demon ahead of it (a Minion fools it too). Wherever it lands it SMITES: a pillar of holy light that hurts every demon within 4 m, knocks them back, locks their skills for a moment and scatters the props. Lob it into a suspicious pile! A direct hit hurts even more."},

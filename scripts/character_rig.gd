@@ -9,6 +9,8 @@ var anim: AnimationPlayer
 var wings: Node3D
 var role := "angel"
 var flying := false              # set by whoever owns it (demons flying)
+var crouching := false           # sneaking: knees bent, low and leaning (crouch_modifier.gd)
+var _crouch: Node
 var _last := Vector3.ZERO
 var _speed := 0.0
 var _air := 0.0
@@ -24,6 +26,10 @@ func setup(player: AnimationPlayer, wing_node: Node3D, team: String) -> void:
 	for n in LOOPING:
 		if anim.has_animation(n):
 			anim.get_animation(n).loop_mode = Animation.LOOP_LINEAR
+	var sk = anim.get_parent().find_children("*", "Skeleton3D", true, false)
+	if not sk.is_empty():
+		_crouch = load("res://scripts/crouch_modifier.gd").new()
+		sk[0].add_child(_crouch)
 	_play("Idle", 0.0)
 
 
@@ -69,6 +75,8 @@ func _process(delta: float) -> void:
 			# (model space: +Y turns a wing's tip forward; folded wings lie back along the body)
 			var target := side * (0.55 - spread * (0.75 + sin(_flap) * 0.3))
 			w.rotation.y = lerp_angle(w.rotation.y, target, minf(1.0, delta * 8.0))
+	if _crouch:
+		_crouch.amount = move_toward(_crouch.amount, 1.0 if crouching and _air < 0.2 else 0.0, delta * 5.0)
 	if Time.get_ticks_msec() / 1000.0 < _action_until:
 		return
 	if flying or _air > 0.2:

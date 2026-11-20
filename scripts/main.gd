@@ -488,9 +488,7 @@ func _update_shrine(delta: float) -> void:
 	if _shrine_done and left <= 0.0:
 		loadout[role] = Skills.clean_loadout(role, _shrine_pick)
 		player.loadout = loadout.duplicate(true)
-		for id in loadout[role]:   # fresh skills start on cooldown at the shrine (no swap-dancing)...
-			if id != "":
-				player.skill_cd[id] = 0.0 if waiting else Skills.cooldown(id)   # ...but ready to go after the wait
+		player.skill_cd.clear()   # a swap refreshes every cooldown, new skills and old (Ted, Nov 20)
 		_sync_loadout_buttons()
 		_save_settings()
 		if net:
@@ -3282,6 +3280,7 @@ func fx(kind: String, args: Array) -> void:
 			Effects.dust(_fx_parent(), args[0], Skills.STOMP_RADIUS * 0.5, 24)
 			_blast_props(args[0], Skills.STOMP_RADIUS * 1.2, 7.0)
 			_shake_near(args[0], 0.5, 18.0)
+			_play_at(_sounds["boom"].stream, args[0], 0.6, 8.0)   # a thunderclap (the blast boom, way down low)
 		"smite":
 			_smite_fx(args[0])
 		"word":
@@ -3521,6 +3520,21 @@ func _blast_props(center: Vector3, radius: float, strength: float) -> void:
 		var dir := flat / d if d > 0.05 else Vector3.RIGHT
 		var power := strength * (1.0 - d / radius * 0.7)
 		Knock.on(self, prop, i).hit(dir * power + Vector3.UP * power * 0.4)
+
+
+# A one-off sound from a spot in the world (heard louder up close), no shared random numbers.
+func _play_at(stream: AudioStream, where: Vector3, pitch: float, db := 0.0) -> void:
+	var asp := AudioStreamPlayer3D.new()
+	asp.stream = stream
+	asp.bus = Sfx.BUS
+	asp.pitch_scale = pitch
+	asp.volume_db = db
+	asp.unit_size = 14.0
+	asp.max_distance = 140.0
+	_fx_parent().add_child(asp)
+	asp.global_position = where
+	asp.finished.connect(asp.queue_free)
+	asp.play()
 
 
 func _shake_near(where: Vector3, amount: float, reach: float) -> void:

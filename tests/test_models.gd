@@ -194,6 +194,12 @@ func _run() -> void:
 	var junk := Characters.clean_outfit({"head": "Shrek", "skin": 7, "crown": "horns"}, "angel")
 	check(junk["head"] == "Knight" and junk["skin"] == "natural" and junk["crown"] == "halo", "outfits from files or other players are checked (no Shrek heads, no horns on angels)")
 	check(player.visual_root.get_child(0).has_method("play_action"), "your own body is a character now, not a capsule")
+	player.test_input = {"sneak": true}
+	await frames(30)
+	var crouch_amount: float = player.visual_root.get_child(0)._crouch.amount
+	player.test_input = {}
+	await frames(30)
+	check(crouch_amount > 0.9 and player.visual_root.get_child(0)._crouch.amount < 0.1, "sneaking crouches you down, and you stand back up (%.2f)" % crouch_amount)
 	main._open_wardrobe()
 	await frames(2)
 	main.wardrobe._set_team("demon")
@@ -208,6 +214,38 @@ func _run() -> void:
 	main.wardrobe_presets = []
 	main.set_outfits({})
 	main._save_settings()
+
+	# ---- Stepping up: low ledges and stairs, yes; props, no ----
+	var walk_into := func(start: Vector3, frames_n: int) -> float:
+		player.global_position = start
+		player.velocity = Vector3.ZERO
+		player.rotation = Vector3.ZERO
+		player.pivot.rotation = Vector3.ZERO
+		await frames(8)
+		var y0: float = player.global_position.y
+		player.test_input = {"dir": Vector2(0, -1)}
+		var top := y0
+		for k in frames_n:
+			await frames(1)
+			top = maxf(top, player.global_position.y)
+		player.test_input = {}
+		return top - y0
+	var ledge: StaticBody3D = main._add_block(Vector3(22, 0.2, -6), Vector3(4, 0.4, 3), Color.GRAY)
+	var rose: float = await walk_into.call(Vector3(22, 0.1, -2), 50)
+	check(rose > 0.3, "walking into a 40 cm ledge steps up onto it (%.2f m)" % rose)
+	ledge.queue_free()
+	main._spawn_prop("crate", Vector3(22, 0, -5), Vector3.ZERO)
+	var crate_rise: float = await walk_into.call(Vector3(22, 0.1, -2), 50)
+	check(crate_rise < 0.2, "...but a crate still blocks you (%.2f m)" % crate_rise)
+	main.props[main.props.size() - 1].queue_free()
+	var stair := Models.make_structure("dungeon/stairs")
+	main.world_root.add_child(stair)
+	stair.position = Vector3(25.5, 0, -8)
+	await frames(2)
+	var climbed: float = await walk_into.call(Vector3(25.5, 0.1, -4), 130)
+	check(climbed > 2.0, "...and you walk straight up stairs (%.1f m up)" % climbed)
+	stair.queue_free()
+	await frames(5)
 
 	# ---- Ice: slide about, and running then turning hard makes you fall ----
 	var ice_sheet: Node3D = main.make_ice({"size": [14, 0.06, 14]})

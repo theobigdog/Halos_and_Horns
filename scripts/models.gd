@@ -563,4 +563,34 @@ static func make_structure(id: String, extra_scale := Vector3.ONE, look := 0) ->
 	var cs := CollisionShape3D.new()
 	cs.shape = shape
 	body.add_child(cs)
+	if is_stairs(id):
+		body.add_child(_stair_ramp(id, extra_scale))
 	return body
+
+
+# Stairs get an invisible smooth ramp over the steps (Ted, Nov 20), so walking up them is a glide, not a
+# climb over every riser. It runs from the bottom step's edge to the top step.
+static func _stair_ramp(id: String, extra_scale: Vector3) -> CollisionShape3D:
+	var step := stair_step(id) * extra_scale
+	var s := size(id) * extra_scale
+	var along := Vector3(step.x, 0, step.z)
+	var run := along.length()
+	var d := along / maxf(run, 0.001)
+	var side := Vector3(-d.z, 0, d.x) * (absf(s.x * d.z) + absf(s.z * d.x)) * 0.5 * 0.9
+	var low := -d * run * 0.5
+	var high := d * run * 0.5
+	var top := Vector3.UP * (step.y + 0.03)
+	# The ramp follows the front edges of the steps (so none of them pokes through and snags you):
+	# it meets the ground a step's depth in front of the stairs, rises along the step edges, and runs
+	# flat across the top step.
+	var first: float = _height_at(faces(id, extra_scale), Vector2(low.x + d.x * 0.05, low.z + d.z * 0.05))
+	var lead_len := first * run / maxf(step.y, 0.01)
+	var foot := low - d * (lead_len + 0.05)
+	var knee := high - d * lead_len
+	var pts := PackedVector3Array([foot + side, foot - side, high + side, high - side,
+			knee + side + top, knee - side + top, high + side + top, high - side + top])
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = pts
+	var cs := CollisionShape3D.new()
+	cs.shape = shape
+	return cs

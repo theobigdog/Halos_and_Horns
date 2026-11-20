@@ -1187,6 +1187,7 @@ func _run() -> void:
 	main._confirm_shrine()
 	await frames(3)
 	check(player.loadout["demon"] == ["possess", "fire"], "taking longer than 3 s: no extra wait after confirming")
+	check(player.skill_cd.values().all(func(v): return v <= 0.0), "...and every cooldown is refreshed by the swap")
 	main._close_shrine()
 
 	# Angels waiting out the hiding period: swap anywhere, straight away, and the new skills are ready to use.

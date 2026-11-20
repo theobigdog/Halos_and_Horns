@@ -177,6 +177,7 @@ var voice: AudioStreamPlayer3D
 
 
 func _ready() -> void:
+	floor_max_angle = deg_to_rad(50.0)   # (stairs' smooth ramps are about 45 degrees)
 	# Never get carried or launched by something moving under or next to us (other
 	# players' bodies jump around as positions arrive). There are no moving platforms.
 	platform_floor_layers = 0
@@ -273,6 +274,7 @@ func _apply_camera() -> void:
 	if first_person[role]:
 		# Eyes at the top of the body, or just above the possessed prop.
 		pivot.position.y = _form_height * 0.9 if possessed_type == "" else _form_height + 0.15
+		_pivot_base = pivot.position.y
 		spring.position.x = 0.0
 		spring.spring_length = 0.0
 		visual_root.visible = false
@@ -280,6 +282,7 @@ func _apply_camera() -> void:
 		# Straight behind you (centered), with the crosshair a little above your head,
 		# so your own body sits just under it instead of covering it.
 		pivot.position.y = maxf(_form_height, 0.6) + CAMERA_ABOVE_HEAD
+		_pivot_base = pivot.position.y
 		spring.position.x = 0.0
 		spring.spring_length = THIRD_PERSON_DISTANCE
 		visual_root.visible = true
@@ -379,6 +382,7 @@ func _physics_process(delta: float) -> void:
 		_flames.emitting = flying
 	if _rig:
 		_rig.flying = flying
+		_rig.crouching = sneaking
 	_since_throw += delta
 	_taunt_cooldown = maxf(_taunt_cooldown - delta, 0.0)
 	melee_cd = maxf(melee_cd - delta, 0.0)
@@ -534,7 +538,15 @@ func _physics_process(delta: float) -> void:
 		clear_dash()
 		velocity = Vector3(0.0, -Skills.STOMP_SPEED, 0.0)
 	var before_slide := velocity
+	var floored := is_on_floor()
 	move_and_slide()
+	if floored and not flying and is_on_wall() and Vector2(before_slide.x, before_slide.z).length() > 0.5:
+		_try_step_up(before_slide, delta)
+	# (stepping up pops us up a little: the camera and body catch up smoothly)
+	if _step_lift < 0.0:
+		_step_lift = minf(_step_lift + delta * 3.0, 0.0)
+		visual_root.position.y = _step_lift
+		pivot.position.y = _pivot_base + _step_lift
 	_slip_cooldown = maxf(_slip_cooldown - delta, 0.0)
 	_on_ice = false
 	if is_on_floor():
@@ -918,11 +930,46 @@ var stunned := 0.0
 var outfits := {}                 # "angel"/"demon" -> outfit (characters.gd), set by main from the wardrobe
 var _rig: Node3D                  # our body's animation player (character_rig.gd), in body form
 var _on_ice := false
+var _step_lift := 0.0             # how far below its spot our body still shows after a step up (catching up)
+var _pivot_base := 0.0
+const STEP_HEIGHT := 0.5          # walk straight up stairs, curbs and ledges this high (structures only; first guess)
 var _slip_cooldown := 0.0
 const ICE_GRIP := 0.12            # ice: this much of the normal grip (first guess)
 const ICE_SLIP_SPEED := 6.0       # turning back on yourself faster than this on ice: you slip and fall
 const ICE_FALL_TIME := 0.9        # ...and lie there this long
 var _struck_down := false
+
+
+# Walking into a stair, curb or low ledge (Ted, Nov 20): if it's part of the map (not a prop or a
+# player) and there's room on top, step up onto it instead of stopping.
+func _try_step_up(wanted: Vector3, delta: float) -> void:
+	var blocker = null
+	for i in get_slide_collision_count():
+		var c := get_slide_collision(i)
+		if c.get_normal().y < 0.3:
+			blocker = c.get_collider()
+	if blocker == null or not blocker is StaticBody3D or (blocker as Node).is_in_group("prop"):
+		return   # props and players still block us
+	var flat := Vector3(wanted.x, 0.0, wanted.z)
+	var ahead := flat.normalized() * maxf(flat.length() * delta, 0.12)
+	var xf := global_transform
+	if test_move(xf, Vector3.UP * STEP_HEIGHT):
+		return   # no headroom
+	var up_xf := xf.translated(Vector3.UP * STEP_HEIGHT)
+	if test_move(up_xf, ahead):
+		return   # still blocked up there: too tall to step onto
+	var over := up_xf.translated(ahead)
+	var land := KinematicCollision3D.new()
+	if not test_move(over, Vector3.DOWN * (STEP_HEIGHT + 0.05), land) or land.get_normal().y < 0.7:
+		return   # nothing flat to stand on
+	var dest := over.origin + land.get_travel()
+	var rise := dest.y - global_position.y
+	if rise < 0.02:
+		return
+	global_position = dest
+	velocity.x = wanted.x
+	velocity.z = wanted.z
+	_step_lift = maxf(_step_lift - rise, -STEP_HEIGHT)
 
 
 # Slipped on ice: down for a moment (either team), then back up.
