@@ -889,7 +889,9 @@ func _check_flight(id: int, rec: Dictionary, pos: Vector3, flying: bool, dt: flo
 			_note_cheat(id, "flying without enough Hatred")
 			_drop_to_ground(id, rec, pos)
 			return
-	var excused: bool = flying or t < rec["grace_until"] or t < rec["dash_until"]
+	if main.near_pad(pos):
+		rec["bounce_until"] = t + 6.0   # a bounce: up to ~5 s in the air is fine
+	var excused: bool = flying or t < rec["grace_until"] or t < rec["dash_until"] or t < rec.get("bounce_until", 0.0)
 	if excused or _has_ground_below(pos, remotes.get(rec["eid"])):
 		rec["air_time"] = 0.0
 		return

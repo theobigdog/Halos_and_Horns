@@ -47,6 +47,7 @@ var _back_to_editor: Button
 var SHRINE_POS := Vector3(0, -1000, 0)   # the map's one shrine (far away if it has none)
 var BOUNCIES := []               # permanent bouncy spots
 var ONE_USE_BOUNCIES := []       # one-use bouncy spots (they come back each round)
+var SUPER_BOUNCIES := []         # super-bouncy spots
 var PLACED_PROPS := []           # [type, position, rotation] of props placed by hand
 const Vortex = preload("res://scripts/vortex.gd")
 const Projectile = preload("res://scripts/projectile.gd")
@@ -717,6 +718,7 @@ func load_map(map: Dictionary, path := "") -> void:
 	SHRINE_POS = Vector3(0, -1000, 0)
 	BOUNCIES = []
 	ONE_USE_BOUNCIES = []
+	SUPER_BOUNCIES = []
 	PLACED_PROPS = []
 	for p in map_data["pieces"]:
 		var pos := MapData.vec(p["pos"])
@@ -726,6 +728,7 @@ func load_map(map: Dictionary, path := "") -> void:
 			"shrine": SHRINE_POS = pos
 			"bouncy": BOUNCIES.append(pos)
 			"bouncy_once": ONE_USE_BOUNCIES.append(pos)
+			"bouncy_super": SUPER_BOUNCIES.append(pos)
 			"prop": PLACED_PROPS.append([p["prop"], pos, MapData.rot_rad(p)])
 	_build_map()
 	graphics.set_time_of_day(map_data["time"])
@@ -829,6 +832,15 @@ static func make_lamp(p: Dictionary, pos: Vector3) -> Node3D:
 	bulb.material_override = m
 	n.add_child(bulb)
 	return n
+
+
+# Standing on (or right by) a bouncy pad? The host uses it to excuse the long airtime of a bounce.
+func near_pad(pos: Vector3) -> bool:
+	for list in [BOUNCIES, ONE_USE_BOUNCIES, SUPER_BOUNCIES]:
+		for b in list:
+			if Vector2(pos.x - b.x, pos.z - b.z).length() < 2.5 and absf(pos.y - b.y) < 2.5:
+				return true
+	return false
 
 
 func _add_invisible(center: Vector3, size: Vector3) -> void:

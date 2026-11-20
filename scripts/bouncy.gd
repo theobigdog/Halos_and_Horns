@@ -10,8 +10,9 @@ extends Node3D
 
 const Surfaces = preload("res://scripts/surfaces.gd")
 
-const BOUNCE_VELOCITY := 15.0     # about 8.5 m up: onto most roofs
-const SUPER_BOUNCE_VELOCITY := 22.0   # about 18 m up (first guess)
+# Ted, Nov 19: higher (1.5x the height: speed x 1.22). First guesses.
+const BOUNCE_VELOCITY := 18.4     # about 13 m up
+const SUPER_BOUNCE_VELOCITY := 26.9   # about 27 m up (the map's ceiling stops it a bit lower on most maps)
 const RADIUS := 0.9
 
 var bouncy_id := 0

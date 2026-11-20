@@ -92,7 +92,7 @@ func _run() -> void:
 	check(PropLib.scatter_names().size() == PropLib.CLASSIC.size(), "random scatter still uses the classic props")
 
 	# ---- Maps: structures go in, junk doesn't ----
-	var raw := {"name": "Model test", "size": 28, "pieces": [
+	var raw := {"name": "Model test", "size": 28, "ceiling": 60, "pieces": [
 		{"type": "model", "model": "restaurant/wall_doorway", "pos": [0, 0, -10]},
 		{"type": "model", "model": "dungeon/wall", "pos": [8, 0, -10]},
 		{"type": "model", "model": "dungeon/stairs", "pos": [-12, 0, -10], "size": [1, 1, 1]},
