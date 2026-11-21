@@ -26,12 +26,24 @@ const CROWNS := {
 	"angel": [["halo", "Golden halo"], ["halo_double", "Double halo"], ["halo_star", "Starry halo"], ["halo_thorn", "Thorny halo"]],
 	"demon": [["horns", "Devil horns"], ["horns_ram", "Ram horns"], ["horns_goat", "Goat horns"], ["horns_nubs", "Little nubs"]],
 }
+# Each team has its own wardrobe (Ted, Nov 20): angels dress from the adventurers, demons from the
+# skeletons, with matching themes across the two (Knight / Skeleton Warrior, Mage / Skeleton Mage,
+# Rogue / Skeleton Rogue, Barbarian / Skeleton Minion). Skin colours are split the same way.
+const TEAM_CHARS := {
+	"angel": ["Knight", "Barbarian", "Mage", "Rogue", "Rogue_Hooded"],
+	"demon": ["Skeleton_Warrior", "Skeleton_Mage", "Skeleton_Rogue", "Skeleton_Minion"],
+}
 const SKINS := [
 	["natural", "As drawn", ""], ["pale", "Pale", "#f2dcc8"], ["tan", "Tan", "#c98e62"], ["brown", "Brown", "#8a5a3c"],
 	["dark", "Dark", "#5a3a28"], ["ghost", "Ghostly white", "#e9eef7"], ["gold", "Gold", "#e6b84a"],
 	["hellred", "Hell red", "#b8281e"], ["ash", "Ash grey", "#6c6a70"], ["zombie", "Zombie green", "#7fa35a"],
 	["ocean", "Ocean blue", "#4a7fc2"], ["violet", "Violet", "#8a55c0"], ["coal", "Coal black", "#2a2426"],
+	["sulfur", "Sulfur yellow", "#c9b33a"], ["blood", "Blood", "#6e0f12"], ["rose", "Rose", "#e7a5a0"],
 ]
+const TEAM_SKINS := {
+	"angel": ["natural", "pale", "tan", "brown", "dark", "rose", "ghost", "gold", "ocean"],
+	"demon": ["natural", "hellred", "blood", "ash", "coal", "zombie", "violet", "sulfur"],
+}
 const TRAILS := {
 	# angels: which blessing they throw (blessings.gd: same damage, different look)
 	"angel": [["holy_light", "Holy Light", "#ffe566"], ["blessed_water", "Blessed Water", "#73bfff"], ["halo_ring", "Halo Ring", "#ffcc33"],
@@ -53,7 +65,7 @@ static func default_outfit(role: String) -> Dictionary:
 static func matching_sets(role: String) -> Array:
 	var out := []
 	var d := default_outfit(role)
-	for c in SOURCES:
+	for c in TEAM_CHARS[role]:
 		if c == "Rogue_Hooded":
 			continue
 		var o := d.duplicate()
@@ -61,11 +73,12 @@ static func matching_sets(role: String) -> Array:
 		o["upper"] = c
 		o["lower"] = c
 		out.append([NICE[c], o])
-	var hooded := d.duplicate()
-	hooded["head"] = "Rogue_Hooded"
-	hooded["upper"] = "Rogue"
-	hooded["lower"] = "Rogue"
-	out.append([NICE["Rogue_Hooded"], hooded])
+	if role == "angel":
+		var hooded := d.duplicate()
+		hooded["head"] = "Rogue_Hooded"
+		hooded["upper"] = "Rogue"
+		hooded["lower"] = "Rogue"
+		out.append([NICE["Rogue_Hooded"], hooded])
 	return out
 
 
@@ -75,11 +88,11 @@ static func options(slot: String, role: String) -> Array:
 		"crown":
 			return CROWNS[role]
 		"skin":
-			return SKINS.map(func(s): return [s[0], s[1]])
+			return SKINS.filter(func(s): return s[0] in TEAM_SKINS[role]).map(func(s): return [s[0], s[1]])
 		"trail":
 			return TRAILS[role].map(func(s): return [s[0], s[1]])
 	var out := []
-	for c in SOURCES:
+	for c in TEAM_CHARS[role]:
 		if slot != "head" and c == "Rogue_Hooded":
 			continue
 		out.append([c, NICE[c]])
