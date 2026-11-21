@@ -58,7 +58,8 @@ static var _skin_ref := {}         # texture path -> its skin colour
 static func default_outfit(role: String) -> Dictionary:
 	if role == "angel":
 		return {"crown": "halo", "head": "Knight", "upper": "Knight", "lower": "Knight", "skin": "natural", "trail": "holy_light"}
-	return {"crown": "horns", "head": "Skeleton_Warrior", "upper": "Skeleton_Warrior", "lower": "Skeleton_Warrior", "skin": "hellred", "trail": "fire"}
+	# (bone-white skull by default: Ted, Nov 21, couldn't see a head when it was red on red)
+	return {"crown": "horns", "head": "Skeleton_Warrior", "upper": "Skeleton_Warrior", "lower": "Skeleton_Warrior", "skin": "natural", "trail": "fire"}
 
 
 # Matching sets: every character, whole.
@@ -209,7 +210,8 @@ static func build(role: String, outfit: Dictionary, height: float) -> Node3D:
 		if s[0] == outfit["skin"]:
 			skin_col = s[2]
 	var pieces := []
-	pieces += _parts(head_c, ["_Head", "_Head_Hooded", "_Eyes", "_Jaw"])
+	# (the Skeleton Mage's skull is its own "_Skull" mesh: without it a bare Mage head was floating eyes and a jaw)
+	pieces += _parts(head_c, ["_Head", "_Head_Hooded", "_Skull", "_Eyes", "_Jaw"])
 	pieces += _parts(upper_c, ["_Body", "_ArmLeft", "_ArmRight"])
 	pieces += _parts(outfit["lower"], ["_LegLeft", "_LegRight"])
 	if not upper.ends_with(":bare"):
@@ -234,6 +236,10 @@ static func build(role: String, outfit: Dictionary, height: float) -> Node3D:
 		var mi: MeshInstance3D = h[1].duplicate()
 		att.add_child(mi)
 		_recolor(mi, "", role, false)
+	# Each character's extra details (scripts/skin_details/<name>.gd), per piece worn
+	_add_details(sk, head_c, "head", role, head.ends_with(":bare"))
+	_add_details(sk, upper_c, "upper", role, upper.ends_with(":bare"))
+	_add_details(sk, lower, "lower", role, false)
 	# The team's marks: halo or horns, and wings
 	var head_att := BoneAttachment3D.new()
 	head_att.bone_name = "head"
@@ -243,6 +249,26 @@ static func build(role: String, outfit: Dictionary, height: float) -> Node3D:
 	base.add_child(wings)   # (model space: the back is -Z, the chest about 1.1 up)
 	rig.setup(base.find_children("*", "AnimationPlayer", true, false)[0], wings, role)
 	return rig
+
+
+# Extra details for one piece of one character, from scripts/skin_details/<name>.gd (if it exists):
+# static funcs head(), upper() and lower(), each given the skeleton, a BoneAttachment3D already on the
+# matching bone (head / chest / hips), the team, and whether the hat or cape was left off ("bare").
+const SLOT_BONES := {"head": "head", "upper": "chest", "lower": "hips"}
+
+
+static func _add_details(sk: Skeleton3D, c: String, slot: String, role: String, bare: bool) -> void:
+	var path := "res://scripts/skin_details/%s.gd" % c.to_lower()
+	if not ResourceLoader.exists(path):
+		return
+	var script = load(path)
+	if script == null or not script.has_method(slot):
+		return
+	var att := BoneAttachment3D.new()
+	att.name = "Details_" + slot
+	att.bone_name = SLOT_BONES[slot]
+	sk.add_child(att)
+	script.call(slot, sk, att, role, bare)
 
 
 # The skin-coloured bits of a part's texture, recoloured; demons' eyes glow.
@@ -445,47 +471,255 @@ static func _align_y(dir: Vector3) -> Basis:
 	return Basis(x, y, x.cross(y))
 
 
-# Wings on the back (chest bone space, KayKit units; +Z is the character's front, so the back is -Z).
+# Wings on the back (model space, KayKit units; +Z is the character's front, so the back is -Z).
+# Each wing lies flat in its own XY plane, reaching out along +X (right wing) or -X (left), and
+# character_rig.gd swings them about Y to fold and spread. (Ted, Nov 21: angel wings were "a bunch of
+# rectangles" and demon wings "triangular flags": now real feathers, and scaly dragon wings.)
+static var _feather: ArrayMesh
+static var _wing_mats := {}
+
+
 static func _wings(role: String) -> Node3D:
 	var n := Node3D.new()
 	n.name = "Wings"
-	var mat := _plain(Color(0.98, 0.97, 0.93), 0.9) if role == "angel" else _plain(Color(0.35, 0.06, 0.06), 0.5)
-	if role == "demon":
-		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	for side in [-1.0, 1.0]:
 		var wing := Node3D.new()
 		wing.name = "L" if side < 0 else "R"
 		wing.position = Vector3(0.14 * side, 1.12, -0.36)
 		n.add_child(wing)
 		if role == "angel":
-			# layered feathers fanning out and down: longest at the top
-			for f in 7:
-				var mi := MeshInstance3D.new()
-				var b := BoxMesh.new()
-				b.size = Vector3(1.0 - f * 0.09, 0.17, 0.04)
-				mi.mesh = b
-				mi.material_override = mat
-				mi.position = Vector3(side * (0.48 - f * 0.03), 0.22 - f * 0.13, -f * 0.012)
-				mi.rotation.z = side * (0.25 + f * 0.16)
-				wing.add_child(mi)
+			_angel_wing(wing, side)
 		else:
-			# a bat wing: a finger bone and a stretched membrane
-			var bone := MeshInstance3D.new()
-			var cb := CylinderMesh.new()
-			cb.top_radius = 0.015
-			cb.bottom_radius = 0.03
-			cb.height = 1.0
-			bone.mesh = cb
-			bone.material_override = _plain(Color(0.12, 0.05, 0.05))
-			bone.position = Vector3(side * 0.42, 0.3, 0)
-			bone.rotation.z = -side * 1.05
-			wing.add_child(bone)
-			var mem := MeshInstance3D.new()
-			var pm := PrismMesh.new()
-			pm.size = Vector3(0.95, 0.8, 0.01)
-			mem.mesh = pm
-			mem.material_override = mat
-			mem.position = Vector3(side * 0.45, 0.0, 0)
-			mem.rotation.z = PI + side * 0.25
-			wing.add_child(mem)
+			_demon_wing(wing, side)
 	return n
+
+
+# One feather: a long tapered vane with a rounded tip and a quill down the middle (a darker line), a
+# little cupped, pointing up its +Y. Shared by every feather (scaled per feather).
+static func _feather_mesh() -> ArrayMesh:
+	if _feather:
+		return _feather
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rows := 10
+	var pts := []
+	for i in rows + 1:
+		var t := float(i) / rows
+		var w := 0.5 * sin(PI * pow(t, 0.75)) * (1.0 - 0.25 * t)   # widest a third of the way up, rounded tip
+		var y := t
+		var cup := 0.06 * w   # the edges curl back a touch
+		pts.append([Vector3(-w, y, -cup), Vector3(0, y, 0.015), Vector3(w, y, -cup)])
+	var edge := Color(0.93, 0.92, 0.95)
+	var vane := Color(1.0, 1.0, 0.98)
+	var quill := Color(0.78, 0.76, 0.72)
+	for i in rows:
+		var a: Array = pts[i]
+		var b: Array = pts[i + 1]
+		for half in 2:
+			var o := half   # 0: left half (edge -> quill), 1: right half (quill -> edge)
+			var p0: Vector3 = a[o]
+			var p1: Vector3 = a[o + 1]
+			var p2: Vector3 = b[o + 1]
+			var p3: Vector3 = b[o]
+			var c0 := edge if o == 0 else quill
+			var c1 := quill if o == 0 else edge
+			for v in [[p0, c0], [p1, c1], [p2, c1], [p0, c0], [p2, c1], [p3, c0]]:
+				st.set_color(v[1].lerp(vane, 0.4) if v[1] != quill else quill)
+				st.add_vertex(v[0])
+	st.generate_normals()
+	_feather = st.commit()
+	return _feather
+
+
+static func _angel_mat() -> StandardMaterial3D:
+	if not _wing_mats.has("angel"):
+		var m := StandardMaterial3D.new()
+		m.vertex_color_use_as_albedo = true
+		m.albedo_color = Color(1, 1, 1)
+		m.roughness = 0.85
+		m.cull_mode = BaseMaterial3D.CULL_DISABLED
+		m.rim_enabled = true
+		m.rim = 0.35
+		m.emission_enabled = true
+		m.emission = Color(1.0, 0.97, 0.88)
+		m.emission_energy_multiplier = 0.12   # a faint holy glow
+		_wing_mats["angel"] = m
+	return _wing_mats["angel"]
+
+
+static func _add_feather(wing: Node3D, at: Vector3, angle: float, length: float, width: float, depth: float) -> void:
+	var mi := MeshInstance3D.new()
+	mi.mesh = _feather_mesh()
+	mi.material_override = _angel_mat()
+	mi.position = at + Vector3(0, 0, depth)
+	mi.rotation.z = angle
+	mi.scale = Vector3(width, length, 1.0)
+	wing.add_child(mi)
+
+
+# An angel wing: a bony leading edge arching up and out, long primary feathers fanning from the tip,
+# secondaries hanging along the arm, and rows of small covert feathers overlapping on top.
+static func _angel_wing(wing: Node3D, side: float) -> void:
+	var shoulder := Vector3.ZERO
+	var elbow := Vector3(0.42 * side, 0.3, 0)
+	var wrist := Vector3(0.95 * side, 0.36, 0)
+	# Primaries: from the wrist, fanning from out-and-up to straight down, longest in the middle
+	for i in 7:
+		var k := float(i) / 6.0
+		var ang := side * lerpf(-1.35, -2.75, k)   # feather +Y rotated: outward then down
+		var length := lerpf(0.72, 0.62, absf(k - 0.35) * 1.5)
+		var at := wrist.lerp(elbow, k * 0.35)
+		_add_feather(wing, at, ang, length, 0.2, -0.01 * i)
+	# Secondaries: along the arm, pointing down and a little out
+	for i in 6:
+		var k := float(i) / 5.0
+		var at := elbow.lerp(shoulder, k * 0.85)
+		var ang := side * lerpf(-2.75, -2.95, k)
+		_add_feather(wing, at, ang, lerpf(0.55, 0.42, k), 0.21, -0.06 - 0.008 * i)
+	# Coverts: two rows of short feathers over the bases, so no gaps show
+	for row in 2:
+		for i in 7:
+			var k := float(i) / 6.0
+			var at := shoulder.lerp(wrist, k) + Vector3(0, 0.03 - 0.09 * row, 0)
+			var ang := side * lerpf(-2.6, -2.2, k)
+			_add_feather(wing, at, ang, 0.26 - row * 0.05, 0.17, 0.02 + 0.01 * row)
+	# The leading edge: a soft rounded arm
+	var arm_mat := _angel_mat()
+	for seg in [[shoulder, elbow], [elbow, wrist]]:
+		var a: Vector3 = seg[0]
+		var b: Vector3 = seg[1]
+		var mi := MeshInstance3D.new()
+		var cm := CapsuleMesh.new()
+		cm.radius = 0.035
+		cm.height = a.distance_to(b) + 0.07
+		mi.mesh = cm
+		mi.material_override = arm_mat
+		mi.position = (a + b) * 0.5 + Vector3(0, 0, 0.005)   # tucked under the coverts (it read as a white pipe from the front)
+		mi.basis = _align_y(b - a)
+		wing.add_child(mi)
+
+
+const SCALE_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+uniform vec3 base_color = vec3(0.22, 0.03, 0.05);
+uniform vec3 dark_color = vec3(0.05, 0.01, 0.02);
+uniform vec3 vein_color = vec3(0.9, 0.25, 0.05);
+varying vec3 lp;
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void vertex() { lp = VERTEX; }
+void fragment() {
+	// overlapping scales: offset rows of rounded cells, darker at each scale's lower rim
+	vec2 uv = lp.xy * vec2(5.5, 6.5);
+	float row = floor(uv.y);
+	uv.x += mod(row, 2.0) * 0.5;
+	vec2 cell = fract(uv) - vec2(0.5, 0.0);
+	float d = length(cell * vec2(1.0, 0.8));
+	float rim = smoothstep(0.35, 0.55, d);
+	float tint = h(floor(uv)) * 0.25;
+	vec3 col = mix(base_color * (0.85 + tint), dark_color, rim);
+	// faint glowing veins running out along the wing
+	float vein = 1.0 - smoothstep(0.0, 0.04, abs(fract(atan(lp.y, abs(lp.x) + 0.0001) * 2.2) - 0.5));
+	ALBEDO = col;
+	EMISSION = vein_color * vein * 0.35;
+	ROUGHNESS = 0.45;
+	METALLIC = 0.15;
+	SPECULAR = 0.6;
+}
+"""
+
+
+static func _demon_mats() -> Array:
+	if not _wing_mats.has("demon"):
+		var skin := ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = SCALE_SHADER
+		skin.shader = sh
+		var bone := StandardMaterial3D.new()
+		bone.albedo_color = Color(0.16, 0.06, 0.06)
+		bone.roughness = 0.5
+		var claw := StandardMaterial3D.new()
+		claw.albedo_color = Color(0.85, 0.8, 0.7)
+		claw.roughness = 0.35
+		_wing_mats["demon"] = [skin, bone, claw]
+	return _wing_mats["demon"]
+
+
+# A demon wing, dragon-style: an arm (shoulder, elbow, wrist with a claw) and long finger bones
+# spreading from the wrist, with a scaly membrane stretched between them, scalloped between the tips.
+static func _demon_wing(wing: Node3D, side: float) -> void:
+	var mats := _demon_mats()
+	var shoulder := Vector3.ZERO
+	var elbow := Vector3(0.38 * side, 0.32, 0)
+	var wrist := Vector3(0.78 * side, 0.52, 0)
+	var tips := [
+		wrist + Vector3(0.55 * side, 0.18, 0),
+		wrist + Vector3(0.62 * side, -0.22, 0),
+		wrist + Vector3(0.45 * side, -0.62, 0),
+		wrist + Vector3(0.16 * side, -0.85, 0),
+	]
+	var body := Vector3(0.06 * side, -0.42, 0)
+	# The membrane: a fan from the wrist over the outline elbow -> tips (scalloped) -> body -> shoulder
+	var outline := [elbow, tips[0]]
+	for i in tips.size():
+		var a: Vector3 = tips[i]
+		var b: Vector3 = tips[i + 1] if i + 1 < tips.size() else body
+		var mid := (a + b) * 0.5
+		outline.append(mid.lerp(wrist, 0.28))   # the scallop: the edge sags in between the fingers
+		outline.append(b)
+	outline.append(shoulder)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in outline.size() - 1:
+		var p1: Vector3 = outline[i]
+		var p2: Vector3 = outline[i + 1]
+		# subdivide each fan slice a little so it bends (a slight cup) instead of being dead flat
+		var m1 := wrist.lerp(p1, 0.5) + Vector3(0, 0, -0.04)
+		var m2 := wrist.lerp(p2, 0.5) + Vector3(0, 0, -0.04)
+		for tri in [[wrist, m1, m2], [m1, p1, p2], [m1, p2, m2]]:
+			for v in tri:
+				st.add_vertex(v)
+	st.generate_normals()
+	var mem := MeshInstance3D.new()
+	mem.mesh = st.commit()
+	mem.material_override = mats[0]
+	wing.add_child(mem)
+	# Bones: the arm and the fingers, tapering, with a hooked claw at the wrist
+	var bones := [[shoulder, elbow, 0.045], [elbow, wrist, 0.04]]
+	for t in tips:
+		bones.append([wrist, t, 0.025])
+	for b in bones:
+		var a: Vector3 = b[0]
+		var c: Vector3 = b[1]
+		var mi := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.bottom_radius = b[2]
+		cm.top_radius = b[2] * 0.45
+		cm.height = a.distance_to(c)
+		cm.radial_segments = 6
+		mi.mesh = cm
+		mi.material_override = mats[1]
+		mi.position = (a + c) * 0.5 + Vector3(0, 0, 0.01)
+		mi.basis = _align_y(c - a)
+		wing.add_child(mi)
+	for t in tips + [wrist]:   # little knuckles
+		var k := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.035
+		sm.height = 0.07
+		sm.radial_segments = 6
+		sm.rings = 3
+		k.mesh = sm
+		k.material_override = mats[1]
+		k.position = t
+		wing.add_child(k)
+	var claw := MeshInstance3D.new()
+	var cc := CylinderMesh.new()
+	cc.top_radius = 0.0
+	cc.bottom_radius = 0.03
+	cc.height = 0.16
+	claw.mesh = cc
+	claw.material_override = mats[2]
+	claw.position = wrist + Vector3(0.02 * side, 0.09, 0.02)
+	claw.rotation.z = -0.5 * side
+	wing.add_child(claw)

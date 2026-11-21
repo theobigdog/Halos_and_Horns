@@ -195,7 +195,7 @@ func _run() -> void:
 	check(junk["head"] == "Knight" and junk["skin"] == "natural" and junk["crown"] == "halo", "outfits from files or other players are checked (no Shrek heads, no horns on angels)")
 	var cross_a := Characters.clean_outfit({"head": "Skeleton_Mage", "upper": "Knight", "skin": "zombie"}, "angel")
 	var cross_d := Characters.clean_outfit({"head": "Knight", "upper": "Skeleton_Rogue", "skin": "gold"}, "demon")
-	check(cross_a["head"] == "Knight" and cross_a["upper"] == "Knight" and cross_a["skin"] == "natural" and cross_d["head"] == "Skeleton_Warrior" and cross_d["upper"] == "Skeleton_Rogue" and cross_d["skin"] == "hellred",
+	check(cross_a["head"] == "Knight" and cross_a["upper"] == "Knight" and cross_a["skin"] == "natural" and cross_d["head"] == "Skeleton_Warrior" and cross_d["upper"] == "Skeleton_Rogue" and cross_d["skin"] == "natural",
 		"angels and demons each have their own wardrobe (no skeleton heads or zombie skin on angels, no knights on demons)")
 	var demon_heads: Array = Characters.options("head", "demon").map(func(o): return o[0])
 	check(demon_heads.all(func(h): return h.begins_with("Skeleton")) and Characters.matching_sets("demon").size() == 4 and Characters.matching_sets("angel").size() == 5,

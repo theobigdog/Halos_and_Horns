@@ -29,6 +29,8 @@ func setup(player: AnimationPlayer, wing_node: Node3D, team: String) -> void:
 	var sk = anim.get_parent().find_children("*", "Skeleton3D", true, false)
 	if not sk.is_empty():
 		_crouch = load("res://scripts/crouch_modifier.gd").new()
+		if team == "demon":
+			_crouch.head_scale = 1.25
 		sk[0].add_child(_crouch)
 	_play("Idle", 0.0)
 

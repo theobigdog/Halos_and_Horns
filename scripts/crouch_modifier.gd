@@ -4,6 +4,7 @@
 extends SkeletonModifier3D
 
 var amount := 0.0
+var head_scale := 1.0           # demons' heads a bit bigger, so they read at a distance (Ted, Nov 21)
 
 # bone -> [local axis, degrees at a full crouch]
 const BENDS := {
@@ -17,10 +18,14 @@ const HIP_DROP := 0.18          # KayKit units the hips sink at a full crouch
 
 
 func _process_modification_with_delta(_delta: float) -> void:
-	if amount <= 0.001:
-		return
 	var sk := get_skeleton()
 	if sk == null:
+		return
+	if head_scale != 1.0:
+		var hb := sk.find_bone("head")
+		if hb >= 0:
+			sk.set_bone_pose_scale(hb, Vector3.ONE * head_scale)
+	if amount <= 0.001:
 		return
 	for bone in BENDS:
 		var b := sk.find_bone(bone)

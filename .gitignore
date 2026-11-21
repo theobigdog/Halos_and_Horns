@@ -1,3 +1,4 @@
 # Godot's cache folder - rebuilt automatically, never commit it
 .godot/
 /builds/
+/tools/previews/
