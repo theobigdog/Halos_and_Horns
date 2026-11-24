@@ -134,6 +134,7 @@ const TIMES := {
 }
 const TIME_NAMES := ["day", "dusk", "night"]
 var time_of_day := "day"
+const Lamp = preload("res://scripts/lamp.gd")
 var sky_mat: ShaderMaterial
 
 # Weather (a map setting: Ted, Nov 20). Each changes the clouds, sun, haze, and maybe adds snow or rain.
@@ -270,6 +271,7 @@ func _apply_look(t: Dictionary) -> void:
 	env.fog_light_color = t["fog"]
 	env.fog_density = 0.0045 * w["fog"]
 	env.tonemap_exposure = t["exposure"]
+	Lamp.darkness = t["stars"]   # (lamps with a daylight sensor come on from dusk)
 
 
 func _make_fall(kind: String) -> void:

@@ -433,7 +433,7 @@ func start_round() -> void:
 		rec["hits"] = 0
 		_place(rec, main.spawn_point(rec["role"], i))
 	phase = "hiding"
-	phase_time = hide_time
+	phase_time = 3.0 if test_round else hide_time   # (a test round from Creative skips the wait)
 	for id in ids:
 		_send_round_start(id)
 	for id in ids:
@@ -744,6 +744,9 @@ func _host_tick(delta: float) -> void:
 				_end_round("Time's up! %d demon%s survived. Demons win!" % [n, "" if n == 1 else "s"])
 			elif phase == "ended":
 				_back_to_lobby()
+				if test_round:   # a test round from Creative: back to building
+					test_round = false
+					start_building()
 	if phase == "building":
 		_build_tick(delta)
 	_check_idle()
@@ -2303,7 +2306,23 @@ func build_test_play() -> void:
 		main.editor._say("A test round needs at least 2 players. (On your own, use Creative from the main menu.)", 5.0)
 		return
 	build_end()
+	test_round = true
 	start_round()
+
+
+var test_round := false   # host: this round is a test from building together (short hiding; back to building after)
+
+
+# Host: stop the test round early (Esc, "Back to Creative") and everyone goes back to building.
+func build_test_stop() -> void:
+	if not is_host or not test_round:
+		return
+	if phase in ["hiding", "hunting", "ended"]:
+		for owner in minions.keys():
+			_minion_gone(owner, true)
+		_back_to_lobby()
+	test_round = false
+	start_building()
 
 
 # Ours: send our edits (the host applies its own directly).

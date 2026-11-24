@@ -946,12 +946,14 @@ func _try_step_up(wanted: Vector3, delta: float) -> void:
 	var blocker = null
 	for i in get_slide_collision_count():
 		var c := get_slide_collision(i)
-		if c.get_normal().y < 0.3:
+		# (anything too steep to walk up counts: bevelled edges like the city roofs' rims meet the
+		# capsule's round bottom at a slant, not straight on, and used to block you for good)
+		if c.get_normal().y < cos(floor_max_angle) - 0.02:
 			blocker = c.get_collider()
 	if blocker == null or not blocker is StaticBody3D or (blocker as Node).is_in_group("prop"):
 		return   # props and players still block us
 	var flat := Vector3(wanted.x, 0.0, wanted.z)
-	var ahead := flat.normalized() * maxf(flat.length() * delta, 0.12)
+	var ahead := flat.normalized() * maxf(flat.length() * delta, 0.2)
 	var xf := global_transform
 	if test_move(xf, Vector3.UP * STEP_HEIGHT):
 		return   # no headroom
@@ -960,8 +962,15 @@ func _try_step_up(wanted: Vector3, delta: float) -> void:
 		return   # still blocked up there: too tall to step onto
 	var over := up_xf.translated(ahead)
 	var land := KinematicCollision3D.new()
-	if not test_move(over, Vector3.DOWN * (STEP_HEIGHT + 0.05), land) or land.get_normal().y < 0.7:
-		return   # nothing flat to stand on
+	if not test_move(over, Vector3.DOWN * (STEP_HEIGHT + 0.05), land):
+		return   # nothing to stand on
+	if land.get_normal().y < 0.7:
+		# the round bottom may have caught the edge itself: check straight down for flat ground instead
+		var q := PhysicsRayQueryParameters3D.create(over.origin, over.origin + Vector3.DOWN * (STEP_HEIGHT + 1.2))
+		q.exclude = [get_rid()]
+		var hit := get_world_3d().direct_space_state.intersect_ray(q)
+		if hit.is_empty() or (hit["normal"] as Vector3).y < 0.7:
+			return   # nothing flat to stand on
 	var dest := over.origin + land.get_travel()
 	var rise := dest.y - global_position.y
 	if rise < 0.02:

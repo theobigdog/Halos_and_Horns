@@ -237,6 +237,7 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 # Found from the model itself: triangles whose spot on the texture is red or green, grouped into
 # small patches (big green patches are street signs). Each red lamp pairs with the nearest green.
 const TrafficSignal = preload("res://scripts/traffic_signal.gd")
+const Lamp = preload("res://scripts/lamp.gd")
 static var _lamp_cache := {}
 static var _images := {}
 
@@ -420,8 +421,11 @@ static func _add_glow(id: String, holder: Node3D) -> void:
 	l.light_color = LIT[name]
 	l.light_energy = 1.6 if name == "streetlight" else 0.9
 	l.omni_range = 9.0 if name == "streetlight" else 4.5
-	l.position.y = s.y * 0.8
-	holder.add_child(l)
+	# street lights and lantern posts have a daylight sensor (on at dusk); candles and torches are just lit
+	var lamp := Lamp.new()
+	lamp.position.y = s.y * 0.8
+	lamp.setup(l, name in ["streetlight", "post_lantern", "lantern_standing"], 0.0)
+	holder.add_child(lamp)
 
 
 static func _scene(path: String) -> PackedScene:
@@ -565,7 +569,82 @@ static func make_structure(id: String, extra_scale := Vector3.ONE, look := 0) ->
 	body.add_child(cs)
 	if is_stairs(id):
 		body.add_child(_stair_ramp(id, extra_scale))
+	if id.begins_with("city/building"):
+		var core := _building_core(id, extra_scale)
+		if core:
+			body.add_child(core)
 	return body
+
+
+# City buildings get a solid block inside, flush with their outer walls (Wife's notes, Nov 21: angels got
+# wedged in the window recesses, and could slip through a wall into the hollow inside). The walls are
+# found by casting rays in at many heights: the distance most of them stop at is the wall's face; window
+# recesses (deeper) and sills (further out) are rarer. The block stops just under the lowest roof.
+static var _cores := {}
+
+
+static func _building_core(id: String, extra_scale: Vector3) -> CollisionShape3D:
+	var key := "%s@%s" % [id, extra_scale]
+	if not _cores.has(key):
+		_cores[key] = _measure_core(faces(id, extra_scale))
+	var box: AABB = _cores[key]
+	if box.size.x < 0.5 or box.size.z < 0.5 or box.size.y < 0.5:
+		return null
+	var shape := BoxShape3D.new()
+	shape.size = box.size
+	var cs := CollisionShape3D.new()
+	cs.shape = shape
+	cs.position = box.get_center()
+	return cs
+
+
+static func _measure_core(f: PackedVector3Array) -> AABB:
+	if f.is_empty():
+		return AABB()
+	var tm := TriangleMesh.new()
+	tm.create_from_faces(f)
+	var lo := f[0]
+	var hi := f[0]
+	for v in f:
+		lo = lo.min(v)
+		hi = hi.max(v)
+	# the lowest roof: the lowest top surface over the middle part of the footprint
+	var roof := hi.y
+	for i in 5:
+		for j in 5:
+			var px := lerpf(lo.x, hi.x, 0.2 + 0.15 * i)
+			var pz := lerpf(lo.z, hi.z, 0.2 + 0.15 * j)
+			var h := _height_at(f, Vector2(px, pz))
+			if h > 1.0:   # (skip gaps with nothing over them)
+				roof = minf(roof, h)
+	var top := roof - 0.05
+	var wall := {}
+	for side in [Vector3.RIGHT, Vector3.LEFT, Vector3.BACK, Vector3.FORWARD]:
+		var counts := {}
+		var across := Vector3(absf(side.z), 0, absf(side.x))   # the axis along this wall
+		for hy in 12:
+			var y := lerpf(0.4, top - 0.3, hy / 11.0)
+			for k in 9:
+				var t := 0.15 + 0.7 * k / 8.0
+				var from := Vector3(lerpf(lo.x, hi.x, t), y, lerpf(lo.z, hi.z, t)) * across
+				from += side * (absf((hi * side).x + (hi * side).z) + absf((lo * side).x + (lo * side).z) + 2.0) + Vector3(0, y, 0)
+				var hit: Dictionary = tm.intersect_ray(from, -side)
+				if hit.is_empty():
+					continue
+				var d := snappedf((hit["position"] as Vector3).dot(side), 0.02)
+				counts[d] = int(counts.get(d, 0)) + 1
+		var best := 0.0
+		var best_n := -1
+		for d in counts:
+			if counts[d] > best_n:
+				best_n = counts[d]
+				best = d
+		if best_n < 6:
+			return AABB()
+		wall[side] = best
+	var a := Vector3(-wall[Vector3.LEFT], 0.0, -wall[Vector3.FORWARD])
+	var b := Vector3(wall[Vector3.RIGHT], top, wall[Vector3.BACK])
+	return AABB(a, b - a)
 
 
 # Stairs get an invisible smooth ramp over the steps (Ted, Nov 20), so walking up them is a glide, not a

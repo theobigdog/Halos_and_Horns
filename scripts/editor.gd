@@ -120,6 +120,9 @@ var _top_panel: Control
 var _light_range: SpinBox
 var _light_energy: SpinBox
 var _light_spot: CheckBox
+var _light_tilt: SpinBox
+var _light_always: CheckBox
+var _light_flicker: SpinBox
 var _look_pick: OptionButton
 var _car_lights: CheckBox
 var _weather_pick: OptionButton
@@ -556,7 +559,7 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 		p["size"] = [4.0, 0.06, 4.0]
 		p["pos"][1] = at.y + 0.03
 	elif kind == "light":
-		p["pos"][1] = at.y + 2.5
+		p["pos"][1] = at.y + 0.4   # (right where you point: it was 2.5 m up, "way above the cursor")
 		p["color"] = "#ffd9a0"
 		p["range"] = 8.0
 		p["energy"] = 1.5
@@ -1267,6 +1270,8 @@ func _typing() -> bool:
 
 
 func _process(delta: float) -> void:
+	if active() or testing:
+		_autosave_tick(delta)
 	if not active():
 		return
 	_status_time -= delta
@@ -1367,6 +1372,39 @@ func _line(a: Vector3, b: Vector3, c: Color) -> void:
 
 
 # ---------------- saving, opening, testing ----------------
+
+# Autosave (Ted, Nov 21): every 10 minutes Creative is open, if anything changed. A map that was saved
+# before is saved in place; a new one is saved under its name (or "<name> (autosave)" if that name is
+# taken by another map, so nothing gets overwritten). Online, only the host has the real map.
+const AUTOSAVE_EVERY := 600.0
+var _autosave_left := AUTOSAVE_EVERY
+
+
+func _autosave_tick(delta: float) -> void:
+	_autosave_left -= delta
+	if _autosave_left > 0.0:
+		return
+	_autosave_left = AUTOSAVE_EVERY
+	autosave()
+
+
+func autosave() -> bool:
+	if not dirty or (online and not hosting):
+		return false
+	var target := path
+	if target == "":
+		target = MapData.user_path_for(map["name"])
+		if FileAccess.file_exists(target):
+			target = MapData.user_path_for("%s (autosave)" % map["name"])
+	if not MapData.save_file(map, target):
+		_say("Autosave failed: couldn't write " + ProjectSettings.globalize_path(target), 6.0)
+		return false
+	path = target
+	dirty = false
+	_refresh_open_list()
+	_say("Autosaved \"%s\"." % target.get_file().get_basename(), 3.0)
+	return true
+
 
 func save() -> bool:
 	var target := MapData.user_path_for(map["name"])
@@ -2230,10 +2268,44 @@ func _build_ui() -> void:
 	_light_angle.min_value = 5
 	_light_angle.max_value = 85
 	_light_angle.step = 1
-	_light_angle.value_changed.connect(func(v): set_value(selected, "angle", v, "light-angle"))
+	_light_angle.tooltip_text = "How wide the beam is: small is a tight beam, big a wide one (makes it a spotlight)"
+	_light_angle.value_changed.connect(func(v):
+		if selected >= 0 and not piece(selected).get("spot", false):
+			_light_spot.button_pressed = true   # (a cone only means something for a spotlight)
+		set_value(selected, "angle", v, "light-angle"))
 	srow.add_child(_light_angle)
+	_label(srow, "Tilt (°)")
+	_light_tilt = SpinBox.new()
+	_light_tilt.min_value = -90
+	_light_tilt.max_value = 90
+	_light_tilt.step = 5
+	_light_tilt.tooltip_text = "Aim a spotlight up or down: -90 straight down, 0 level, 90 straight up (R / Shift + wheel turns it round)"
+	_light_tilt.value_changed.connect(func(v):
+		if selected < 0:
+			return
+		var r: Array = piece(selected).get("rot", [0.0, 0.0, 0.0]).duplicate()
+		r[0] = v
+		set_value(selected, "rot", r, "light-tilt"))
+	srow.add_child(_light_tilt)
 	_inspector.add_child(srow)
 	_rows["spot"] = srow
+	var frow := HBoxContainer.new()
+	_light_always = CheckBox.new()
+	_light_always.text = "Always on"
+	_light_always.tooltip_text = "Off: it has a daylight sensor (on at dusk, off at dawn). On: lit all the time"
+	_light_always.focus_mode = Control.FOCUS_NONE
+	_light_always.toggled.connect(func(on): set_value(selected, "always", on))
+	frow.add_child(_light_always)
+	_label(frow, "Flicker (per s)")
+	_light_flicker = SpinBox.new()
+	_light_flicker.min_value = 0
+	_light_flicker.max_value = 20
+	_light_flicker.step = 0.5
+	_light_flicker.tooltip_text = "0: a steady light. Higher: flickers faster (a candle about 3, a dodgy bulb 8+)"
+	_light_flicker.value_changed.connect(func(v): set_value(selected, "flicker", v, "light-flicker"))
+	frow.add_child(_light_flicker)
+	_inspector.add_child(frow)
+	_rows["flicker"] = frow
 	var prow := HBoxContainer.new()
 	_label(prow, "Prop")
 	_prop_pick = OptionButton.new()
@@ -2450,12 +2522,15 @@ func _sync_inspector() -> void:
 		_car_lights.set_pressed_no_signal(p.get("lights", false))
 	_rows["light"].visible = t == "light"
 	_rows["spot"].visible = t == "light"
+	_rows["flicker"].visible = t == "light"
 	if t == "light":
+		_light_tilt.set_value_no_signal(float(p.get("rot", [0.0, 0.0, 0.0])[0]))
+		_light_always.set_pressed_no_signal(p.get("always", false))
+		_light_flicker.set_value_no_signal(float(p.get("flicker", 0.0)))
 		_light_range.set_value_no_signal(p["range"])
 		_light_energy.set_value_no_signal(p["energy"])
 		_light_spot.set_pressed_no_signal(p.get("spot", false))
 		_light_angle.set_value_no_signal(p.get("angle", 35.0))
-		_light_angle.editable = p.get("spot", false)
 	_rows["prop"].visible = t == "prop"
 	if t in ["block", "cylinder", "light"]:
 		_color_pick.color = Color(p["color"])

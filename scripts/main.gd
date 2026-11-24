@@ -34,6 +34,7 @@ const Editor = preload("res://scripts/editor.gd")
 const SenseCherub = preload("res://scripts/sense_cherub.gd")
 const Bodies = preload("res://scripts/bodies.gd")
 const Graphics = preload("res://scripts/graphics.gd")
+const Lamp = preload("res://scripts/lamp.gd")
 const Music = preload("res://scripts/music.gd")
 const Knock = preload("res://scripts/knock.gd")
 # The current map's layout (filled in by load_map from the map file).
@@ -347,6 +348,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
 		pause_panel.visible = not pause_panel.visible
+		# (a test round from Creative: a way back to building, offline or as the host online)
+		_back_to_editor.visible = (mode == "practice" and editor != null and editor.testing) 				or (mode == "online" and net != null and net.is_host and net.test_round)
 		_refresh_mouse()
 	elif event.is_action_pressed("toggle_tuning"):
 		tuning_panel.visible = not tuning_panel.visible
@@ -855,23 +858,26 @@ static func make_ice(p: Dictionary) -> StaticBody3D:
 
 # A placed light: the light itself (no shadows: lots of them stay cheap), plus, in Creative only, a
 # little glowing bulb to grab it by (and a cone showing which way a spotlight points).
+# (In a round, the lamp follows the daylight unless it's "always" on, and may flicker. In Creative,
+# show_bulb, it's always on so you can see what you're doing, but it shows its flicker.)
 static func make_lamp(p: Dictionary, pos: Vector3, show_bulb := true) -> Node3D:
-	var n := Node3D.new()
+	var n := Lamp.new()
 	n.position = pos
 	var c := Color(p.get("color", "#ffd9a0"))
+	var light: Light3D
 	if p.get("spot", false):
 		var sl := SpotLight3D.new()
-		sl.light_color = c
 		sl.light_energy = float(p.get("energy", 1.5)) * 2.0
 		sl.spot_range = float(p.get("range", 8.0))
 		sl.spot_angle = float(p.get("angle", 35.0))
-		n.add_child(sl)
+		light = sl
 	else:
 		var l := OmniLight3D.new()
-		l.light_color = c
 		l.light_energy = float(p.get("energy", 1.5))
 		l.omni_range = float(p.get("range", 8.0))
-		n.add_child(l)
+		light = l
+	light.light_color = c
+	n.setup(light, not show_bulb and not p.get("always", false), float(p.get("flicker", 0.0)))
 	if not show_bulb:
 		return n
 	var bulb := MeshInstance3D.new()
@@ -1229,8 +1235,23 @@ func _build_pause_menu() -> void:
 	_back_to_editor = _button(box, "Back to Creative", back_to_editor)
 	_back_to_editor.visible = false
 	_button(box, "Settings & controls", _open_controls)
-	_button(box, "Leave to main menu", func(): _show_menu(""))
+	_leave_button = _button(box, "Leave to main menu", _try_leave)
 	pause_panel.visible = false
+
+
+# Online, leaving takes a second click (Nov 21: Esc out of a test round, one click on the wrong button and
+# you'd left the whole game).
+var _leave_button: Button
+var _leave_armed := 0.0
+
+
+func _try_leave() -> void:
+	if mode == "online" and Time.get_ticks_msec() / 1000.0 > _leave_armed:
+		_leave_armed = Time.get_ticks_msec() / 1000.0 + 4.0
+		_leave_button.text = "Click again to leave the game"
+		get_tree().create_timer(4.0).timeout.connect(func(): _leave_button.text = "Leave to main menu")
+		return
+	_show_menu("")
 
 
 # ---- Controls: rebind any action to any key or mouse button ----
@@ -1905,6 +1926,11 @@ func test_map_from_editor(map: Dictionary) -> void:
 func back_to_editor() -> void:
 	pause_panel.visible = false
 	_back_to_editor.visible = false
+	if mode == "online":
+		if net != null:
+			net.build_test_stop()   # everyone back to building together
+		_refresh_mouse()
+		return
 	if round_root:
 		round_root.free()
 		round_root = null
@@ -2001,6 +2027,8 @@ func start_round() -> void:
 	player.frozen = role == "angel"
 	state = State.HIDING
 	time_left = HIDE_TIME
+	if editor != null and editor.testing:
+		time_left = 3.0   # testing a map from Creative: no waiting around (Nov 21)
 	blind_rect.visible = role == "angel"
 	controls_label.text = _controls_text()
 	if role == "angel":

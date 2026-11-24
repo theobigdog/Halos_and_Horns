@@ -277,6 +277,33 @@ func _run() -> void:
 	player.stunned = 0.0
 	await frames(30)
 
+	# ---- Lights: a daylight sensor (on at dusk), always-on, flicker ----
+	var Lamp = load("res://scripts/lamp.gd")
+	var keep_dark: float = Lamp.darkness
+	var lamp_s: Node3D = main.make_lamp({"type": "light", "range": 8.0, "energy": 1.5}, Vector3(0, 50, 0), false)
+	var lamp_a: Node3D = main.make_lamp({"type": "light", "range": 8.0, "energy": 1.5, "always": true}, Vector3(2, 50, 0), false)
+	var lamp_f: Node3D = main.make_lamp({"type": "light", "range": 8.0, "energy": 1.5, "always": true, "flicker": 8.0}, Vector3(4, 50, 0), false)
+	for l in [lamp_s, lamp_a, lamp_f]:
+		root.add_child(l)
+	Lamp.darkness = 0.0
+	await process_frame
+	await process_frame
+	check(not lamp_s.light.visible and lamp_a.light.visible, "in daylight a sensor lamp is off, an always-on one lit")
+	Lamp.darkness = 1.0
+	var seen := []
+	for k in 100:
+		await process_frame
+		seen.append(snappedf(lamp_f.light.light_energy, 0.01))
+	await create_timer(1.6).timeout   # (past the sputter as it comes on)
+	await process_frame
+	check(lamp_s.light.visible and is_equal_approx(lamp_s.light.light_energy, 1.5), "...and at night the sensor lamp comes on")
+	var lo_e: float = seen.min()
+	var hi_e: float = seen.max()
+	check(hi_e - lo_e > 0.2, "a flickering lamp flickers (energy %.2f..%.2f)" % [lo_e, hi_e])
+	Lamp.darkness = keep_dark
+	for l in [lamp_s, lamp_a, lamp_f]:
+		l.queue_free()
+
 	# ---- Bouncy pads: wooden one-use, metal, and the magic super one ----
 	var kinds := {}
 	for kind in ["wood", "metal", "super"]:
@@ -305,6 +332,16 @@ func _run() -> void:
 	var ed = main.editor
 	var wi: int = ed.place("model:dungeon/wall_window_open", Vector3(3, 0, 3))
 	check(ed.map["pieces"][wi]["type"] == "model" and ed.map["pieces"][wi]["model"] == "dungeon/wall_window_open", "Creative places a structure")
+	# Autosave every 10 minutes (only if something changed; never over another map)
+	var keep_path: String = ed.path
+	var before := DirAccess.get_files_at(MapData.USER_DIR) if DirAccess.dir_exists_absolute(MapData.USER_DIR) else PackedStringArray()
+	ed._autosave_tick(ed.AUTOSAVE_EVERY + 1.0)
+	var saved_to: String = ed.path
+	check(not ed.dirty and saved_to != "" and FileAccess.file_exists(saved_to), "Creative autosaves after 10 minutes (%s)" % saved_to)
+	if not before.has(saved_to.get_file()):
+		DirAccess.remove_absolute(saved_to)   # (only our own test file)
+	ed.path = keep_path
+	ed.dirty = true
 	ed.select(wi)
 	ed.begin("scale")
 	ed.set_axis("x")

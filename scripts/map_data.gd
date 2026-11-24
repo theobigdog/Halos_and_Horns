@@ -185,6 +185,11 @@ static func clean(raw: Dictionary) -> Dictionary:
 			if p.get("spot", false) == true:
 				c["spot"] = true   # a spotlight: shines one way (its rotation), in a cone this wide
 				c["angle"] = snappedf(_num(p.get("angle"), 5.0, 85.0, 35.0), 0.5)
+			if p.get("always", false) == true:
+				c["always"] = true   # on all the time (otherwise it comes on at dusk and goes off at dawn)
+			var fl := snappedf(_num(p.get("flicker"), 0.0, 20.0, 0.0), 0.1)
+			if fl > 0.0:
+				c["flicker"] = fl    # flickers this many times a second
 		elif t == "model":
 			if typeof(p.get("model")) != TYPE_STRING or not Models.has(p["model"]):
 				continue
