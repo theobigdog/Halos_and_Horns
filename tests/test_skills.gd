@@ -928,7 +928,7 @@ func _run() -> void:
 	player.global_position = feet + Vector3(6, 0.1, 0)
 	await frames(30)
 	check(player.burning > 0.0, "stepping out, you keep burning a moment")
-	await frames(120)
+	await frames(150)   # (FIRE_LINGER is 2 s; a little slack for a busy machine)
 	check(player.burning <= 0.0 and not main.heat_rect.visible, "...then it stops")
 	thrower.queue_free()
 

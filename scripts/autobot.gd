@@ -23,6 +23,7 @@ var _last_pos := Vector3.ZERO
 var _strafe_time := 0.0
 var _strafe_dir := 1.0
 var _reported_names := false
+var _reported_roster := false
 var _role_time := 0.0
 var _rounds_started := 0
 var _quitting := false
@@ -106,10 +107,16 @@ func _physics_process(delta: float) -> void:
 			var r = main.net.remotes[eid]
 			shown.append("%s=%s" % [r.team if r.team != "" else "?", r.player_name if r.player_name != "" else "<hidden>"])
 		log_line("as %s, names I can see: %s" % [main.role, ", ".join(shown)])
-		var roster := []
-		for row in main.scoreboard_rows:
-			roster.append("%s(%s,%dms,%s)" % [row[0], row[1], row[2], "+".join(row[3])])
-		log_line("roster: %s | my ping %d" % [" ".join(roster), main.net.my_ping()])
+	# The Tab roster, once its rows have everyone's side (they come with the scoreboard, a moment after
+	# the round starts), or after a few seconds anyway
+	if _reported_names and not _reported_roster:
+		var filled: bool = not main.scoreboard_rows.is_empty() and main.scoreboard_rows.all(func(row): return str(row[1]) != "")
+		if filled or _role_time > 6.0:
+			_reported_roster = true
+			var roster := []
+			for row in main.scoreboard_rows:
+				roster.append("%s(%s,%dms,%s)" % [row[0], row[1], row[2], "+".join(row[3])])
+			log_line("roster: %s | my ping %d" % [" ".join(roster), main.net.my_ping()])
 	if options.has("still"):   # --still: do nothing at all (no moving, no taunting)
 		p.test_input = {}
 		return

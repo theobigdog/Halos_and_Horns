@@ -177,6 +177,7 @@ var voice: AudioStreamPlayer3D
 
 
 func _ready() -> void:
+	add_to_group("snow_walker")   # (leaves footprints in snow: snow_tracks.gd)
 	floor_max_angle = deg_to_rad(50.0)   # (stairs' smooth ramps are about 45 degrees)
 	# Never get carried or launched by something moving under or next to us (other
 	# players' bodies jump around as positions arrive). There are no moving platforms.

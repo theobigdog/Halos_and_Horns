@@ -187,6 +187,10 @@ static func clean(raw: Dictionary) -> Dictionary:
 		elif t == "ice":
 			var isz := _vec(p.get("size"), 0.5, 100.0, Vector3(4, 0.06, 4))
 			c["size"] = _arr(Vector3(isz.x, 0.06, isz.z))   # a slippery sheet: always thin
+		elif t in ["bouncy", "bouncy_once", "bouncy_super"]:
+			var pad_look := int(_num(p.get("look"), 0.0, 4.0, 0.0))
+			if pad_look > 0:
+				c["look"] = pad_look   # its colour (bouncy.gd SKINS)
 		elif t == "light":
 			c["color"] = _color(p.get("color"), "#ffd9a0")
 			c["range"] = snappedf(_num(p.get("range"), 1.0, 40.0, 8.0), 0.1)

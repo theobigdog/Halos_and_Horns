@@ -31,6 +31,7 @@ var _stuck_time := 0.0
 
 
 func _ready() -> void:
+	add_to_group("snow_walker")
 	collision_mask = 1 | 2      # the world, plus the invisible map walls
 	floor_snap_length = 0.3
 	var shape := CollisionShape3D.new()

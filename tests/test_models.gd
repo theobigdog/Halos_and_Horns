@@ -306,6 +306,30 @@ func _run() -> void:
 	for l in [lamp_s, lamp_a, lamp_f]:
 		l.queue_free()
 
+	# ---- Snow tracks: people leave prints, a demon disguised as a prop never does ----
+	var Tracks = load("res://scripts/snow_tracks.gd")
+	var tracks: Node3D = Tracks.new()
+	root.add_child(tracks)
+	tracks.setup(20.0)
+	var walker := Node3D.new()
+	walker.set_script(load("res://tests/track_walker.gd"))
+	walker.add_to_group("snow_walker")
+	root.add_child(walker)
+	walker.global_position = Vector3(5, 0, 5)
+	walker.set("possessed_type", "barrel")
+	await process_frame
+	await create_timer(0.15).timeout
+	var c: Vector2i = Vector2i(int((5.0 + 20.0) / 40.0 * tracks._res), int((5.0 + 20.0) / 40.0 * tracks._res))
+	var hidden_print: float = tracks._img.get_pixelv(c).r
+	walker.set("possessed_type", "")
+	walker.global_position = Vector3(5.3, 0, 5)
+	await create_timer(0.15).timeout
+	var c2: Vector2i = Vector2i(int((5.3 + 20.0) / 40.0 * tracks._res), int((5.0 + 20.0) / 40.0 * tracks._res))
+	var seen_print: float = tracks._img.get_pixelv(c2).r
+	check(hidden_print < -1000.0 and seen_print > -1000.0, "snow: someone walking leaves prints, a disguised demon never does (%.0f, %.0f)" % [hidden_print, seen_print])
+	tracks.queue_free()
+	walker.queue_free()
+
 	# ---- Bouncy pads: wooden one-use, metal, and the magic super one ----
 	var kinds := {}
 	for kind in ["wood", "metal", "super"]:

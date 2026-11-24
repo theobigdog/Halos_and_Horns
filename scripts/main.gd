@@ -37,6 +37,7 @@ const Graphics = preload("res://scripts/graphics.gd")
 const Lamp = preload("res://scripts/lamp.gd")
 const Decor = preload("res://scripts/decor.gd")
 const Backdrop = preload("res://scripts/backdrop.gd")
+const SnowTracks = preload("res://scripts/snow_tracks.gd")
 const Music = preload("res://scripts/music.gd")
 const Knock = preload("res://scripts/knock.gd")
 # The current map's layout (filled in by load_map from the map file).
@@ -50,6 +51,7 @@ var _back_to_editor: Button
 var SHRINE_POS := Vector3(0, -1000, 0)   # the map's one shrine (far away if it has none)
 var BOUNCIES := []               # permanent bouncy spots
 var ONE_USE_BOUNCIES := []       # one-use bouncy spots (they come back each round)
+var ONE_USE_LOOKS := []          # ...and their colours
 var SUPER_BOUNCIES := []         # super-bouncy spots
 var PLACED_PROPS := []           # [type, position, rotation] of props placed by hand
 const Vortex = preload("res://scripts/vortex.gd")
@@ -727,6 +729,7 @@ func load_map(map: Dictionary, path := "") -> void:
 	SHRINE_POS = Vector3(0, -1000, 0)
 	BOUNCIES = []
 	ONE_USE_BOUNCIES = []
+	ONE_USE_LOOKS = []
 	SUPER_BOUNCIES = []
 	PLACED_PROPS = []
 	for p in map_data["pieces"]:
@@ -736,7 +739,9 @@ func load_map(map: Dictionary, path := "") -> void:
 			"demon_spawn": DEMON_SPAWN = pos
 			"shrine": SHRINE_POS = pos
 			"bouncy": BOUNCIES.append(pos)
-			"bouncy_once": ONE_USE_BOUNCIES.append(pos)
+			"bouncy_once":
+				ONE_USE_BOUNCIES.append(pos)
+				ONE_USE_LOOKS.append(int(p.get("look", 0)))
 			"bouncy_super": SUPER_BOUNCIES.append(pos)
 			"prop": PLACED_PROPS.append([p["prop"], pos, MapData.rot_rad(p)])
 	Models.festive = map_data["weather"] == "snow"   # (before building: trees and buildings get lights)
@@ -828,6 +833,10 @@ func _build_map() -> void:
 	_add_block(Vector3(0, -0.5, 0), Vector3(half * 2 + 2, 1, half * 2 + 2), ground, Vector3.ZERO, false, false, "ground")
 	if map_data["weather"] == "rain":
 		_add_puddles(half)
+	if map_data["weather"] == "snow":
+		var tracks := SnowTracks.new()   # footprints and melted patches in the snow
+		world_root.add_child(tracks)
+		tracks.setup(half)
 	var wall_color := Color(map_data["wall_color"])
 	var span := half * 2 + 2
 	_add_block(Vector3(0, 2, half + 1), Vector3(span, 4, 1), wall_color, Vector3.ZERO, false)
@@ -861,6 +870,7 @@ func _build_map() -> void:
 				var b := Bouncy.new()
 				b.bouncy_id = 1000 + permanent_bouncies
 				b.super_bouncy = p["type"] == "bouncy_super"
+				b.skin = int(p.get("look", 0))
 				permanent_bouncies += 1
 				world_root.add_child(b)
 				b.position = pos
@@ -1128,6 +1138,7 @@ func _reset_round_props(seed_value: int) -> void:
 		b.on_used = _on_bouncy_used
 		round_root.add_child(b)
 		b.position = ONE_USE_BOUNCIES[i]
+		b.skin = ONE_USE_LOOKS[i] if i < ONE_USE_LOOKS.size() else 0
 		bouncies[i] = b
 	# Props placed by hand on the map, then the random ones.
 	for pp in PLACED_PROPS:
@@ -3352,6 +3363,7 @@ func fx(kind: String, args: Array) -> void:
 			f.vel = args[2]
 			f.to = args[3]
 			f.flight_time = args[4]
+			f.add_to_group("hellfire")   # (snow_tracks.gd: it melts the snow)
 			_fx_parent().add_child(f)
 			fires[args[0]] = f
 		"kick":

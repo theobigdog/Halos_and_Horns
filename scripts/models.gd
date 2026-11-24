@@ -503,8 +503,13 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 	_add_glow(id, holder)
 	if e.get("extra", "") == "crosswalk_end":
 		_add_crosswalk(holder, size(id) * extra_scale)
-	if e.get("extra", "") == "green":
-		_make_green(model)
+	# finer materials (nature_look.gd / structure_look.gd; Nov 24)
+	if NatureLook.is_nature(id):
+		NatureLook.apply(id, model, e.get("extra", ""))
+	else:
+		StructureLook.apply(id, model)
+		if e.get("extra", "") == "green":
+			_make_green(model)
 	if id.begins_with("city/trafficlight"):
 		var heads := lamp_spots(id)
 		if not heads.is_empty():
@@ -582,6 +587,8 @@ static func _street_signs(id: String, extra_scale: Vector3) -> Node3D:
 # small patches (big green patches are street signs). Each red lamp pairs with the nearest green.
 const TrafficSignal = preload("res://scripts/traffic_signal.gd")
 const Lamp = preload("res://scripts/lamp.gd")
+const NatureLook = preload("res://scripts/nature_look.gd")
+const StructureLook = preload("res://scripts/structure_look.gd")
 static var _lamp_cache := {}
 static var _images := {}
 

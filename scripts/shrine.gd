@@ -119,6 +119,10 @@ func _d20(r: float) -> Node3D:
 			v.append(Vector3(0, a, b * t))
 			v.append(Vector3(a, b * t, 0))
 			v.append(Vector3(b * t, 0, a))
+	# stand it on a point, one corner straight up (Ted, Nov 24: a tidier pattern)
+	var turn := Quaternion(Vector3(0, 1, t).normalized(), Vector3.UP)
+	for i in v.size():
+		v[i] = turn * v[i]
 	var faces := []
 	for i in v.size():
 		for j in range(i + 1, v.size()):
@@ -155,7 +159,10 @@ func _d20(r: float) -> Node3D:
 			var tmp := b
 			b = d
 			d = tmp
-		var upper := c.y > 0.05 or (absf(c.y) <= 0.05 and fi % 2 == 0)
+		# a gold crown of five faces on top, a zigzag band of alternating ruby and gold round the
+		# middle, and a ruby cap underneath
+		var ny := c.normalized().y
+		var upper := ny > 0.5 or (ny < 0.0 and ny > -0.5)
 		var col := gold_c if upper else ruby_c
 		for q in [a, b, d]:
 			st.set_normal(nrm)

@@ -18,8 +18,34 @@ const RADIUS := 0.9
 var bouncy_id := 0
 var one_use := false
 var super_bouncy := false
+var skin := 0                     # which colour (SKINS: Ted, Nov 24)
+
+# Colours for each kind of pad: [name, base, top, trim/coil]
+const SKINS := {
+	"wood": [["Oak", Color(0.36, 0.22, 0.12), Color(0.62, 0.42, 0.24), Color(0.45, 0.45, 0.48)],
+		["Dark walnut", Color(0.2, 0.12, 0.07), Color(0.36, 0.22, 0.13), Color(0.4, 0.4, 0.42)],
+		["Birch", Color(0.6, 0.52, 0.4), Color(0.88, 0.8, 0.64), Color(0.5, 0.5, 0.52)],
+		["Painted red", Color(0.3, 0.1, 0.08), Color(0.72, 0.16, 0.12), Color(0.85, 0.75, 0.4)],
+		["Painted blue", Color(0.12, 0.16, 0.3), Color(0.2, 0.38, 0.72), Color(0.9, 0.9, 0.92)]],
+	"metal": [["Steel", Color(0.32, 0.33, 0.36), Color(0.78, 0.8, 0.84), Color(0.7, 0.72, 0.76)],
+		["Brass", Color(0.35, 0.27, 0.12), Color(0.85, 0.66, 0.3), Color(0.9, 0.75, 0.4)],
+		["Copper", Color(0.3, 0.15, 0.1), Color(0.8, 0.45, 0.3), Color(0.55, 0.75, 0.65)],
+		["Black iron", Color(0.12, 0.12, 0.13), Color(0.26, 0.26, 0.28), Color(0.6, 0.18, 0.12)],
+		["Painted green", Color(0.12, 0.25, 0.15), Color(0.3, 0.62, 0.36), Color(0.9, 0.9, 0.85)]],
+	"super": [["Amethyst", Color(0.2, 0.12, 0.35), Color(0.35, 0.2, 0.7), Color(1.0, 0.8, 0.35)],
+		["Emerald", Color(0.06, 0.25, 0.15), Color(0.1, 0.65, 0.4), Color(0.85, 1.0, 0.7)],
+		["Ruby", Color(0.3, 0.05, 0.08), Color(0.75, 0.08, 0.2), Color(1.0, 0.8, 0.35)],
+		["Sapphire", Color(0.06, 0.1, 0.3), Color(0.15, 0.35, 0.9), Color(0.75, 0.9, 1.0)],
+		["Rainbow", Color(0.15, 0.15, 0.2), Color(0.8, 0.3, 0.5), Color(1.0, 1.0, 1.0)]],
+}
+
+
+static func skin_names(kind: String) -> Array:
+	return SKINS[kind].map(func(s): return s[0])
 var _magic: StandardMaterial3D    # the super pad's cushion: its colour drifts
 var _magic_time := 0.0
+var _rainbow := false
+var _hue := 0.74
 var _runes: Node3D
 var _sparkles := []            # [mesh, spot, phase]
 var on_used: Callable             # main: a one-use bouncy was used
@@ -61,14 +87,14 @@ func velocity() -> float:
 
 func _build_look() -> void:
 	var kind := "super" if super_bouncy else ("wood" if one_use else "metal")
+	var sk: Array = SKINS[kind][clampi(skin, 0, SKINS[kind].size() - 1)]
+	_rainbow = kind == "super" and sk[0] == "Rainbow"
+	_hue = sk[2].h
 	# The base plate it all sits on
 	var base := _disc(RADIUS, RADIUS, 0.08, 0.04)
-	match kind:
-		"wood": base.material_override = _surface(Color(0.36, 0.22, 0.12), "wood")
-		"metal": base.material_override = _surface(Color(0.32, 0.33, 0.36), "metal")
-		"super": base.material_override = _surface(Color(0.2, 0.12, 0.35), "metal")
+	base.material_override = _surface(sk[1], "wood" if kind == "wood" else "metal")
 	# The coil
-	var coil := {"wood": Color(0.45, 0.45, 0.48), "metal": Color(0.7, 0.72, 0.76), "super": Color(1.0, 0.8, 0.35)}[kind] as Color
+	var coil: Color = sk[3]
 	for i in 3:
 		var ring := MeshInstance3D.new()
 		var t := TorusMesh.new()
@@ -83,7 +109,7 @@ func _build_look() -> void:
 	match kind:
 		"wood":
 			# A round wooden lid: grainy planks with dark gaps, held by an iron band
-			var lid := _surface(Color(0.62, 0.42, 0.24), "wood")
+			var lid := _surface(sk[2], "wood")
 			lid.uv1_scale = Vector3(2.0, 2.0, 2.0 / 7.0)   # grain running along the planks (the top face)
 			_top.material_override = lid
 			for i in range(-2, 3):
@@ -91,7 +117,7 @@ func _build_look() -> void:
 				var b := BoxMesh.new()
 				b.size = Vector3(0.025, 0.01, sqrt(maxf(RADIUS * RADIUS - pow(i * 0.33, 2.0), 0.01)) * 2.0 - 0.06)
 				gap.mesh = b
-				gap.material_override = _plain(Color(0.2, 0.12, 0.06))
+				gap.material_override = _plain((sk[2] as Color).darkened(0.65))
 				gap.position = Vector3(i * 0.33 + 0.165, 0.065, 0)
 				_top.add_child(gap)
 			var band := MeshInstance3D.new()
@@ -99,12 +125,12 @@ func _build_look() -> void:
 			tb.inner_radius = RADIUS - 0.04
 			tb.outer_radius = RADIUS + 0.03
 			band.mesh = tb
-			band.material_override = _surface(Color(0.25, 0.25, 0.27), "metal")
+			band.material_override = _surface((sk[3] as Color).darkened(0.45), "metal")
 			band.scale.y = 0.6
 			_top.add_child(band)
 		"metal":
 			# A riveted steel plate
-			var plate := _surface(Color(0.78, 0.8, 0.84), "metal")
+			var plate := _surface(sk[2], "metal")
 			plate.metallic = 0.5   # (fully metal looks black wherever there's little sky to reflect)
 			_top.material_override = plate
 			for i in 8:
@@ -113,18 +139,18 @@ func _build_look() -> void:
 				sm.radius = 0.045
 				sm.height = 0.05
 				rivet.mesh = sm
-				rivet.material_override = _surface(Color(0.45, 0.47, 0.5), "metal")
+				rivet.material_override = _surface((sk[3] as Color).darkened(0.35), "metal")
 				var a := TAU * i / 8.0
 				rivet.position = Vector3(cos(a), 0, sin(a)) * (RADIUS - 0.12) + Vector3.UP * 0.06
 				_top.add_child(rivet)
 		"super":
 			# Magic: glassy, glowing, colour slowly shifting, with sparkles rising off it
 			_magic = StandardMaterial3D.new()
-			_magic.albedo_color = Color(0.35, 0.2, 0.7)
+			_magic.albedo_color = sk[2]
 			_magic.metallic = 0.6
 			_magic.roughness = 0.1
 			_magic.emission_enabled = true
-			_magic.emission = Color(0.35, 0.2, 0.7)
+			_magic.emission = sk[2]
 			_magic.emission_energy_multiplier = 0.7
 			_magic.clearcoat_enabled = true
 			_top.material_override = _magic
@@ -134,7 +160,7 @@ func _build_look() -> void:
 			tr.inner_radius = RADIUS - 0.06
 			tr.outer_radius = RADIUS + 0.04
 			rim.mesh = tr
-			rim.material_override = _mat(Color(1.0, 0.78, 0.3), true)
+			rim.material_override = _mat(sk[3], true)
 			rim.scale.y = 0.6
 			rim.position.y = 0.05
 			_top.add_child(rim)
@@ -253,7 +279,9 @@ func use_up() -> void:
 func _process(delta: float) -> void:
 	if _magic:
 		_magic_time += delta
-		var c := Color.from_hsv(fmod(0.74 + 0.1 * sin(_magic_time * 0.9), 1.0), 0.75, 0.75)
+		# (its colour drifts a little round its own hue; the rainbow one goes all the way round)
+		var hue := fposmod(_magic_time * 0.12, 1.0) if _rainbow else fposmod(_hue + 0.06 * sin(_magic_time * 0.9), 1.0)
+		var c := Color.from_hsv(hue, 0.75, 0.75)
 		_magic.albedo_color = c
 		_magic.emission = c
 		_runes.rotation.y = _magic_time * 0.6

@@ -43,6 +43,7 @@ var _aura: Node3D         # power-up particles (aura.gd); the host says which
 
 
 func _ready() -> void:
+	add_to_group("snow_walker")
 	sync_to_physics = false
 	_shape = CollisionShape3D.new()
 	# No body until we know where it is: created at the map's center, a solid

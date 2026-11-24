@@ -32,8 +32,8 @@ const Shrine = preload("res://scripts/shrine.gd")
 
 const PIECES := [
 	["block", "Block"], ["cylinder", "Cylinder"],
-	["bouncy", "Bouncy (metal, stays)"], ["bouncy_once", "Bouncy (wooden, one use a round)"],
-	["bouncy_super", "Super bouncy (magic, stays)"],
+	["bouncy", "Bouncy (metal, reusable)"], ["bouncy_once", "Bouncy (wooden, 1-use)"],
+	["bouncy_super", "Super Bouncy (magic, reusable)"],
 	["light", "Light"], ["window", "Window picture (a room, or lit)"], ["sidewalk", "Sidewalk"], ["ice", "Ice (slippery)"], ["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
 ]
 const ROTATES := ["block", "cylinder", "prop", "model", "light", "ice", "sidewalk", "window"]       # the others always sit upright
@@ -334,6 +334,7 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			var b := Bouncy.new()
 			b.one_use = t == "bouncy_once"
 			b.super_bouncy = t == "bouncy_super"
+			b.skin = int(p.get("look", 0))
 			n.add_child(b)
 		"shrine":
 			n.add_child(Shrine.new())
@@ -354,12 +355,18 @@ var _looks_for := ""
 
 
 func _fill_looks(t: String) -> void:
-	var kind := "window" if t == "window" else "model"
+	var kind := t if t in ["window", "bouncy", "bouncy_once", "bouncy_super"] else "model"
 	if kind == _looks_for:
 		return
 	_looks_for = kind
 	_look_pick.clear()
-	for ln in (Decor.WINDOW_LOOKS if kind == "window" else Models.LOOK_NAMES):
+	var names: Array = Models.LOOK_NAMES
+	match kind:
+		"window": names = Decor.WINDOW_LOOKS
+		"bouncy": names = Bouncy.skin_names("metal")
+		"bouncy_once": names = Bouncy.skin_names("wood")
+		"bouncy_super": names = Bouncy.skin_names("super")
+	for ln in names:
 		_look_pick.add_item(ln)
 
 
@@ -1971,12 +1978,14 @@ func wheel_turn(degrees: float) -> void:
 
 # Ctrl + wheel: the selected structure's look (weathered, clean, mossy, charred...).
 func cycle_look(dir: int) -> void:
-	if selected < 0 or piece(selected)["type"] != "model":
-		_say("Looks are for structures (walls, floors, buildings...).", 2.5)
+	var t: String = piece(selected)["type"] if selected >= 0 else ""
+	if not t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super"]:
+		_say("Looks are for structures, window pictures and bouncy pads.", 2.5)
 		return
-	var look := posmod(int(piece(selected).get("look", 0)) + dir, MapData.LOOKS)
+	_fill_looks(t)
+	var look := posmod(int(piece(selected).get("look", 0)) + dir, _look_pick.item_count)
 	set_value(selected, "look", look, "look")
-	_say("Look: %s  (Ctrl + wheel for the next)" % Models.LOOK_NAMES[look], 2.5)
+	_say("Look: %s  (Ctrl + wheel for the next)" % _look_pick.get_item_text(look), 2.5)
 
 
 # Alt + wheel: the selected piece bigger or smaller, keeping its proportions.
@@ -2643,11 +2652,11 @@ func _sync_inspector() -> void:
 	_rows["color"].visible = t in ["block", "cylinder", "light"]
 	if t == "ice":
 		_size_title.text = "Size (m; ice is always thin)"
-	_rows["look"].visible = t in ["model", "window"]
+	_rows["look"].visible = t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super"]
 	_fill_looks(t)
-	if t in ["model", "window"]:
+	if t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super"]:
 		_look_pick.select(int(p.get("look", 0)))
-		_car_lights.visible = Models.is_car(p["model"])
+		_car_lights.visible = t == "model" and Models.is_car(p["model"])   # (windows and pads have no car lights)
 		_car_lights.set_pressed_no_signal(p.get("lights", false))
 	_rows["light"].visible = t == "light"
 	_rows["spot"].visible = t == "light"
