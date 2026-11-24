@@ -35,6 +35,8 @@ const SenseCherub = preload("res://scripts/sense_cherub.gd")
 const Bodies = preload("res://scripts/bodies.gd")
 const Graphics = preload("res://scripts/graphics.gd")
 const Lamp = preload("res://scripts/lamp.gd")
+const Decor = preload("res://scripts/decor.gd")
+const Backdrop = preload("res://scripts/backdrop.gd")
 const Music = preload("res://scripts/music.gd")
 const Knock = preload("res://scripts/knock.gd")
 # The current map's layout (filled in by load_map from the map file).
@@ -110,6 +112,7 @@ var _cherub_check := 0.0
 var _possessions := {}       # who possesses which prop: user key -> prop index (decider only)
 var _loadout_buttons: Array = []   # [team, slot, OptionButton]
 var skill_label: Label
+var disguise_label: Label      # top left: the prop a demon looks like
 var bonus_label: Label
 var powerup_label: Label
 var effect_icons                 # the top-right row of effect icons (effect_icons.gd)
@@ -736,10 +739,77 @@ func load_map(map: Dictionary, path := "") -> void:
 			"bouncy_once": ONE_USE_BOUNCIES.append(pos)
 			"bouncy_super": SUPER_BOUNCIES.append(pos)
 			"prop": PLACED_PROPS.append([p["prop"], pos, MapData.rot_rad(p)])
+	Models.festive = map_data["weather"] == "snow"   # (before building: trees and buildings get lights)
 	_build_map()
 	graphics.set_time_of_day(map_data["time"])
 	graphics.set_weather(map_data["weather"])
 	graphics.set_day_cycle(map_data["cycle"])
+
+
+# Rain leaves about ten puddles about the place (Wife's notes, Nov 21), in the same spots on every screen
+# (from the map's name), not on top of anything placed on the map. Rings ripple on them.
+const PUDDLE_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never;
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+void fragment() {
+	vec2 p = UV - 0.5;
+	float ang = atan(p.y, p.x);
+	float edge = 0.42 + 0.05 * sin(ang * 3.0 + 1.3) + 0.03 * sin(ang * 7.0);
+	float inside = 1.0 - smoothstep(edge - 0.06, edge, length(p));
+	// raindrop rings
+	float ring = 0.0;
+	for (int i = 0; i < 4; i++) {
+		float fi = float(i);
+		float t = fract(TIME * 0.7 + h(vec2(fi, 3.0)));
+		vec2 c = vec2(h(vec2(fi, floor(TIME * 0.7 + h(vec2(fi, 3.0))))), h(vec2(fi + 9.0, floor(TIME * 0.7 + h(vec2(fi, 3.0)))))) * 0.5 - 0.25;
+		float d = length(p - c);
+		ring += smoothstep(0.012, 0.0, abs(d - t * 0.2)) * (1.0 - t);
+	}
+	ALBEDO = vec3(0.07, 0.08, 0.1) + ring * 0.15;
+	ROUGHNESS = 0.03;
+	SPECULAR = 1.0;
+	METALLIC = 0.1;
+	ALPHA = inside * 0.85;
+}
+"""
+
+
+func _add_puddles(half: float) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(map_data.get("name", "")) + "puddles")
+	var mat := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = PUDDLE_SHADER
+	mat.shader = sh
+	var placed := 0
+	for attempt in 80:
+		if placed >= 10:
+			break
+		var at := Vector3(rng.randf_range(-half * 0.85, half * 0.85), 0.0, rng.randf_range(-half * 0.85, half * 0.85))
+		var r := rng.randf_range(0.8, 1.8)
+		var clear := true
+		for p in map_data["pieces"]:
+			var pp := MapData.vec(p["pos"])
+			var reach := 2.0
+			if p.has("size"):
+				var sz := MapData.vec(p["size"])
+				reach = maxf(sz.x, sz.z) * (Models.size(p["model"]).length() * 0.5 if p["type"] == "model" else 0.6)
+			if Vector2(pp.x - at.x, pp.z - at.z).length() < reach + r:
+				clear = false
+				break
+		if not clear:
+			continue
+		var mi := MeshInstance3D.new()
+		var pm := PlaneMesh.new()
+		pm.size = Vector2(r * 2.0, r * 2.0 * rng.randf_range(0.6, 1.0))
+		mi.mesh = pm
+		mi.material_override = mat
+		mi.position = at + Vector3(0, 0.012, 0)
+		mi.rotation.y = rng.randf_range(0.0, TAU)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		world_root.add_child(mi)
+		placed += 1
 
 
 func _build_map() -> void:
@@ -756,6 +826,8 @@ func _build_map() -> void:
 	if map_data["weather"] == "snow":
 		ground = ground.lerp(Color(0.92, 0.94, 0.98), 0.75)   # snow on the ground
 	_add_block(Vector3(0, -0.5, 0), Vector3(half * 2 + 2, 1, half * 2 + 2), ground, Vector3.ZERO, false, false, "ground")
+	if map_data["weather"] == "rain":
+		_add_puddles(half)
 	var wall_color := Color(map_data["wall_color"])
 	var span := half * 2 + 2
 	_add_block(Vector3(0, 2, half + 1), Vector3(span, 4, 1), wall_color, Vector3.ZERO, false)
@@ -770,6 +842,8 @@ func _build_map() -> void:
 	_add_invisible(Vector3(half + 1, wall_h / 2.0 + 4.0, 0), Vector3(1, wall_h, span))
 	_add_invisible(Vector3(-half - 1, wall_h / 2.0 + 4.0, 0), Vector3(1, wall_h, span))
 	_add_invisible(Vector3(0, CEILING + 0.5, 0), Vector3(span, 1, span))
+	# Scenery past the walls (hills, the sea, mountains, a city)
+	world_root.add_child(Backdrop.make(map_data["backdrop"], half, str(map_data.get("name", ""))))
 	# The map's own pieces
 	var permanent_bouncies := 0
 	for p in map_data["pieces"]:
@@ -793,6 +867,16 @@ func _build_map() -> void:
 				structures.append([Vector2(pos.x, pos.z), 1.6])
 			"bouncy_once", "prop":
 				structures.append([Vector2(pos.x, pos.z), 1.6])   # (made fresh each round)
+			"sidewalk":
+				var walk := Decor.make_sidewalk(p)
+				walk.position = pos
+				walk.rotation = MapData.rot_rad(p)
+				world_root.add_child(walk)
+			"window":
+				var pane := Decor.make_window(p)
+				pane.position = pos
+				pane.rotation = MapData.rot_rad(p)
+				world_root.add_child(pane)
 			"ice":
 				var ice := make_ice(p)
 				ice.position = pos
@@ -2045,7 +2129,7 @@ func _controls_text() -> String:
 	var skills := "%s / %s skills" % [k.call("skill_1"), k.call("rmb")]
 	var side := "%s throw   %s   %s melee   %s look around   %s swap skills (at the shrine)" % [
 		k.call("shoot"), skills, k.call("melee"), k.call("free_look"), k.call("shrine")] if role == "angel" \
-		else "%s a prop: transform   Hold %s: demon form   %s (hold Fly to rise)   %s + mouse: turn your prop   %s swap skills (at the shrine)" % [
+		else "%s a prop: become a copy   Hold %s: demon form   %s (hold Fly to rise)   %s + mouse: turn your prop   %s swap skills (at the shrine)" % [
 		k.call("shoot"), k.call("shoot"), skills, k.call("run"), k.call("shrine")]
 	if mode == "practice":
 		return common + "\n" + side + "   %s switch side   %s restart   %s movement tuning   Esc menu" % [k.call("switch_role"), k.call("restart"), k.call("toggle_tuning")]
@@ -2208,7 +2292,7 @@ func online_round_start(seed_value: int, new_role: String, pos: Vector3, phase: 
 	if new_role == "angel":
 		_toast("You're an ANGEL.\nThe demons are hiding...\n(%s: change your skills while you wait)" % Keybinds.key_name("shrine") if state == State.HIDING else "You're an ANGEL. Find the demons!", 4.0)
 	else:
-		_toast("You're a DEMON! Hide!\nClick a prop to possess it.", 4.0)
+		_toast("You're a DEMON! Hide!\nClick a prop to become a copy of it.", 4.0)
 
 
 func online_phase(phase: String, seconds: float) -> void:
@@ -3308,7 +3392,7 @@ func fx(kind: String, args: Array) -> void:
 			Effects.dust(_fx_parent(), args[0], Skills.STOMP_RADIUS * 0.5, 24)
 			_blast_props(args[0], Skills.STOMP_RADIUS * 1.2, 7.0)
 			_shake_near(args[0], 0.5, 18.0)
-			_play_at(_sounds["boom"].stream, args[0], 0.6, 8.0)   # a thunderclap (the blast boom, way down low)
+			_play_at(_sounds["timpani"].stream, args[0], 1.0, 3.0)   # a deep timpani hit (it was a thunderclap: too much)
 		"smite":
 			_smite_fx(args[0])
 		"word":
@@ -3749,6 +3833,12 @@ func _build_hud() -> void:
 	hint_label.position.y += 40
 	hud.add_child(hint_label)
 
+	disguise_label = _make_label(22)
+	disguise_label.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	disguise_label.position = Vector2(16, 14)
+	disguise_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.5))
+	hud.add_child(disguise_label)
+
 	controls_label = _make_label(18)
 	controls_label.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 	controls_label.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -4029,6 +4119,7 @@ func _build_sounds() -> void:
 		"hit": Sfx.hit_sound(),
 		"caught": Sfx.caught_sound(),
 		"boom": Sfx.boom_sound(),
+		"timpani": Sfx.timpani_sound(),
 		"distress": Sfx.distress_sound(),
 		"possess": Sfx.possess_sound(),
 		# Cherub Sense alarm: the cherub's little horn fanfare.
@@ -4242,6 +4333,14 @@ func _update_hud(delta: float) -> void:
 	if player.hold_fraction > 0.0:
 		hint_label.text = ""
 	elif role == "demon" and player.look_target_type != "" and in_game:
-		hint_label.text = "Click: possess %s" % PropLib.label(player.look_target_type)
+		# (clicking makes you a copy; only the Possess skill takes over the real thing: Wife's notes, Nov 21)
+		var what := PropLib.label(player.look_target_type)
+		hint_label.text = "Click: become a copy of the %s" % what
+		if loadout.get("demon", []).has("possess"):
+			var slot: int = loadout["demon"].find("possess")
+			hint_label.text += "
+%s: possess it" % Keybinds.key_name("skill_1" if slot == 0 else "rmb")
 	else:
 		hint_label.text = ""
+	# What you look like right now, top left
+	disguise_label.text = "Disguised as: %s" % PropLib.label(player.possessed_type) 			if role == "demon" and in_game and player.possessed_type != "" else ""

@@ -129,6 +129,37 @@ static func boom_sound() -> AudioStreamWAV:
 	return wav
 
 
+# The Cloud Stomp landing (Wife's notes, Nov 21: the thunderclap was too much): a deep timpani hit,
+# a tuned drum's few ringing partials with a soft mallet thump, a slight pitch sag as the skin settles.
+static func timpani_sound() -> AudioStreamWAV:
+	var seconds := 2.2
+	var n := int(RATE * seconds)
+	var data := PackedByteArray()
+	data.resize(n * 2)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5150
+	var partials := [[1.0, 1.0, 2.2], [1.5, 0.45, 3.0], [1.99, 0.28, 4.0], [2.44, 0.14, 5.5], [0.5, 0.35, 2.8]]
+	var phases := [0.0, 0.0, 0.0, 0.0, 0.0]
+	var base := 82.0
+	var thump := 0.0
+	for i in n:
+		var t := float(i) / RATE
+		var f := base * (1.0 + 0.06 * exp(-t * 18.0))   # the pitch drops a touch right after the hit
+		var s := 0.0
+		for k in partials.size():
+			phases[k] += TAU * f * partials[k][0] / RATE
+			s += sin(phases[k]) * partials[k][1] * exp(-t * partials[k][2])
+		thump = lerpf(thump, rng.randf_range(-1.0, 1.0), 0.08)
+		s += thump * 3.0 * exp(-t * 30.0)   # the felt mallet
+		s *= minf(t / 0.003, 1.0)
+		data.encode_s16(i * 2, int(clampf(s * 0.5, -1.0, 1.0) * 32767.0))
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = RATE
+	wav.data = data
+	return wav
+
+
 # Hit as a demon (Ted, Nov 20: "I don't know when I'm hit"): an unmistakable yelp of distress, a
 # rising squeal that breaks and drops, rough in the throat. (Its own random numbers.)
 static func distress_sound() -> AudioStreamWAV:

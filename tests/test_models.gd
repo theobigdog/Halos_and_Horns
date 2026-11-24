@@ -34,6 +34,8 @@ func mesh_box(n: Node3D) -> AABB:
 	var first := true
 	for c in n.find_children("*", "MeshInstance3D", true, false):
 		var mi: MeshInstance3D = c
+		if mi.get_parent().has_meta("extra") or (mi.get_parent().get_parent() != null and mi.get_parent().get_parent().has_meta("extra")):
+			continue   # (add-ons like a traffic light's street signs)
 		var b: AABB = (n.global_transform.affine_inverse() * mi.global_transform) * mi.get_aabb()
 		box = b if first else box.merge(b)
 		first = false

@@ -106,6 +106,12 @@ def main():
             extra = dict(e)
             extra.update({"id": "city/road_crossing_end", "label": "Road crossing (at the end)", "extra": "crosswalk_end"})
             out.append(extra)
+        # green versions of the yellow (autumn) pines (Wife's notes, Nov 21)
+        if e["id"].startswith("halloween/tree_pine_yellow_"):
+            extra = dict(e)
+            size_name = e["id"].rsplit("_", 1)[1]
+            extra.update({"id": "halloween/tree_pine_green_" + size_name, "label": "Tree pine green " + size_name, "extra": "green"})
+            out.append(extra)
     with open(os.path.join(ROOT, "assets", "kaykit", "catalog.json"), "w", newline="\n") as f:
         json.dump(out, f, indent=0)
     props = sum(1 for e in out if e["kind"] == "prop")

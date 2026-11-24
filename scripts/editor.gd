@@ -23,6 +23,8 @@
 extends Node
 
 const MapData = preload("res://scripts/map_data.gd")
+const Decor = preload("res://scripts/decor.gd")
+const Backdrop = preload("res://scripts/backdrop.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const Bouncy = preload("res://scripts/bouncy.gd")
 const Models = preload("res://scripts/models.gd")
@@ -32,12 +34,13 @@ const PIECES := [
 	["block", "Block"], ["cylinder", "Cylinder"],
 	["bouncy", "Bouncy (metal, stays)"], ["bouncy_once", "Bouncy (wooden, one use a round)"],
 	["bouncy_super", "Super bouncy (magic, stays)"],
-	["light", "Light"], ["ice", "Ice (slippery)"], ["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
+	["light", "Light"], ["window", "Window picture (a room, or lit)"], ["sidewalk", "Sidewalk"], ["ice", "Ice (slippery)"], ["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
 ]
-const ROTATES := ["block", "cylinder", "prop", "model", "light", "ice"]       # the others always sit upright
-const RESIZES := ["block", "cylinder", "model", "ice"]       # (a model's "size" is how much it's scaled on each axis)
+const ROTATES := ["block", "cylinder", "prop", "model", "light", "ice", "sidewalk", "window"]       # the others always sit upright
+const RESIZES := ["block", "cylinder", "model", "ice", "sidewalk", "window"]       # (a model's "size" is how much it's scaled on each axis)
 const ONLY_ONE := ["shrine", "angel_spawn", "demon_spawn"]
 const GRID_STEPS := [0.05, 0.1, 0.25, 0.5, 1.0, 2.0]
+const NUDGE_KEYS := [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_PAGEUP, KEY_PAGEDOWN]
 const WHEEL_TURN := 15.0       # Shift + wheel turns this many degrees a notch (Alt held: 1 degree)
 const ANGLE_STEP := 15.0
 const MAX_UNDO := 200
@@ -126,6 +129,7 @@ var _light_flicker: SpinBox
 var _look_pick: OptionButton
 var _car_lights: CheckBox
 var _weather_pick: OptionButton
+var _backdrop_pick: OptionButton
 var _cycle_pick: OptionButton
 var _light_angle: SpinBox
 var _time_pick: OptionButton
@@ -317,6 +321,12 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 				n.add_child(Models.car_lights(p["model"], msc))
 		"ice":
 			n.add_child(main.make_ice(p))
+		"sidewalk":
+			n.add_child(Decor.make_sidewalk(p))
+		"window":
+			n.add_child(Decor.make_window(p))
+			var wsz := MapData.vec(p["size"])
+			_add_pick_box(n, Vector3(wsz.x, wsz.y, 0.1), -wsz.y / 2.0)
 		"light":
 			n.add_child(main.make_lamp(p, Vector3.ZERO))
 			_add_pick_box(n, Vector3(0.5, 0.5, 0.5), -0.25)
@@ -339,6 +349,20 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 
 
 # Something to click on, for pieces that are mostly air.
+# The Look list: a structure's wear (weathered, mossy...) or a window picture's room.
+var _looks_for := ""
+
+
+func _fill_looks(t: String) -> void:
+	var kind := "window" if t == "window" else "model"
+	if kind == _looks_for:
+		return
+	_looks_for = kind
+	_look_pick.clear()
+	for ln in (Decor.WINDOW_LOOKS if kind == "window" else Models.LOOK_NAMES):
+		_look_pick.add_item(ln)
+
+
 func _add_pick_box(n: Node3D, size: Vector3, y_from := 0.0) -> void:
 	var body := StaticBody3D.new()
 	var cs := CollisionShape3D.new()
@@ -558,6 +582,12 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 	elif kind == "ice":
 		p["size"] = [4.0, 0.06, 4.0]
 		p["pos"][1] = at.y + 0.03
+	elif kind == "sidewalk":
+		p["size"] = [2.0, 0.18, 6.0]
+	elif kind == "window":
+		p["size"] = [1.0, 1.4, 0.02]
+		p["look"] = 0
+		p["pos"][1] = at.y + 1.2
 	elif kind == "light":
 		p["pos"][1] = at.y + 0.4   # (right where you point: it was 2.5 m up, "way above the cursor")
 		p["color"] = "#ffd9a0"
@@ -712,7 +742,7 @@ func set_setting(key: String, value) -> void:
 	_begin_change("setting:" + key)
 	map[key] = value
 	map = MapData.clean(map)
-	if key in ["size", "ground_color", "wall_color", "time", "weather", "cycle"]:
+	if key in ["size", "ground_color", "wall_color", "time", "weather", "cycle", "backdrop"]:
 		_rebuild_ground()
 	_after_change()
 
@@ -1011,6 +1041,8 @@ func _rest_height(p: Dictionary) -> float:
 		return 0.1
 	if p["type"] == "ice":
 		return 0.03
+	if p["type"] == "window":
+		return float(p["size"][1]) / 2.0
 	return 0.0
 
 
@@ -1108,8 +1140,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			grab(r0[0], r0[1])
 			var r := _mouse_ray(mm.position)
 			drag_update(r[0], r[1], mm.position)
-	elif event is InputEventKey and event.pressed and not event.echo:
-		_key(event)
+	elif event is InputEventKey and event.pressed and (not event.echo or event.keycode in NUDGE_KEYS):
+		_key(event)   # (arrows keep nudging while held: Wife's notes, Nov 21)
 
 
 func _key(ev: InputEventKey) -> void:
@@ -1144,7 +1176,10 @@ func _key(ev: InputEventKey) -> void:
 			KEY_F: focus_selected()
 			KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_PAGEUP, KEY_PAGEDOWN:
 				if selected >= 0:
-					nudge(k, ev.alt_pressed)
+					if ev.shift_pressed and not ev.echo:
+						slide_to_touch(k)
+					else:
+						nudge(k, ev.alt_pressed)
 				else:
 					handled = false
 			KEY_DELETE, KEY_BACKSPACE: delete_selected()
@@ -1839,14 +1874,37 @@ func _refresh_builders_panel() -> void:
 	if builders.is_empty():
 		_label(_builders_box, "  (nobody else here yet)")
 	for peer in builders:
-		var cb := CheckBox.new()
-		cb.text = "%s can build" % builders[peer]["name"]
-		cb.button_pressed = builders[peer]["can"]
-		cb.focus_mode = Control.FOCUS_NONE
-		cb.add_theme_color_override("font_color", builders[peer]["color"])
+		# A big green / red switch per builder (Wife's notes, Nov 21: the little checkbox was easy to miss)
+		var who: String = builders[peer]["name"]
+		var row := HBoxContainer.new()
+		var name_lbl := Label.new()
+		name_lbl.text = who
+		name_lbl.add_theme_color_override("font_color", builders[peer]["color"])
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(name_lbl)
+		var sw := Button.new()
+		sw.toggle_mode = true
+		sw.focus_mode = Control.FOCUS_NONE
+		sw.custom_minimum_size = Vector2(120, 34)
+		var paint := func(on: bool) -> void:
+			sw.text = "✔ Can build" if on else "✖ View only"
+			for st in ["normal", "hover", "pressed", "hover_pressed"]:
+				var box := StyleBoxFlat.new()
+				box.bg_color = Color(0.15, 0.55, 0.25) if on else Color(0.6, 0.15, 0.15)
+				if st.begins_with("hover"):
+					box.bg_color = box.bg_color.lightened(0.15)
+				box.set_corner_radius_all(6)
+				box.set_border_width_all(2)
+				box.border_color = Color(1, 1, 1, 0.6)
+				sw.add_theme_stylebox_override(st, box)
+		sw.button_pressed = builders[peer]["can"]
+		paint.call(sw.button_pressed)
 		var pid: int = peer
-		cb.toggled.connect(func(on): main.net.build_set_can(pid, on))
-		_builders_box.add_child(cb)
+		sw.toggled.connect(func(on):
+			paint.call(on)
+			main.net.build_set_can(pid, on))
+		row.add_child(sw)
+		_builders_box.add_child(row)
 
 
 func _online_ui() -> void:
@@ -1931,13 +1989,64 @@ func wheel_size(factor: float) -> void:
 			var s := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
 			s = (s * factor).clamp(Vector3.ONE * 0.1, Vector3.ONE * 10.0)
 			set_value(selected, "size", s, "wheel-size")
-		"block", "cylinder", "ice":
+		"block", "cylinder", "ice", "sidewalk", "window":
 			set_value(selected, "size", MapData.vec(p["size"]) * factor, "wheel-size")
 		"prop":
 			_say("Props stay their real size (a demon disguised as one has to match it).", 3.0)
 
 
 # Arrow keys: move the selected piece one snap step, along the map's axis nearest to where we're looking.
+# Shift + arrow: slide the selected piece that way until it touches the next piece (never into it).
+func slide_to_touch(key: Key) -> void:
+	var move := _nudge_dir(key)
+	var box := _world_box(selected)
+	if box.size == Vector3.ZERO:
+		return
+	var best := 50.0
+	for i in map["pieces"].size():
+		if i == selected:
+			continue
+		var other := _world_box(i)
+		if other.size == Vector3.ZERO:
+			continue
+		# only things in the way: overlapping across the other two axes
+		var hit := true
+		for a in 3:
+			if absf(move[a]) > 0.5:
+				continue
+			if box.position[a] >= other.end[a] - 0.001 or box.end[a] <= other.position[a] + 0.001:
+				hit = false
+		if not hit:
+			continue
+		for a in 3:
+			if move[a] > 0.5 and other.position[a] >= box.end[a] - 0.001:
+				best = minf(best, other.position[a] - box.end[a])
+			elif move[a] < -0.5 and other.end[a] <= box.position[a] + 0.001:
+				best = minf(best, box.position[a] - other.end[a])
+	if best >= 50.0:
+		_say("Nothing that way to slide up against.", 3.0)
+		return
+	set_value(selected, "pos", MapData.vec(piece(selected)["pos"]) + move * best, "slide")
+	_say("Slid %.2f m, up against the next piece." % best, 3.0)
+
+
+func _world_box(i: int) -> AABB:
+	if i < 0 or i >= nodes.size() or not is_instance_valid(nodes[i]) or not _boxes.has(i):
+		return AABB()
+	return (nodes[i] as Node3D).global_transform * (_boxes[i] as AABB)
+
+
+func _nudge_dir(key: Key) -> Vector3:
+	var fwd := -camera.global_basis.z
+	fwd.y = 0.0
+	var ax := Vector3.FORWARD
+	if fwd.length() > 0.01:
+		ax = Vector3(signf(fwd.x), 0, 0) if absf(fwd.x) > absf(fwd.z) else Vector3(0, 0, signf(fwd.z))
+	var right := ax.cross(Vector3.UP)
+	return {KEY_UP: ax, KEY_DOWN: -ax, KEY_RIGHT: right, KEY_LEFT: -right,
+			KEY_PAGEUP: Vector3.UP, KEY_PAGEDOWN: Vector3.DOWN}[key]
+
+
 func nudge(key: Key, fine: bool) -> void:
 	var step := 0.01 if fine else grid
 	var fwd := -camera.global_basis.z
@@ -2062,6 +2171,14 @@ func _build_ui() -> void:
 	_weather_pick.item_selected.connect(func(i): set_setting("weather", MapData.WEATHERS[i]))
 	_weather_pick.focus_mode = Control.FOCUS_NONE
 	bar.add_child(_weather_pick)
+	_label(bar, "Scenery:")
+	_backdrop_pick = OptionButton.new()
+	for bn in Backdrop.NAMES:
+		_backdrop_pick.add_item(bn)
+	_backdrop_pick.tooltip_text = "What you see past the map's walls"
+	_backdrop_pick.item_selected.connect(func(i): set_setting("backdrop", MapData.BACKDROPS[i]))
+	_backdrop_pick.focus_mode = Control.FOCUS_NONE
+	bar.add_child(_backdrop_pick)
 	_label(bar, "Day cycle:")
 	_cycle_pick = OptionButton.new()
 	for cm in MapData.CYCLES:
@@ -2122,7 +2239,7 @@ func _build_ui() -> void:
 	# Where you are in the list, always showing at the top (e.g. "Props > Furniture") however far down you scroll
 	_palette_where = Label.new()
 	_palette_where.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
-	_palette_where.text = "Place"
+	_palette_where.text = "Special structures"
 	lcol.add_child(_palette_where)
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -2137,9 +2254,11 @@ func _build_ui() -> void:
 	search.clear_button_enabled = true
 	search.text_changed.connect(_filter_palette)
 	pal.add_child(search)
-	var special := _palette_section(pal, "Place", true)
+	var special := _palette_section(pal, "Special structures", true)
 	for p in PIECES:
 		var kind: String = p[0]
+		if kind in ["ice", "sidewalk"]:
+			continue   # (in Ground, with the floors and roads)
 		_palette_button(special, p[1], kind)
 	# Props (demons can be these), then structures (solid scenery), each by category
 	for group in [["Props", PropLib.type_names(), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
@@ -2152,8 +2271,16 @@ func _build_ui() -> void:
 			if not by_cat.has(cat):
 				by_cat[cat] = []
 			by_cat[cat].append(t)
-		for cat in by_cat:
-			var sec := _palette_section(pal, "%s (%d)" % [cat, by_cat[cat].size()], false)
+		var cats: Array = by_cat.keys()
+		if group[2] == "model:" and by_cat.has("Ground"):
+			cats.erase("Ground")
+			cats.push_front("Ground")   # (floors, roads, paths and ice: first, they go down first)
+		for cat in cats:
+			var count: int = by_cat[cat].size() + (2 if cat == "Ground" and group[2] == "model:" else 0)
+			var sec := _palette_section(pal, "%s (%d)" % [cat, count], false)
+			if cat == "Ground" and group[2] == "model:":
+				_palette_button(sec, "Ice (slippery)", "ice", "Ground")
+				_palette_button(sec, "Sidewalk", "sidewalk", "Ground")
 			for t in by_cat[cat]:
 				var label_text: String = PropLib.label(t) if group[2] == "prop:" else Models.label(t)
 				_palette_button(sec, label_text, group[2] + t, cat)
@@ -2228,8 +2355,7 @@ func _build_ui() -> void:
 	var look_row := HBoxContainer.new()
 	_label(look_row, "Look")
 	_look_pick = OptionButton.new()
-	for ln in Models.LOOK_NAMES:
-		_look_pick.add_item(ln)
+	_fill_looks("model")
 	_look_pick.focus_mode = Control.FOCUS_NONE
 	_look_pick.tooltip_text = "Ctrl + mouse wheel cycles through them"
 	_look_pick.item_selected.connect(func(i): set_value(selected, "look", i, "look"))
@@ -2334,6 +2460,7 @@ func _build_ui() -> void:
 	status.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	status.offset_top = -38
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status.grow_vertical = Control.GROW_DIRECTION_BEGIN   # (big text wraps upward instead of off the bottom)
 	status.add_theme_color_override("font_outline_color", Color.BLACK)
 	status.add_theme_constant_override("outline_size", 6)
 	ui.add_child(status)
@@ -2364,7 +2491,7 @@ func _update_palette_where() -> void:
 	if group != "":
 		text = group if section_y < group_y else "%s  >  %s" % [group, section]
 	if text == "":
-		text = "Place"
+		text = "Special structures"
 	if _palette_where.text != text:
 		_palette_where.text = text
 
@@ -2478,6 +2605,7 @@ func _sync_settings() -> void:
 	_wall_pick.color = Color(map["wall_color"])
 	_time_pick.select(MapData.TIMES.find(map["time"]))
 	_weather_pick.select(MapData.WEATHERS.find(map["weather"]))
+	_backdrop_pick.select(MapData.BACKDROPS.find(map["backdrop"]))
 	_cycle_pick.select(MapData.CYCLES.find(map["cycle"]))
 	main.graphics.set_time_of_day(map["time"])
 	main.graphics.set_weather(map["weather"])
@@ -2515,8 +2643,9 @@ func _sync_inspector() -> void:
 	_rows["color"].visible = t in ["block", "cylinder", "light"]
 	if t == "ice":
 		_size_title.text = "Size (m; ice is always thin)"
-	_rows["look"].visible = t == "model"
-	if t == "model":
+	_rows["look"].visible = t in ["model", "window"]
+	_fill_looks(t)
+	if t in ["model", "window"]:
 		_look_pick.select(int(p.get("look", 0)))
 		_car_lights.visible = Models.is_car(p["model"])
 		_car_lights.set_pressed_no_signal(p.get("lights", false))
@@ -2555,4 +2684,4 @@ func _say(text: String, seconds: float) -> void:
 
 
 func _help_text() -> String:
-	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend   Shift+wheel turn   Alt+wheel size   Ctrl+wheel look   Arrows nudge   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
+	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend   Shift+wheel turn   Alt+wheel size   Ctrl+wheel look   Arrows nudge (hold to keep going; Shift: slide up against the next piece)   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"

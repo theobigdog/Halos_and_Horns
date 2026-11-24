@@ -25,6 +25,7 @@ instance uniform float seed = 0.0;
 instance uniform int look = 0;
 global uniform float grime_amount;
 varying vec3 lp;
+varying float win;   // 1 on a city building's window glass (marked in the mesh: _mark_windows)
 
 float hash3(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -67,6 +68,7 @@ float cell_edge(vec3 p) {
 
 void vertex() {
 	lp = VERTEX;
+	win = CUSTOM0.x;
 }
 
 void fragment() {
@@ -76,6 +78,15 @@ void fragment() {
 	float spots = smoothstep(0.8, 0.92, noise3(p * 6.0)) * 0.7;          // a few soft specks
 	float crack_zone = smoothstep(0.56, 0.76, fbm(p * 0.35 + 40.0));       // cracks only in the odd patch
 	float crack = (1.0 - smoothstep(0.008, 0.03, cell_edge(p * 1.8))) * crack_zone;
+	// Walls and windows crack separately (Wife's notes, Nov 21: the cracks ran straight across the
+	// windows): each building has cracked walls or not, and cracked windows or not, in their own
+	// pattern, so the two never line up.
+	float wall_cracks = step(0.4, fract(sin(seed * 91.37) * 4375.85));
+	float glass_cracks = step(0.55, fract(sin(seed * 47.13 + 5.0) * 2731.31));
+	vec3 gp = lp * 5.0 + vec3(seed * 3.3 + 50.0, seed * 1.9, 7.0);
+	float glass_zone = smoothstep(0.5, 0.65, fbm(gp * 0.25));
+	float glass_crack = (1.0 - smoothstep(0.01, 0.035, cell_edge(gp))) * glass_zone;
+	crack = mix(crack * wall_cracks, glass_crack * glass_cracks * 1.4, step(0.5, win));
 	vec3 dirt = vec3(0.62, 0.55, 0.47);                                   // brownish grime, not just grey
 	vec3 col = mix(vec3(1.0), dirt, clamp(blotch * 0.55 + (mottle - 0.5) * 0.35, 0.0, 1.0));
 	col *= 1.0 - spots * 0.3;
@@ -111,11 +122,56 @@ static var _grime_count := 0
 static func grime_material() -> ShaderMaterial:
 	if _grime == null:
 		RenderingServer.global_shader_parameter_add("grime_amount", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 1.0 if grime_on else 0.0)
+		RenderingServer.global_shader_parameter_add("snow_cover", RenderingServer.GLOBAL_VAR_TYPE_FLOAT, 0.0)
 		var sh := Shader.new()
 		sh.code = GRIME_SHADER
 		_grime = ShaderMaterial.new()
 		_grime.shader = sh
 	return _grime
+
+
+# Snow lying on the tops of things (trees, lamp posts, cars, roofs): a second pass over every model
+# while it's snowing, whitening upward-facing surfaces more as snow_cover grows (graphics.gd).
+const SNOW_SHADER := """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_back, shadows_disabled;
+global uniform float snow_cover;
+varying float up;
+varying vec3 wp;
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n2(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
+}
+void vertex() {
+	up = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
+	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	VERTEX += NORMAL * 0.004;
+}
+void fragment() {
+	float n = n2(wp.xz * 2.5) * 0.6 + n2(wp.xz * 9.0) * 0.4;
+	float lying = smoothstep(0.35, 0.75, up + (n - 0.5) * 0.35 - (1.0 - snow_cover) * 0.4);
+	ALBEDO = vec3(0.93, 0.95, 1.0);
+	ROUGHNESS = 0.85;
+	ALPHA = lying * clamp(snow_cover * 1.4, 0.0, 1.0);
+}
+"""
+static var _snow_pass: ShaderMaterial
+static var festive := false       # snowy maps: Christmas lights on trees and buildings (set by graphics.gd)
+
+
+static func set_snow(cover: float) -> void:
+	var g := grime_material()
+	RenderingServer.global_shader_parameter_set("snow_cover", cover)
+	if cover > 0.0 and g.next_pass == null:
+		if _snow_pass == null:
+			var sh := Shader.new()
+			sh.code = SNOW_SHADER
+			_snow_pass = ShaderMaterial.new()
+			_snow_pass.shader = sh
+		g.next_pass = _snow_pass
+	elif cover <= 0.0 and g.next_pass != null:
+		g.next_pass = null
 
 
 # Graphics quality: grime on Medium and High, off on Low.
@@ -129,6 +185,173 @@ static var grime_on := true
 
 
 const LOOK_NAMES := ["Weathered", "Clean", "Mossy", "Charred", "Aged", "Shadowy", "Icy", "Bloodstained"]
+
+
+# City buildings: a copy of the mesh with each window pane marked (CUSTOM0), so the grime shader can crack
+# windows and walls separately. Panes are the faces set back behind the wall and facing out.
+static var _marked := {}
+
+
+static func _mark_windows(id: String, holder: Node3D) -> void:
+	if not id.begins_with("city/building"):
+		return
+	if not _cores.has(id + "@" + str(Vector3.ONE)):
+		var f := PackedVector3Array()
+		var bare := _raw(id)   # (not faces(): that builds an instance, which would come back here)
+		_collect(bare, Transform3D.IDENTITY, f)
+		bare.free()
+		_cores[id + "@" + str(Vector3.ONE)] = _measure_core(f)
+	var core: AABB = _cores[id + "@" + str(Vector3.ONE)]
+	if core.size == Vector3.ZERO:
+		return
+	for c in holder.find_children("*", "MeshInstance3D", true, false):
+		var mi: MeshInstance3D = c
+		if not mi.mesh is ArrayMesh:
+			continue
+		var key := "%s:%s" % [id, mi.name]
+		if not _marked.has(key):
+			_marked[key] = _marked_mesh(mi.mesh, holder.global_transform.affine_inverse() * mi.global_transform
+					if mi.is_inside_tree() else _to_holder(mi, holder), core)
+		mi.mesh = _marked[key]
+
+
+static func _to_holder(n: Node, holder: Node) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	while n != null and n != holder:
+		if n is Node3D:
+			xf = (n as Node3D).transform * xf
+		n = n.get_parent()
+	return xf
+
+
+static func _marked_mesh(src: ArrayMesh, xf: Transform3D, core: AABB) -> ArrayMesh:
+	var out := ArrayMesh.new()
+	for si in src.get_surface_count():
+		var arrays := src.surface_get_arrays(si)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var idx = arrays[Mesh.ARRAY_INDEX]
+		var mark := PackedByteArray()
+		mark.resize(verts.size() * 4)
+		mark.fill(0)
+		var tris: int = (idx.size() if idx != null else verts.size()) / 3
+		for t in tris:
+			var ia: int = idx[t * 3] if idx != null else t * 3
+			var ib: int = idx[t * 3 + 1] if idx != null else t * 3 + 1
+			var ic: int = idx[t * 3 + 2] if idx != null else t * 3 + 2
+			var a := xf * verts[ia]
+			var b := xf * verts[ib]
+			var cc := xf * verts[ic]
+			var nrm := (b - a).cross(cc - a)
+			if nrm.length() < 0.000001:
+				continue
+			nrm = nrm.normalized()
+			var mid := (a + b + cc) / 3.0
+			if absf(nrm.y) > 0.3 or mid.y < 0.3 or mid.y > core.end.y:
+				continue
+			var ax := 0 if absf(nrm.x) > absf(nrm.z) else 2
+			var wall: float = core.end[ax] if nrm[ax] > 0.0 else core.position[ax]   # (the wall it faces out of)
+			var depth := absf(wall - mid[ax])
+			var inside: bool = mid[ax] < core.end[ax] - 0.02 and mid[ax] > core.position[ax] + 0.02
+			if inside and depth > 0.04 and depth < 0.7 and absf(nrm[ax]) > 0.9:
+				for v in [ia, ib, ic]:
+					mark[v * 4] = 255
+		arrays[Mesh.ARRAY_CUSTOM0] = mark
+		var fmt := (Mesh.ARRAY_CUSTOM_RGBA8_UNORM << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT)
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, fmt)
+		out.surface_set_material(out.get_surface_count() - 1, src.surface_get_material(si))
+	return out
+
+
+# Christmas lights when it snows (Wife's notes, Nov 21): a spiral of coloured bulbs and a gold star on
+# trees, a drooping string of bulbs along the front and back of city buildings. Twinkling in a shader.
+const BULB_SHADER := """
+shader_type spatial;
+render_mode unshaded;
+varying vec3 bulb;
+varying float tw;
+void vertex() {
+	bulb = COLOR.rgb;   // (the multimesh's per-bulb colour)
+	tw = 0.65 + 0.35 * sin(TIME * 2.2 + float(INSTANCE_ID) * 1.7);
+}
+void fragment() {
+	ALBEDO = bulb * (1.2 + tw * 1.6);
+}
+"""
+static var _bulb_mesh: SphereMesh
+static var _bulb_mat: ShaderMaterial
+const BULB_COLORS := [Color(1.0, 0.15, 0.1), Color(0.1, 0.9, 0.25), Color(1.0, 0.8, 0.15), Color(0.2, 0.45, 1.0)]
+
+
+static func _bulbs(points: Array, holder: Node3D) -> void:
+	if points.is_empty():
+		return
+	if _bulb_mesh == null:
+		_bulb_mesh = SphereMesh.new()
+		_bulb_mesh.radius = 0.08
+		_bulb_mesh.height = 0.16
+		_bulb_mesh.radial_segments = 6
+		_bulb_mesh.rings = 3
+		var sh := Shader.new()
+		sh.code = BULB_SHADER
+		_bulb_mat = ShaderMaterial.new()
+		_bulb_mat.shader = sh
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = _bulb_mesh
+	mm.instance_count = points.size()
+	for i in points.size():
+		mm.set_instance_transform(i, Transform3D(Basis(), points[i]))
+		mm.set_instance_color(i, BULB_COLORS[i % BULB_COLORS.size()])
+	var mmi := MultiMeshInstance3D.new()
+	mmi.multimesh = mm
+	mmi.material_override = _bulb_mat
+	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	holder.add_child(mmi)
+
+
+static func _add_festive(id: String, holder: Node3D, extra_scale: Vector3) -> void:
+	var name := id.get_slice("/", 1)
+	var s := size(id) * extra_scale
+	var pts := []
+	if (name.begins_with("tree") or name.contains("_tree")) and s.y > 1.0:   # (not "streetlight")
+		# a spiral round the tree, narrowing toward the top
+		var turns := 4.0
+		var count := int(clampf(s.y * 14.0, 20.0, 90.0))
+		var r := minf(s.x, s.z) * 0.42
+		for i in count:
+			var k := float(i) / count
+			var a := k * turns * TAU
+			var y := lerpf(s.y * 0.18, s.y * 0.9, k)
+			var rr := r * (1.0 - (y / s.y)) * 1.15 + 0.08
+			pts.append(Vector3(cos(a) * rr, y, sin(a) * rr))
+		_bulbs(pts, holder)
+		var star := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.14
+		sm.height = 0.28
+		sm.radial_segments = 5
+		sm.rings = 2
+		star.mesh = sm
+		var gold := StandardMaterial3D.new()
+		gold.albedo_color = Color(1.0, 0.85, 0.3)
+		gold.emission_enabled = true
+		gold.emission = Color(1.0, 0.8, 0.3)
+		gold.emission_energy_multiplier = 2.5
+		star.material_override = gold
+		star.position.y = s.y + 0.08
+		holder.add_child(star)
+	elif id.begins_with("city/building"):
+		var core: AABB = _cores.get(id + "@" + str(Vector3.ONE), AABB())
+		if core.size == Vector3.ZERO:
+			return
+		for zside in [core.end.z + 0.12, core.position.z - 0.12]:
+			var x := core.position.x
+			while x <= core.end.x:
+				var k := fposmod(x - core.position.x, 1.2) / 1.2
+				pts.append(Vector3(x, core.end.y - 0.15 - sin(k * PI) * 0.25, zside) * extra_scale)
+				x += 0.4
+		_bulbs(pts, holder)
 
 
 static func _add_grime(node: Node, look := 0) -> void:
@@ -185,7 +408,17 @@ static func label(id: String) -> String:
 
 
 static func category(id: String) -> String:
+	if is_ground(id):
+		return "Ground"
 	return entry(id).get("cat", "")
+
+
+# Floors, roads, paths and dirt (Creative's "Ground" list, with ice).
+static func is_ground(id: String) -> bool:
+	var name := id.get_slice("/", 1)
+	if name == "bed_floor" or not is_structure(id):
+		return false
+	return name.begins_with("road_") or name.begins_with("floor_") or name.begins_with("path_") or name.begins_with("sidewalk")
 
 
 # Its size in metres at scale 1 (already converted to our world).
@@ -212,16 +445,66 @@ static func _raw(id: String, extra_scale := Vector3.ONE) -> Node3D:
 	return holder
 
 
+# Turns a model's yellow/orange leaves green (the green pines), leaving brown bark alone.
+const GREEN_SHADER := """
+shader_type spatial;
+uniform sampler2D tex : source_color, filter_linear_mipmap;
+uniform vec4 tint : source_color = vec4(1.0);
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+	vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+	return c.z * clamp(p - 1.0, 0.0, 1.0);
+}
+void fragment() {
+	vec3 c = texture(tex, UV).rgb * tint.rgb;
+	vec3 h = rgb2hsv(c);
+	// leaves: yellow to orange and fairly bright/saturated; bark is darker brown
+	float leaf = smoothstep(0.03, 0.07, h.x) * (1.0 - smoothstep(0.2, 0.26, h.x)) * smoothstep(0.35, 0.5, h.y) * smoothstep(0.3, 0.45, h.z);
+	vec3 g = hsv2rgb(vec3(0.3 + (h.x - 0.12) * 0.3, min(h.y * 0.95, 0.85), h.z * 0.62));
+	ALBEDO = mix(c, g, leaf);
+	ROUGHNESS = 0.9;
+}
+"""
+static var _green_shader: Shader
+
+
+static func _make_green(model: Node3D) -> void:
+	if _green_shader == null:
+		_green_shader = Shader.new()
+		_green_shader.code = GREEN_SHADER
+	for mi in model.find_children("*", "MeshInstance3D", true, false):
+		var m: MeshInstance3D = mi
+		for si in m.mesh.get_surface_count():
+			var src = m.get_active_material(si)
+			if src is StandardMaterial3D:
+				var sm := ShaderMaterial.new()
+				sm.shader = _green_shader
+				sm.set_shader_parameter("tex", src.albedo_texture)
+				sm.set_shader_parameter("tint", src.albedo_color)
+				m.set_surface_override_material(si, sm)
+
+
 static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3D:
 	var e := entry(id)
 	var holder := _raw(id, extra_scale)
 	if holder.get_child_count() == 0:
 		return holder
 	var model: Node3D = holder.get_child(0)
+	_mark_windows(id, holder)
 	_add_grime(model, look)
+	if festive:
+		_add_festive(id, holder, extra_scale)
 	_add_glow(id, holder)
 	if e.get("extra", "") == "crosswalk_end":
 		_add_crosswalk(holder, size(id) * extra_scale)
+	if e.get("extra", "") == "green":
+		_make_green(model)
 	if id.begins_with("city/trafficlight"):
 		var heads := lamp_spots(id)
 		if not heads.is_empty():
@@ -230,7 +513,68 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 				sig.heads.append([h[0] * extra_scale, h[1] * extra_scale, h[2]])
 			sig.lamp_radius = h_radius(heads) * extra_scale.x
 			holder.add_child(sig)
+		holder.add_child(_street_signs(id, extra_scale))
 	return holder
+
+
+# Two green street-name signs crossed on a traffic light's pole (Wife's notes, Nov 21).
+const STREETS := ["Angel Avenue", "Devil Drive"]
+
+
+static func _street_signs(id: String, extra_scale: Vector3) -> Node3D:
+	# the pole: the middle of everything near the ground
+	var f := PackedVector3Array()
+	var bare := _raw(id)
+	_collect(bare, Transform3D.IDENTITY, f)
+	bare.free()
+	var sum := Vector3.ZERO
+	var n := 0
+	for v in f:
+		if v.y < 0.6:
+			sum += v
+			n += 1
+	var pole := sum / maxi(n, 1)
+	var root := Node3D.new()
+	root.name = "StreetSigns"
+	root.set_meta("extra", true)   # (not part of the model's own shape: tests measure without it)
+	root.position = Vector3(pole.x, 1.95, pole.z) * extra_scale
+	var green := StandardMaterial3D.new()
+	green.albedo_color = Color(0.05, 0.42, 0.2)
+	green.roughness = 0.5
+	var edge := StandardMaterial3D.new()
+	edge.albedo_color = Color(0.92, 0.92, 0.9)
+	for k in 2:
+		var arm := Node3D.new()
+		arm.position.y = 0.2 * k
+		arm.rotation.y = PI / 2 * k
+		root.add_child(arm)
+		var off := Vector3(0.47 * (1.0 if k == 0 else -1.0), 0, 0)   # (hanging off the pole, so it doesn't hide the name)
+		var plate := MeshInstance3D.new()
+		var b := BoxMesh.new()
+		b.size = Vector3(0.95, 0.19, 0.025)
+		plate.mesh = b
+		plate.material_override = green
+		plate.position = off
+		arm.add_child(plate)
+		var rim := MeshInstance3D.new()
+		var rb := BoxMesh.new()
+		rb.size = Vector3(0.97, 0.21, 0.02)
+		rim.mesh = rb
+		rim.material_override = edge
+		rim.position = off
+		arm.add_child(rim)
+		for side in [1.0, -1.0]:
+			var t := Label3D.new()
+			t.text = STREETS[k]
+			t.font_size = 40
+			t.pixel_size = 0.0031
+			t.outline_size = 0
+			t.modulate = Color(1, 1, 1)
+			t.double_sided = false
+			t.position = off + Vector3(0, 0, 0.0135 * side)
+			t.rotation.y = 0.0 if side > 0.0 else PI
+			arm.add_child(t)
+	return root
 
 
 # ---- traffic lights: where the painted lamps are ----

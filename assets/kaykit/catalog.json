@@ -10021,5 +10021,62 @@
 -0.0
 ],
 "extra": "crosswalk_end"
+},
+{
+"id": "halloween/tree_pine_green_large",
+"path": "res://assets/kaykit/halloween/tree_pine_yellow_large.gltf",
+"label": "Tree pine green large",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+3.57,
+5.606,
+3.116
+],
+"offset": [
+-0.013,
+0.416,
+-0.001
+],
+"extra": "green"
+},
+{
+"id": "halloween/tree_pine_green_medium",
+"path": "res://assets/kaykit/halloween/tree_pine_yellow_medium.gltf",
+"label": "Tree pine green medium",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+2.497,
+4.404,
+2.34
+],
+"offset": [
+0.009,
+0.36,
+-0.154
+],
+"extra": "green"
+},
+{
+"id": "halloween/tree_pine_green_small",
+"path": "res://assets/kaykit/halloween/tree_pine_yellow_small.gltf",
+"label": "Tree pine green small",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+1.801,
+3.032,
+1.648
+],
+"offset": [
+-0.012,
+0.296,
+0.034
+],
+"extra": "green"
 }
 ]

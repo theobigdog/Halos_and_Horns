@@ -38,7 +38,8 @@ const MAX_GRID := 400            # copies in one floor, at most
 #   (map settings also include "time": "day", "dusk" or "night", "weather" (WEATHERS) and "cycle":
 #   minutes for a day/night cycle, 0 = off)
 #   bouncy / bouncy_once, shrine, angel_spawn, demon_spawn: special pieces (pos, rot)
-const TYPES := ["block", "cylinder", "prop", "model", "light", "ice", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
+#   sidewalk: a raised concrete slab ("size"); window: a picture for a window ("size" x/y, "look" 0..4)
+const TYPES := ["block", "cylinder", "prop", "model", "light", "ice", "sidewalk", "window", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
 const SHAPED := ["block", "cylinder"]
 
 
@@ -154,6 +155,7 @@ static func clean(raw: Dictionary) -> Dictionary:
 		"random_props": int(_num(raw.get("random_props"), 0, 300, 0)),
 		"time": raw.get("time") if raw.get("time") in TIMES else "day",
 		"weather": raw.get("weather") if raw.get("weather") in WEATHERS else "sunny_cloudy",
+		"backdrop": raw.get("backdrop") if raw.get("backdrop") in BACKDROPS else "none",   # scenery past the walls
 		"cycle": int(raw.get("cycle", 0)) if typeof(raw.get("cycle")) in [TYPE_INT, TYPE_FLOAT] and int(raw.get("cycle")) in CYCLES else 0,
 		"pieces": [],
 	}
@@ -175,6 +177,13 @@ static func clean(raw: Dictionary) -> Dictionary:
 		if t in SHAPED:
 			c["size"] = _arr(_vec(p.get("size"), 0.05, 400.0, Vector3.ONE))
 			c["color"] = _color(p.get("color"), "#a09080")
+		elif t == "sidewalk":
+			var ssz := _vec(p.get("size"), 0.3, 100.0, Vector3(2, 0.18, 6))
+			c["size"] = _arr(Vector3(ssz.x, clampf(ssz.y, 0.05, 0.6), ssz.z))
+		elif t == "window":
+			var wsz := _vec(p.get("size"), 0.2, 12.0, Vector3(1, 1.4, 0.02))
+			c["size"] = _arr(Vector3(wsz.x, wsz.y, 0.02))
+			c["look"] = int(_num(p.get("look"), 0.0, 4.0, 0.0))
 		elif t == "ice":
 			var isz := _vec(p.get("size"), 0.5, 100.0, Vector3(4, 0.06, 4))
 			c["size"] = _arr(Vector3(isz.x, 0.06, isz.z))   # a slippery sheet: always thin
@@ -237,9 +246,10 @@ static func clean_piece(p) -> Dictionary:
 	return {}
 
 
-const SETTING_KEYS := ["name", "author", "size", "ceiling", "ground_color", "wall_color", "random_props", "time", "weather", "cycle"]
+const SETTING_KEYS := ["name", "author", "size", "ceiling", "ground_color", "wall_color", "random_props", "time", "weather", "cycle", "backdrop"]
 const TIMES := ["day", "dusk", "night"]
 const WEATHERS := ["clear", "sunny_cloudy", "cloudy", "fog", "snow", "rain"]
+const BACKDROPS := ["none", "hills", "ocean", "mountains", "city"]   # (backdrop.gd)
 const CYCLES := [0, 5, 10, 20, 30]    # minutes for a whole day/night cycle (0: off)
 const LOOKS := 8                      # a structure's look: models.gd LOOK_NAMES
 

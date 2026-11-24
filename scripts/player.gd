@@ -525,6 +525,8 @@ func _physics_process(delta: float) -> void:
 			rate = tuning["ground_accel"]
 		if on_floor and _on_ice:
 			rate *= ICE_GRIP   # ice: hard to get going, harder to stop or turn
+			if target.length() < current.length() or current.normalized().dot(target.normalized()) < 0.7:
+				rate *= ICE_STOP   # (stopping and turning slide even further: Nov 24, "slightly slipperier")
 			# Running and turning hard on ice: you slip and fall for a moment.
 			if current.length() > ICE_SLIP_SPEED and target.length() > 0.5 and current.normalized().dot(target.normalized()) < -0.2 \
 					and _slip_cooldown <= 0.0 and stunned <= 0.0:
@@ -935,6 +937,7 @@ var _pivot_base := 0.0
 const STEP_HEIGHT := 0.5          # walk straight up stairs, curbs and ledges this high (structures only; first guess)
 var _slip_cooldown := 0.0
 const ICE_GRIP := 0.12            # ice: this much of the normal grip (first guess)
+const ICE_STOP := 0.65            # ...and only this much of that for stopping or turning (Nov 24: slipperier; first guess)
 const ICE_SLIP_SPEED := 6.0       # turning back on yourself faster than this on ice: you slip and fall
 const ICE_FALL_TIME := 0.9        # ...and lie there this long
 var _struck_down := false

@@ -21,6 +21,8 @@ uniform vec3 cloud_color = vec3(1.0, 0.86, 0.9);
 uniform float cloud_amount = 0.5;
 uniform float stars = 0.0;
 uniform float overcast = 0.0;
+uniform float puffy = 0.0;      // big puffy cumulus clouds ("sunny, some clouds")
+uniform float rainbow = 0.0;    // after the rain, in daylight
 
 float hash(vec2 p) {
 	vec3 q = fract(vec3(p.xyx) * 0.1031);
@@ -58,7 +60,18 @@ void sky() {
 		vec2 uv = EYEDIR.xz / max(y, 0.05) * 0.6;
 		float c = smoothstep(0.45 - cloud_amount * 0.2, 0.95, fbm(uv));
 		c *= smoothstep(0.02, 0.25, y);
-		col = mix(col, cloud_color * mix(0.85, 1.05, fbm(uv * 2.0)), c * 0.75);
+		col = mix(col, cloud_color * mix(0.85, 1.05, fbm(uv * 2.0)), c * 0.75 * (1.0 - puffy * 0.7));
+		// puffy clouds (Wife's notes, Nov 21: "sunny, some clouds" barely differed from clear): big
+		// separate heaps, bright where the sun hits them and greyer underneath
+		if (puffy > 0.0) {
+			vec2 pu = EYEDIR.xz / max(y, 0.06) * 0.22 + vec2(7.0, 3.0);
+			float d = fbm(pu) + 0.25 * fbm(pu * 3.0);
+			float heap = smoothstep(0.64, 0.71, d) * smoothstep(0.02, 0.15, y);
+			float lit = clamp((d - fbm(pu + LIGHT0_DIRECTION.xz * 0.12) - 0.25 * fbm((pu + LIGHT0_DIRECTION.xz * 0.12) * 3.0)) * 5.0 + 0.55, 0.0, 1.0);
+			vec3 pc = cloud_color * mix(0.7, 1.12, lit);
+			col = mix(col, pc, heap * puffy);
+			c = max(c, heap * puffy);
+		}
 		// stars at night, hidden behind the clouds
 		vec2 cell = floor(EYEDIR.xz / max(y, 0.08) * 60.0);
 		float star = step(0.9965, hash(cell)) * (0.5 + 0.5 * hash(cell + 7.0));
@@ -69,6 +82,16 @@ void sky() {
 	// overcast: a flat grey lid of cloud
 	float lum = dot(col, vec3(0.3, 0.55, 0.15));
 	col = mix(col, vec3(lum) * vec3(0.92, 0.92, 1.0), overcast * smoothstep(-0.05, 0.1, y));
+	// a rainbow arc opposite the sun's side of the sky, after rain in the daytime (Wife's notes, Nov 21)
+	if (rainbow > 0.0 && y > -0.02) {
+		vec3 anti = normalize(vec3(-LIGHT0_DIRECTION.x, -0.2, -LIGHT0_DIRECTION.z));
+		float ang = degrees(acos(clamp(dot(EYEDIR, anti), -1.0, 1.0)));
+		float k = (ang - 40.0) / 4.0;   // 0 at the inside (violet) .. 1 at the outside (red)
+		if (k > 0.0 && k < 1.0) {
+			vec3 bow = clamp(abs(fract(vec3(0.0, 0.33, 0.67) + (1.0 - k) * 0.8) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
+			col += bow * sin(k * 3.14159) * rainbow * 0.45 * smoothstep(-0.02, 0.15, y);
+		}
+	}
 	// the sun: a bright disk with a warm halo around it (hidden by heavy cloud)
 	float sun = max(dot(EYEDIR, LIGHT0_DIRECTION), 0.0);
 	col += LIGHT0_COLOR * (pow(sun, 900.0) * 6.0 + pow(sun, 12.0) * 0.25) * (1.0 - overcast);
@@ -135,15 +158,16 @@ const TIMES := {
 const TIME_NAMES := ["day", "dusk", "night"]
 var time_of_day := "day"
 const Lamp = preload("res://scripts/lamp.gd")
+const Decor = preload("res://scripts/decor.gd")
 var sky_mat: ShaderMaterial
 
 # Weather (a map setting: Ted, Nov 20). Each changes the clouds, sun, haze, and maybe adds snow or rain.
 const WEATHER := {
 	"clear": {"clouds": 0.12, "overcast": 0.0, "sun": 1.0, "fog": 1.0, "fall": ""},
-	"sunny_cloudy": {"clouds": 0.5, "overcast": 0.0, "sun": 1.0, "fog": 1.0, "fall": ""},
+	"sunny_cloudy": {"clouds": 0.35, "overcast": 0.0, "sun": 1.0, "fog": 1.0, "fall": "", "puffy": 1.0},
 	"cloudy": {"clouds": 1.0, "overcast": 0.75, "sun": 0.45, "fog": 1.6, "fall": ""},
 	"fog": {"clouds": 0.7, "overcast": 0.5, "sun": 0.65, "fog": 9.0, "fall": ""},
-	"snow": {"clouds": 1.0, "overcast": 0.8, "sun": 0.5, "fog": 4.0, "fall": "snow"},
+	"snow": {"clouds": 1.0, "overcast": 0.6, "sun": 0.5, "fog": 2.2, "fall": "snow", "exposure": 0.86},
 	"rain": {"clouds": 1.0, "overcast": 0.9, "sun": 0.35, "fog": 3.0, "fall": "rain"},
 }
 var weather := "sunny_cloudy"
@@ -219,6 +243,9 @@ func set_time_of_day(name: String) -> void:
 
 func set_weather(name: String) -> void:
 	weather = name if WEATHER.has(name) else "sunny_cloudy"
+	Models.festive = weather == "snow"
+	snow_cover = 0.25 if weather == "snow" else 0.0
+	Models.set_snow(snow_cover)
 	_apply_look(_cycle_look() if day_cycle > 0.0 else TIMES[time_of_day])
 	_make_fall(WEATHER[weather]["fall"])
 
@@ -246,7 +273,15 @@ func _cycle_look() -> Dictionary:
 	return out
 
 
+# Snow settles over a few minutes (Wife's notes, Nov 21): tops of things whiten more and more.
+const SNOW_BUILD_SECONDS := 180.0
+var snow_cover := 0.0
+
+
 func _process(_delta: float) -> void:
+	if weather == "snow" and snow_cover < 1.0:
+		snow_cover = minf(snow_cover + _delta / SNOW_BUILD_SECONDS, 1.0)
+		Models.set_snow(snow_cover)
 	if day_cycle > 0.0:
 		_apply_look(_cycle_look())
 	if _fall:
@@ -267,11 +302,14 @@ func _apply_look(t: Dictionary) -> void:
 	sky_mat.set_shader_parameter("stars", t["stars"] * (1.0 - w["overcast"]))
 	sky_mat.set_shader_parameter("cloud_amount", w["clouds"])
 	sky_mat.set_shader_parameter("overcast", w["overcast"])
+	sky_mat.set_shader_parameter("puffy", w.get("puffy", 0.0))
+	sky_mat.set_shader_parameter("rainbow", 1.0 if weather == "rain" and t["stars"] < 0.5 else 0.0)
 	env.ambient_light_energy = t["ambient"] * (1.0 + w["overcast"] * 0.25)
 	env.fog_light_color = t["fog"]
 	env.fog_density = 0.0045 * w["fog"]
-	env.tonemap_exposure = t["exposure"]
+	env.tonemap_exposure = t["exposure"] * w.get("exposure", 1.0)   # (snow was washed out: Nov 21)
 	Lamp.darkness = t["stars"]   # (lamps with a daylight sensor come on from dusk)
+	Decor.set_night(t["stars"])   # (window pictures light up at night)
 
 
 func _make_fall(kind: String) -> void:

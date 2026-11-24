@@ -53,55 +53,9 @@ func _ready() -> void:
 	_crystal = Node3D.new()
 	_crystal.position.y = 1.6
 	add_child(_crystal)
-	# The orb (Ted, Nov 19: the old floating diamond and halo were a confusing shape): a glowing ball,
-	# heavenly gold on top and hellish red underneath, inside two rings turning different ways.
-	for half in [[Color(1.0, 0.88, 0.45), false], [Color(0.9, 0.12, 0.06), true]]:
-		var mi := MeshInstance3D.new()
-		var ball := SphereMesh.new()
-		ball.radius = 0.26
-		ball.height = 0.26
-		ball.is_hemisphere = true
-		mi.mesh = ball
-		var m := StandardMaterial3D.new()
-		m.albedo_color = half[0]
-		m.emission_enabled = true
-		m.emission = half[0]
-		m.emission_energy_multiplier = 1.6
-		mi.material_override = m
-		if half[1]:
-			mi.rotation.x = PI   # (the bottom half, upside down)
-		_crystal.add_child(mi)
-	var core := MeshInstance3D.new()
-	var cm := SphereMesh.new()
-	cm.radius = 0.12
-	cm.height = 0.24
-	core.mesh = cm
-	var cmat := StandardMaterial3D.new()
-	cmat.albedo_color = Color(1, 1, 1)
-	cmat.emission_enabled = true
-	cmat.emission = Color(1.0, 0.95, 0.9)
-	cmat.emission_energy_multiplier = 3.0
-	core.material_override = cmat
-	_crystal.add_child(core)
-	for r in [[Color(1.0, 0.8, 0.3), 0.42, Vector3(PI / 2, 0, 0.35)], [Color(0.85, 0.12, 0.08), 0.36, Vector3(PI / 2, 0, -0.6)]]:
-		var ring_holder := Node3D.new()
-		_crystal.add_child(ring_holder)
-		var ring := MeshInstance3D.new()
-		var tm := TorusMesh.new()
-		tm.inner_radius = r[1]
-		tm.outer_radius = r[1] + 0.035
-		ring.mesh = tm
-		var rm := StandardMaterial3D.new()
-		rm.albedo_color = r[0]
-		rm.metallic = 0.8
-		rm.roughness = 0.25
-		rm.emission_enabled = true
-		rm.emission = r[0]
-		rm.emission_energy_multiplier = 0.8
-		ring.material_override = rm
-		ring.rotation = r[2]
-		ring_holder.add_child(ring)
-		_rings.append(ring_holder)
+	# A big sparkly d20 (Wife's notes, Nov 21: the floating ball was dull): gold faces on top, ruby
+	# underneath, glinting as it turns, numbered like a real one (opposite faces add up to 21).
+	_crystal.add_child(_d20(0.34))
 
 	_pillar = MeshInstance3D.new()
 	var pm := CylinderMesh.new()
@@ -138,6 +92,98 @@ func _ready() -> void:
 
 
 const HOLY := Color(1.0, 0.85, 0.35)
+
+const D20_SHADER := """
+shader_type spatial;
+varying float face;
+void vertex() { face = UV.x; }
+void fragment() {
+	vec3 c = COLOR.rgb;
+	// each face glints now and then (a slow twinkle, different per face) on top of the real reflections
+	float tw = pow(max(sin(TIME * 2.3 + face * 7.13) * 0.5 + 0.5, 0.0), 12.0);
+	ALBEDO = c;
+	METALLIC = 0.55;
+	ROUGHNESS = 0.2;
+	EMISSION = c * (0.08 + tw * 2.5);
+}
+"""
+
+
+# An icosahedron with flat faces (gold above, ruby below) and the numbers 1-20 on them.
+func _d20(r: float) -> Node3D:
+	var n := Node3D.new()
+	var t := (1.0 + sqrt(5.0)) / 2.0
+	var v: Array[Vector3] = []
+	for a in [-1.0, 1.0]:
+		for b in [-1.0, 1.0]:
+			v.append(Vector3(0, a, b * t))
+			v.append(Vector3(a, b * t, 0))
+			v.append(Vector3(b * t, 0, a))
+	var faces := []
+	for i in v.size():
+		for j in range(i + 1, v.size()):
+			for k in range(j + 1, v.size()):
+				if absf(v[i].distance_to(v[j]) - 2.0) < 0.01 and absf(v[j].distance_to(v[k]) - 2.0) < 0.01 \
+						and absf(v[i].distance_to(v[k]) - 2.0) < 0.01:
+					faces.append([v[i], v[j], v[k]])
+	# number them so opposite faces add up to 21
+	var nums := {}
+	var next := 1
+	for fi in faces.size():
+		if nums.has(fi):
+			continue
+		var c: Vector3 = (faces[fi][0] + faces[fi][1] + faces[fi][2]) / 3.0
+		for fj in faces.size():
+			var cj: Vector3 = (faces[fj][0] + faces[fj][1] + faces[fj][2]) / 3.0
+			if (cj + c).length() < 0.01:
+				nums[fi] = next
+				nums[fj] = 21 - next
+		next += 1
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var sc := r / sqrt(1.0 + t * t)
+	var gold_c := Color(0.8, 0.52, 0.08)
+	var ruby_c := Color(0.5, 0.01, 0.03)
+	for fi in faces.size():
+		var f: Array = faces[fi]
+		var c: Vector3 = (f[0] + f[1] + f[2]) / 3.0
+		var nrm := c.normalized()
+		var a: Vector3 = f[0]
+		var b: Vector3 = f[1]
+		var d: Vector3 = f[2]
+		if (b - a).cross(d - a).dot(nrm) > 0.0:   # (Godot wants clockwise from the outside)
+			var tmp := b
+			b = d
+			d = tmp
+		var upper := c.y > 0.05 or (absf(c.y) <= 0.05 and fi % 2 == 0)
+		var col := gold_c if upper else ruby_c
+		for q in [a, b, d]:
+			st.set_normal(nrm)
+			st.set_color(col)
+			st.set_uv(Vector2(float(fi), 0.0))
+			st.add_vertex(q * sc)
+		# its number, flat on the face
+		var lbl := Label3D.new()
+		lbl.text = str(nums.get(fi, fi + 1))
+		lbl.font_size = 64
+		lbl.pixel_size = 0.0022
+		lbl.outline_size = 0
+		lbl.modulate = Color(0.3, 0.1, 0.02) if upper else Color(1.0, 0.9, 0.6)
+		lbl.double_sided = false
+		lbl.shaded = false
+		lbl.basis = Basis.looking_at(-nrm, Vector3.UP if absf(nrm.y) < 0.95 else Vector3.FORWARD)
+		lbl.position = c * sc * 1.03
+		n.add_child(lbl)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var mat := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = D20_SHADER
+	mat.shader = sh
+	mi.material_override = mat
+	n.add_child(mi)
+	return n
+
 const HELL := Color(0.95, 0.15, 0.08)
 
 
@@ -178,6 +224,34 @@ func _build_ornaments() -> void:
 	band.inner_radius = 1.62
 	band.outer_radius = 1.72
 	_mesh(band, gold, Vector3(0, 0.24, 0)).scale.y = 0.5
+	# A fancy round rug on the top step (Wife's notes, Nov 21): ivory on the heavenly half, crimson on the
+	# hellish half, gold and black rings, a gold sun on one side, black horns on the other, a gold fringe.
+	var rug := Node3D.new()
+	rug.position.y = 0.372
+	add_child(rug)
+	var ivory_cloth := PropLib.mat(Color(0.96, 0.92, 0.82), "fabric")
+	var crimson := PropLib.mat(Color(0.55, 0.05, 0.08), "fabric")
+	var black_cloth := PropLib.mat(Color(0.1, 0.06, 0.08), "fabric")
+	var gold_thread := _gold_mat()
+	_mesh(_half_disc(1.02, 0.012), ivory_cloth, Vector3.ZERO, rug)
+	_mesh(_half_disc(1.02, 0.012), crimson, Vector3.ZERO, rug).rotation.y = PI
+	for rr in [[0.98, 0.035, gold_thread], [0.74, 0.025, gold_thread], [0.5, 0.02, black_cloth], [0.3, 0.02, gold_thread]]:
+		var ring_m := TorusMesh.new()
+		ring_m.inner_radius = rr[0] - rr[1]
+		ring_m.outer_radius = rr[0]
+		ring_m.rings = 48
+		_mesh(ring_m, rr[2], Vector3(0, 0.014, 0), rug).scale.y = 0.12
+	for k3 in 8:
+		var aa := PI * (k3 + 0.5) / 8.0
+		var ray := _mesh(_box(Vector3(0.035, 0.008, 0.18)), gold_thread, Vector3(cos(aa) * 0.6, 0.016, -sin(aa) * 0.6), rug)
+		ray.rotation.y = aa + PI / 2
+	for k3 in 6:
+		var aa2 := PI + PI * (k3 + 0.5) / 6.0
+		var spike := _mesh(_cyl(0.0, 0.05, 0.14, 4), black_cloth, Vector3(cos(aa2) * 0.6, 0.016, -sin(aa2) * 0.6), rug)
+		spike.basis = _up_to(Vector3(cos(aa2), 0, -sin(aa2))) * Basis.from_scale(Vector3(1, 1, 0.15))
+	for k3 in 28:
+		var aa3 := TAU * k3 / 28.0
+		_mesh(_box(Vector3(0.03, 0.01, 0.07)), gold_thread, Vector3(cos(aa3) * 1.06, 0.006, sin(aa3) * 1.06), rug).rotation.y = -aa3 + PI / 2
 	# The rune ring: glowing glyphs laid in the top, gold on the heavenly half, red on the hellish half
 	_runes = Node3D.new()
 	_runes.position.y = 0.255
@@ -188,8 +262,9 @@ func _build_ornaments() -> void:
 	for i in count:
 		var a := TAU * (i + 0.5) / count
 		var holy := i < count / 2
-		var mat := _glow_mat(HOLY if holy else HELL, 1.3)
-		_rune_mats.append(mat)
+		var mat := _gold_mat() if holy else _glow_mat(HELL, 1.3)
+		if not holy:
+			_rune_mats.append(mat)
 		var glyph := Node3D.new()
 		glyph.position = Vector3(cos(a), 0, sin(a)) * 1.38
 		glyph.rotation.y = -a + PI / 2
@@ -224,19 +299,27 @@ func _build_ornaments() -> void:
 			var halo := TorusMesh.new()
 			halo.inner_radius = 0.1
 			halo.outer_radius = 0.135
-			var h := _mesh(halo, _glow_mat(HOLY, 2.2), Vector3(0, 1.55, 0), pil)
+			var h := _mesh(halo, _gold_mat(), Vector3(0, 1.55, 0), pil)
 			h.rotation.x = 0.25
 			_halos.append(h)
 		else:
-			for side in [-1.0, 1.0]:   # horns, curling out from the top
-				var horn := _mesh(_cyl(0.0, 0.045, 0.26, 8), dark, Vector3(0.1 * side, 1.42, 0), pil)
-				horn.rotation.z = -0.7 * side
-			# a trident standing up out of the middle, its prongs glowing red-hot
-			_mesh(_cyl(0.018, 0.018, 0.5, 6), iron, Vector3(0, 1.55, 0), pil)
-			_mesh(_box(Vector3(0.2, 0.03, 0.03)), iron, Vector3(0, 1.8, 0), pil)
-			for x in [-0.09, 0.0, 0.09]:
-				var tip := _mesh(_cyl(0.0, 0.022, 0.16 if x == 0.0 else 0.13, 6), _glow_mat(HELL, 2.0), Vector3(x, 1.88 + (0.015 if x == 0.0 else 0.0), 0), pil)
-				tip.rotation.z = 0.0
+			# big curved horns sweeping out and up from the top (Wife's notes, Nov 21: instead of a trident),
+			# glowing red-hot at the tips
+			for side in [-1.0, 1.0]:
+				var segs := 7
+				var prev := Vector3(0.07 * side, 1.34, 0)
+				for k2 in segs:
+					var u := float(k2 + 1) / segs
+					# bull-ish: out sideways, up, and the tip curling back in and forward
+					var pt := Vector3(side * (0.06 + 0.3 * sin(u * PI * 0.78)), 1.34 + 0.34 * u * u, 0.1 * sin(u * PI) * u)
+					var rad_a := lerpf(0.085, 0.01, pow(float(k2) / segs, 0.8))
+					var rad_b := lerpf(0.085, 0.01, pow(u, 0.8))
+					var seg := _mesh(_cyl(rad_b, rad_a, prev.distance_to(pt) + 0.02, 8),
+							_glow_mat(HELL, 2.0) if k2 >= segs - 2 else dark, (prev + pt) * 0.5, pil)
+					seg.basis = _up_to(pt - prev)
+					prev = pt
+			# an iron collar round the base of the horns
+			_mesh(_cyl(0.12, 0.13, 0.05, 8), iron, Vector3(0, 1.34, 0), pil)
 	# Gold sparkles rising on the holy side, red embers on the hellish side
 	_add_motes(HOLY, Vector3(0, 0.4, -0.7), 0.3)
 	_add_motes(HELL, Vector3(0, 0.4, 0.7), -0.3)
@@ -247,6 +330,48 @@ func _build_ornaments() -> void:
 	light.omni_range = 5.0
 	light.position.y = 1.6
 	add_child(light)
+
+
+# Polished metallic gold, like the base's band, with a faint glow (Wife's notes, Nov 21).
+var _gold: StandardMaterial3D
+
+
+func _gold_mat() -> StandardMaterial3D:
+	if _gold == null:
+		_gold = StandardMaterial3D.new()
+		_gold.albedo_color = Color(1.0, 0.78, 0.3)
+		_gold.metallic = 1.0
+		_gold.roughness = 0.22
+		_gold.emission_enabled = true
+		_gold.emission = Color(1.0, 0.75, 0.3)
+		_gold.emission_energy_multiplier = 0.25
+	return _gold
+
+
+# Half a thin disc (the rug is two halves of different cloth).
+func _half_disc(r: float, h: float) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segs := 24
+	for i in segs:
+		var a0 := PI * i / segs
+		var a1 := PI * (i + 1) / segs
+		st.set_normal(Vector3.UP)
+		st.add_vertex(Vector3(0, h, 0))
+		st.set_normal(Vector3.UP)
+		st.add_vertex(Vector3(cos(a1) * r, h, -sin(a1) * r))
+		st.set_normal(Vector3.UP)
+		st.add_vertex(Vector3(cos(a0) * r, h, -sin(a0) * r))
+	return st.commit()
+
+
+func _up_to(dir: Vector3) -> Basis:
+	var y := dir.normalized()
+	var x := y.cross(Vector3.BACK)
+	if x.length() < 0.01:
+		x = Vector3.RIGHT
+	x = x.normalized()
+	return Basis(x, y, x.cross(y))
 
 
 func _box(size: Vector3) -> BoxMesh:
