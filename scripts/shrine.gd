@@ -93,6 +93,114 @@ func _ready() -> void:
 
 const HOLY := Color(1.0, 0.85, 0.35)
 
+const SIGIL_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n2(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p) { float v = 0.0; float a = 0.5; for (int i = 0; i < 5; i++) { v += a * n2(p); p = p * 2.07 + 3.1; a *= 0.5; } return v; }
+// distance from p to the segment a-b
+float seg(vec2 p, vec2 a, vec2 b) {
+	vec2 pa = p - a; vec2 ba = b - a;
+	return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+}
+// is p inside the five-pointed star (tips at radius r1, inner corners at r2)?
+float in_star(vec2 p, float r1, float r2) {
+	float a = atan(p.x, p.y);              // 0 straight "up" (toward -z... any way: it's a rug)
+	float k = 6.28318 / 5.0;
+	float m = mod(a + k * 0.5, k) - k * 0.5;  // angle from the nearest tip
+	vec2 q = length(p) * vec2(cos(m), abs(sin(m)));
+	vec2 tip = vec2(r1, 0.0);
+	vec2 cor = r2 * vec2(cos(k * 0.5), sin(k * 0.5));
+	vec2 e = cor - tip;
+	return step(0.0, (q.x - tip.x) * e.y - (q.y - tip.y) * e.x) * 0.0 + step((q - tip).x * e.y - (q - tip).y * e.x, 0.0);
+}
+// a blocky rune: a 4x4 grid of strokes picked by the rune's number
+float rune(vec2 p, float id) {
+	if (abs(p.x) > 0.5 || abs(p.y) > 0.5) return 0.0;
+	vec2 g = floor((p + 0.5) * 4.0);
+	vec2 f = fract((p + 0.5) * 4.0);
+	float on = step(0.45, h(g + id * 17.3));
+	// strokes: horizontal or vertical bars inside the cell, so it reads as a glyph, not noise
+	float bar = h(g * 3.1 + id) > 0.5 ? step(abs(f.y - 0.5), 0.22) : step(abs(f.x - 0.5), 0.22);
+	return on * bar;
+}
+void fragment() {
+	vec2 p = (UV - 0.5) * 2.24;           // metres from the middle
+	float r = length(p);
+	float ang = atan(p.y, p.x);
+	// the ragged, charred edge of the cloth
+	float edge = 1.07 + (fbm(vec2(ang * 3.0, 1.0)) - 0.5) * 0.08 + (n2(vec2(ang * 40.0, 2.0)) - 0.5) * 0.02;
+	if (r > edge) discard;
+	float grime = fbm(p * 3.0);
+	float blotch = fbm(p * 1.4 + 7.0);
+	vec3 crimson = mix(vec3(0.14, 0.006, 0.02), vec3(0.32, 0.012, 0.045), smoothstep(0.3, 0.75, blotch));
+	crimson = mix(crimson, vec3(0.08, 0.03, 0.04), smoothstep(0.58, 0.72, fbm(p * 2.2 + 3.0)) * 0.8);   // dark scorch patches
+	vec3 char_col = mix(vec3(0.03, 0.025, 0.03), vec3(0.25, 0.02, 0.04), smoothstep(0.55, 0.8, fbm(p * 2.6 + 11.0)));
+	vec3 col = r > 0.86 ? char_col : crimson;
+	// gold: two rings, studs between them, the pentagram (its points touch the inner ring), runes
+	float gold = 0.0;
+	float saw = (n2(vec2(ang * 120.0, r * 60.0)) - 0.5) * 0.006;      // the slightly chewed edges
+	gold = max(gold, 1.0 - smoothstep(0.0, 0.008, abs(r - 0.97) - 0.03 + saw));
+	gold = max(gold, 1.0 - smoothstep(0.0, 0.008, abs(r - 0.81) - 0.045 + saw));
+	for (int i = 0; i < 9; i++) {
+		float a = 6.28318 * (float(i) + 0.5) / 9.0;
+		gold = max(gold, 1.0 - smoothstep(0.022, 0.032, length(p - vec2(cos(a), sin(a)) * 0.885)));
+	}
+	// the star: an outline of ten edges (tips at R1, inner corners at R2), a pentagon joining its tips,
+	// short spokes from each tip out to the ring, and a rune in each panel between star and pentagon
+	float R1 = 0.7;
+	float R2 = 0.3;
+	float lw = 0.03;
+	float line_d = 9.0;
+	for (int i = 0; i < 5; i++) {
+		float at = 1.5708 + 6.28318 * float(i) / 5.0;
+		float ac = at + 6.28318 / 10.0;
+		float an = at + 6.28318 / 5.0;
+		vec2 tip = vec2(cos(at), sin(at)) * R1;
+		vec2 cor = vec2(cos(ac), sin(ac)) * R2;
+		vec2 nxt = vec2(cos(an), sin(an)) * R1;
+		line_d = min(line_d, seg(p, tip, cor));
+		line_d = min(line_d, seg(p, cor, nxt));
+		line_d = min(line_d, seg(p, tip, nxt));
+		line_d = min(line_d, seg(p, tip, vec2(cos(at), sin(at)) * 0.8));
+	}
+	gold = max(gold, 1.0 - smoothstep(0.0, 0.008, line_d - lw + saw));
+	// the star filled a richer crimson
+	float a0 = ang - 1.5708;
+	float k = 6.28318 / 5.0;
+	float m = mod(a0 + k * 0.5, k) - k * 0.5;
+	vec2 q = r * vec2(cos(m), abs(sin(m)));
+	vec2 t0 = vec2(R1, 0.0);
+	vec2 c0 = R2 * vec2(cos(k * 0.5), sin(k * 0.5));
+	vec2 e = c0 - t0;
+	float star = step((q.x - t0.x) * e.y - (q.y - t0.y) * e.x, 0.0);
+	col = mix(col, mix(vec3(0.3, 0.01, 0.04), vec3(0.45, 0.02, 0.07), blotch), star * 0.9);
+	// the panels between the star and the pentagon are darker, each with a rune
+	float pent_r = R1 * cos(k * 0.5) / cos(m);
+	float panel = (1.0 - star) * step(r, pent_r);
+	col = mix(col, col * 0.55, panel);
+	for (int i = 0; i < 5; i++) {
+		float a = 1.5708 + 6.28318 * (float(i) + 0.5) / 5.0;
+		vec2 c = vec2(cos(a), sin(a)) * 0.47;
+		vec2 lp = mat2(vec2(cos(a - 1.5708), sin(a - 1.5708)), vec2(-sin(a - 1.5708), cos(a - 1.5708))) * (p - c);
+		gold = max(gold, rune(lp / 0.17, float(i) + 1.0));
+	}
+	// worn gold leaf: flaked off here and there, tarnished in patches
+	float wear = smoothstep(0.62, 0.7, fbm(p * 7.0 + 21.0));
+	gold *= 1.0 - wear * 0.85;
+	vec3 gold_col = mix(vec3(0.78, 0.52, 0.13), vec3(0.48, 0.3, 0.08), smoothstep(0.35, 0.75, grime));
+	col = mix(col, gold_col, gold);
+	ALBEDO = col;
+	METALLIC = gold * 0.45;
+	ROUGHNESS = mix(0.95, 0.45, gold);
+	SPECULAR = mix(0.15, 0.6, gold);
+}
+"""
+
 const D20_SHADER := """
 shader_type spatial;
 varying float face;
@@ -231,34 +339,21 @@ func _build_ornaments() -> void:
 	band.inner_radius = 1.62
 	band.outer_radius = 1.72
 	_mesh(band, gold, Vector3(0, 0.24, 0)).scale.y = 0.5
-	# A fancy round rug on the top step (Wife's notes, Nov 21): ivory on the heavenly half, crimson on the
-	# hellish half, gold and black rings, a gold sun on one side, black horns on the other, a gold fringe.
-	var rug := Node3D.new()
-	rug.position.y = 0.372
+	# The sigil rug under the d20 (Ted, Nov 25, from a picture he liked): a charred, ragged-edged cloth,
+	# two worn gold rings studded with gold dots, a crimson field, a gold pentagram with the star filled
+	# in, and a gold rune in each of the five panels between its points. All drawn by a shader.
+	var rug := MeshInstance3D.new()
+	var rq := PlaneMesh.new()
+	rq.size = Vector2(2.24, 2.24)
+	rug.mesh = rq
+	var rug_mat := ShaderMaterial.new()
+	var rug_sh := Shader.new()
+	rug_sh.code = SIGIL_SHADER
+	rug_mat.shader = rug_sh
+	rug.material_override = rug_mat
+	rug.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	rug.position.y = 0.373
 	add_child(rug)
-	var ivory_cloth := PropLib.mat(Color(0.96, 0.92, 0.82), "fabric")
-	var crimson := PropLib.mat(Color(0.55, 0.05, 0.08), "fabric")
-	var black_cloth := PropLib.mat(Color(0.1, 0.06, 0.08), "fabric")
-	var gold_thread := _gold_mat()
-	_mesh(_half_disc(1.02, 0.012), ivory_cloth, Vector3.ZERO, rug)
-	_mesh(_half_disc(1.02, 0.012), crimson, Vector3.ZERO, rug).rotation.y = PI
-	for rr in [[0.98, 0.035, gold_thread], [0.74, 0.025, gold_thread], [0.5, 0.02, black_cloth], [0.3, 0.02, gold_thread]]:
-		var ring_m := TorusMesh.new()
-		ring_m.inner_radius = rr[0] - rr[1]
-		ring_m.outer_radius = rr[0]
-		ring_m.rings = 48
-		_mesh(ring_m, rr[2], Vector3(0, 0.014, 0), rug).scale.y = 0.12
-	for k3 in 8:
-		var aa := PI * (k3 + 0.5) / 8.0
-		var ray := _mesh(_box(Vector3(0.035, 0.008, 0.18)), gold_thread, Vector3(cos(aa) * 0.6, 0.016, -sin(aa) * 0.6), rug)
-		ray.rotation.y = aa + PI / 2
-	for k3 in 6:
-		var aa2 := PI + PI * (k3 + 0.5) / 6.0
-		var spike := _mesh(_cyl(0.0, 0.05, 0.14, 4), black_cloth, Vector3(cos(aa2) * 0.6, 0.016, -sin(aa2) * 0.6), rug)
-		spike.basis = _up_to(Vector3(cos(aa2), 0, -sin(aa2))) * Basis.from_scale(Vector3(1, 1, 0.15))
-	for k3 in 28:
-		var aa3 := TAU * k3 / 28.0
-		_mesh(_box(Vector3(0.03, 0.01, 0.07)), gold_thread, Vector3(cos(aa3) * 1.06, 0.006, sin(aa3) * 1.06), rug).rotation.y = -aa3 + PI / 2
 	# The rune ring: glowing glyphs laid in the top, gold on the heavenly half, red on the hellish half
 	_runes = Node3D.new()
 	_runes.position.y = 0.255
