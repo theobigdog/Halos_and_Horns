@@ -213,8 +213,10 @@ func _on_body_entered(body: Node) -> void:
 	if _used:
 		return
 	if body.has_method("bounce_from"):   # an Alarm Cherub: it flies off, away from the middle
-		if body.bounce_from(global_position, velocity()):
+		if body.bounce_from(global_position, velocity()):   # (true only in the deciding game)
 			squish()
+			if one_use:
+				shot()   # ...and that uses up a one-use pad, like a player would
 		return
 	if not body.has_method("bounce"):
 		return
@@ -226,6 +228,17 @@ func _on_body_entered(body: Node) -> void:
 		_used = true
 		if on_used.is_valid():
 			on_used.call(bouncy_id)
+
+
+# Something an angel threw hit it (projectile.gd) or a cherub landed on it: a one-use pad is used up.
+# Only the deciding game (host / practice) calls this; it tells everyone the pad's gone.
+func shot() -> void:
+	if not one_use or _used:
+		return
+	_used = true
+	_squish = 0.25
+	if on_used.is_valid():
+		on_used.call(bouncy_id)
 
 
 func squish() -> void:

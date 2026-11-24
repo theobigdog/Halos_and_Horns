@@ -679,7 +679,7 @@ func _run() -> void:
 	if not orb_hits.is_empty():
 		orb_off = Vector2(orb_hits[0].x - pad.x, orb_hits[0].z - pad.z).length()
 	check(orb_off > 1.5, "...and the vacuum goes off where it comes down, not on the pad (%.1f m away)" % orb_off)
-	# Ordinary blessings still just pop on a bouncy.
+	# Ordinary blessings bounce off a lasting bouncy too (Ted, Nov 24: "multi-use just launch the object away").
 	var plain_hit := []
 	var plain = preload("res://scripts/projectile.gd").new()
 	plain.on_impact = func(p): plain_hit.append(p)
@@ -687,7 +687,7 @@ func _run() -> void:
 	plain.global_position = pad + Vector3(0, 2.0, 0)
 	plain.velocity = Vector3(0, -20, 0)
 	await frames(30)
-	check(plain_hit.size() == 1 and plain_hit[0].distance_to(pad) < 0.6, "...ordinary blessings don't bounce")
+	check(plain_hit.is_empty() or plain_hit[0].distance_to(pad) > 1.0, "...ordinary blessings bounce off it too, not popping on the pad")
 	# One-use bouncies: the first bounce uses it up for the round.
 	var one: Node3D = main.bouncies.get(0)
 	check(one != null, "one-use bouncies are out each round")

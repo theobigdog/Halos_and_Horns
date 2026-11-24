@@ -135,9 +135,16 @@ func _physics_process(delta: float) -> void:
 		global_position = to
 		return
 	var collider: Object = hit["collider"]
-	if bounces_on_pads and _pad_bounces < MAX_PAD_BOUNCES and collider is Node and collider.is_in_group("bouncy_pad"):
-		_bounce_off_pad(hit, collider)
-		return
+	# Bouncy pads (Nov 24): a one-use pad is used up by anything thrown at it (the throw goes off as
+	# usual); a lasting pad flings every thrown thing back up into the air.
+	if collider is Node and collider.is_in_group("bouncy_pad"):
+		var pad: Node = (collider as Node).get_parent()
+		if pad != null and pad.get("one_use") == true:
+			if not visual_only and pad.has_method("shot"):
+				pad.shot()   # (the host's / practice game's copy decides; it tells everyone)
+		elif _pad_bounces < MAX_PAD_BOUNCES:
+			_bounce_off_pad(hit, collider)
+			return
 	var hit_demon := false
 	# take_hit returns true only if the hit counted (a demon, not a fellow angel).
 	if not visual_only and on_impact.is_valid():
@@ -195,6 +202,8 @@ func _bounce_off_pad(hit: Dictionary, pad: Node) -> void:
 	var out := velocity.bounce(n)
 	velocity = Vector3(out.x, 0.0, out.z) * PAD_KEEP_SIDEWAYS   # pads fling things UP, so most of the
 	velocity.y = PAD_BOUNCE_SPEED                                # sideways speed goes (else it sails off the map)
+	if pad.get_parent() and pad.get_parent().get("super_bouncy") == true:
+		velocity.y *= 1.45   # (the magic pad throws it higher)
 	global_position = hit["position"] + n * 0.05
 	_life = LIFETIME + 1.0
 	if pad.get_parent() and pad.get_parent().has_method("squish"):

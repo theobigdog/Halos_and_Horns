@@ -61,7 +61,15 @@ func _ready() -> void:
 	var svc := SubViewportContainer.new()
 	svc.custom_minimum_size = Vector2(300, 380)
 	svc.stretch = true
+	svc.mouse_default_cursor_shape = Control.CURSOR_DRAG
+	svc.tooltip_text = "Drag to turn it round (up and down to look from above or below); mouse wheel to zoom"
+	svc.gui_input.connect(_preview_input)
 	left.add_child(svc)
+	var hint := Label.new()
+	hint.text = "Drag to turn  ·  wheel to zoom"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.modulate = Color(1, 1, 1, 0.6)
+	left.add_child(hint)
 	_view = SubViewport.new()
 	_view.own_world_3d = true
 	_view.transparent_bg = true
@@ -79,11 +87,10 @@ func _ready() -> void:
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-35, -30, 0)
 	_view.add_child(sun)
-	var cam := Camera3D.new()
-	cam.position = Vector3(0, 1.15, -3.6)
-	cam.fov = 38.0
-	_view.add_child(cam)
-	cam.look_at(Vector3(0, 0.95, 0))
+	_cam = Camera3D.new()
+	_cam.fov = 38.0
+	_view.add_child(_cam)
+	_place_camera()
 	# Right: the slots and presets
 	var right := VBoxContainer.new()
 	right.add_theme_constant_override("separation", 8)
@@ -183,6 +190,7 @@ func _sync() -> void:
 		_model.queue_free()
 	_model = Characters.build(team, o, 1.7)
 	_stage.add_child(_model)
+	_model.rotation.y = _yaw   # (keeps facing the way you turned it)
 
 
 func _pick(slot: String, value) -> void:
@@ -258,6 +266,43 @@ func _delete_preset() -> void:
 	_fill_presets()
 
 
-func _process(delta: float) -> void:
-	if visible and is_instance_valid(_model):
-		_model.rotation.y += delta * 0.6
+# The preview turns only when you drag it (Ted, Nov 24: "I'd like to control where I'm looking"):
+# left/right turns the character, up/down looks from higher or lower, the wheel zooms.
+var _cam: Camera3D
+var _yaw := 0.0
+var _pitch := 0.15
+var _dist := 3.6
+var _dragging := false
+
+
+func _preview_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			_dragging = mb.pressed
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_dist = maxf(_dist - 0.25, 1.6)
+			_place_camera()
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_dist = minf(_dist + 0.25, 5.5)
+			_place_camera()
+	elif event is InputEventMouseMotion and _dragging:
+		var mm: InputEventMouseMotion = event
+		_yaw += mm.relative.x * 0.012
+		_pitch = clampf(_pitch + mm.relative.y * 0.006, -0.35, 1.1)
+		if is_instance_valid(_model):
+			_model.rotation.y = _yaw
+		_place_camera()
+
+
+func _place_camera() -> void:
+	if _cam == null:
+		return
+	var focus := Vector3(0, 0.95, 0)
+	_cam.position = focus + Vector3(0, sin(_pitch), -cos(_pitch)) * _dist
+	_cam.look_at(focus)
+
+
+func _process(_delta: float) -> void:
+	if not visible:
+		_dragging = false

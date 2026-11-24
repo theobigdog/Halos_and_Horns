@@ -327,6 +327,36 @@ func _run() -> void:
 	var high := await bounce_peak(Vector3(6, 0, 18))
 	check(normal > 6.0, "a normal pad flings you up (%.1f m)" % normal)
 	check(high > normal * 1.6, "a super-bouncy pad flings you much higher (%.1f m)" % high)
+	# Thrown things: a one-use pad is used up by a blessing hitting it; a lasting pad flings it back up
+	var used_ids := []
+	var once := Bouncy.new()
+	once.one_use = true
+	once.bouncy_id = 77
+	once.on_used = func(id): used_ids.append(id)
+	main.world_root.add_child(once)
+	once.position = Vector3(-14, 0, 22)
+	var stays := Bouncy.new()
+	main.world_root.add_child(stays)
+	stays.position = Vector3(-18, 0, 22)
+	await frames(3)
+	var Proj = load("res://scripts/projectile.gd")
+	var shots := []
+	for at in [once.position, stays.position]:
+		var pr: Node3D = Proj.new()
+		main.world_root.add_child(pr)
+		pr.global_position = at + Vector3(0, 2.0, 0)
+		pr.velocity = Vector3(0, -8, 0)
+		shots.append(pr)
+	var flung_up := false
+	for k in 40:
+		await frames(1)
+		if is_instance_valid(shots[1]) and shots[1].velocity.y > 5.0:
+			flung_up = true
+	check(used_ids == [77], "a blessing hitting a one-use pad uses it up (%s)" % [used_ids])
+	check(flung_up, "...and one hitting a lasting pad is flung back up into the air")
+	for n in [once, stays] + shots:
+		if is_instance_valid(n):
+			n.queue_free()
 
 	# ---- Creative mode: place a structure, scale it, find things with the search box ----
 	main.open_editor()
