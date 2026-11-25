@@ -1301,6 +1301,7 @@ func try_throw() -> bool:
 func _shoot() -> void:
 	var p := Projectile.new()
 	p.color = Blessings.color(blessing)   # before add_child: its glow is built on entering the world
+	p.kind = blessing
 	p.visual_only = net_mode == "client"  # joined players only show throws; the host decides hits
 	get_parent().add_child(p)
 	var forward := -camera.global_transform.basis.z

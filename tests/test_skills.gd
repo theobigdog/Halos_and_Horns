@@ -814,9 +814,10 @@ func _run() -> void:
 			total_after += b.health
 		# A random prop can sit between the hand and the target (props move each round):
 		# line up again and retry a couple of times before calling it a miss.
-		for retry in 2:
-			if total_after != total_before:
-				break
+		for retry in 3:
+			if total_before - total_after >= Skills.SCRIPTURE_DAMAGE + Skills.SMITE_MIN_DAMAGE:
+				break   # (a prop in the way still lets the smite clip them: that's not a direct hit, so retry)
+			total_before = total_after
 			await aim_at(player, reader, 0.6, 3.0 + retry)
 			player.skill_cd.clear()
 			player.use_skill(0)

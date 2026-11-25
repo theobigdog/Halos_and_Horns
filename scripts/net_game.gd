@@ -1070,6 +1070,7 @@ func c_throw(origin: Vector3, velocity: Vector3, kind: String, gravity: float, s
 	rec["throw_log"] = throws
 	var p := Projectile.new()
 	p.color = Blessings.color(kind)
+	p.kind = kind
 	p.shooter = remotes.get(rec["eid"])
 	p.gravity = gravity
 	p.gate = func(): return _use_throw(id, seq)
@@ -1095,6 +1096,7 @@ func _use_throw(id: int, seq: int) -> bool:
 func s_projectile(origin: Vector3, velocity: Vector3, kind: String, gravity: float) -> void:
 	var p := Projectile.new()
 	p.color = Blessings.color(kind)
+	p.kind = kind
 	p.visual_only = true
 	p.gravity = gravity
 	main.add_child(p)

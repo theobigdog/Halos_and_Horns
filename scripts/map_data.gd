@@ -171,6 +171,9 @@ static func clean(raw: Dictionary) -> Dictionary:
 		var pid := _id(p.get("id"))
 		if pid != "":
 			c["id"] = pid
+		var grp = p.get("group")
+		if typeof(grp) == TYPE_STRING and grp.length() > 0 and grp.length() <= 24 and grp.is_valid_identifier():
+			c["group"] = grp   # pieces grouped together in Creative (selected and changed as one)
 		var rot := _vec(p.get("rot"), -360.0, 360.0, Vector3.ZERO)
 		if rot != Vector3.ZERO:
 			c["rot"] = _arr(rot)

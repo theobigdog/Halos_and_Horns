@@ -23,6 +23,7 @@ var _last_pos := Vector3.ZERO
 var _strafe_time := 0.0
 var _strafe_dir := 1.0
 var _reported_names := false
+const HOLD_FIRE := 8.0         # seconds into the hunt before test angels start attacking
 var _reported_roster := false
 var _role_time := 0.0
 var _rounds_started := 0
@@ -307,8 +308,11 @@ func _play_angel(delta: float, p) -> void:
 	p.rotation.y = atan2(-to.x, -to.z)   # face it (-Z is forward)
 	if leap_slot >= 0 and best < 14.0 and p.is_on_floor() and p.skill_cd.get("leap", 0.0) <= 0.0:
 		p.queue_jump()   # a Holy Leap jump: the stomp comes on the way down (above)
+	# (Test bots: angels hold fire for the first seconds of the hunt, so the demon bots get to possess, send
+	# minions and so on before they're caught: otherwise the round can end before the test sees any of it.)
+	var holding: bool = main.mode == "online" and main.net != null and main.time_left > main.net.hunt_time - HOLD_FIRE
 	# Cherub and vacuum don't need a clear shot: use them as soon as a demon is fairly close.
-	if best < 30.0:
+	if best < 30.0 and not holding:
 		for slot in 2:
 			var sid: String = p.loadout["angel"][slot]
 			if (sid == "cherub" or sid == "vacuum") and p.use_skill(slot):
@@ -322,7 +326,7 @@ func _play_angel(delta: float, p) -> void:
 	var flat := Vector2(aim_point.x - eye.x, aim_point.z - eye.z).length()
 	p.pivot.rotation.x = clampf(atan2(aim_point.y - eye.y, flat), -1.4, 1.2)
 	# Close enough with a clear view: throw. Otherwise walk closer.
-	var clear: bool = best < 9.0 and _line_of_sight(p, target)
+	var clear: bool = best < 9.0 and _line_of_sight(p, target) and not holding
 	# Lots of throws and no hits: probably clipping a corner. Move somewhere else.
 	if _misses > 12:
 		_misses = 0

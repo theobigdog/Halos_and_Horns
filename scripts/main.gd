@@ -56,6 +56,7 @@ var SUPER_BOUNCIES := []         # super-bouncy spots
 var PLACED_PROPS := []           # [type, position, rotation] of props placed by hand
 const Vortex = preload("res://scripts/vortex.gd")
 const Projectile = preload("res://scripts/projectile.gd")
+const BlessingSounds = preload("res://scripts/blessing_sounds.gd")
 const Updater = preload("res://scripts/updater.gd")
 
 const GAME_CODENAME := "Power-ups"
@@ -2629,7 +2630,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 			if c.take_hit(Skills.KICK_DAMAGE, user):
 				user.confirm_hit()
 				var away := Vector3(dir.x, 0.0, dir.z).normalized()
-				var land := ground_below(c.global_position + away * Skills.KICK_PUSH + Vector3.UP * 1.0)
+				var land := ground_below(c.global_position + away * Skills.KICK_PUSH + Vector3.UP * 1.0, [c] + props + demon_targets())
 				_affect_demon(c, land, 0.0, 0.0, "KICKED!")
 				broadcast_fx("kick", [c.global_position + Vector3.UP * 0.6])
 				print("[decider] holy kick sent a demon flying")
@@ -2647,7 +2648,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 					# ...and the shockwave shoves them outward.
 					var out := Vector3(off.x, 0.0, off.z)
 					out = out.normalized() if out.length() > 0.1 else Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
-					_affect_demon(d, ground_below(d.global_position + out * STOMP_PUSH + Vector3.UP * 1.0), 0.0, 0.0, "SHOVED!")
+					_affect_demon(d, ground_below(d.global_position + out * STOMP_PUSH + Vector3.UP * 1.0, [d] + props + demon_targets()), 0.0, 0.0, "SHOVED!")
 			if hurt > 0 and user.has_method("confirm_hit"):
 				user.confirm_hit()
 			broadcast_fx("stomp", [origin])
@@ -2850,6 +2851,7 @@ func _book_key(origin: Vector3) -> String:
 
 func _spawn_scripture(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
 	var book := Projectile.new()
+	book.kind = "book"
 	book.book = true
 	book.damage = Skills.SCRIPTURE_DAMAGE
 	book.gravity = Skills.SCRIPTURE_GRAVITY
@@ -2866,6 +2868,7 @@ func _spawn_scripture(origin: Vector3, dir: Vector3, visual_only: bool) -> Proje
 
 func _spawn_orb(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
 	var orb := Projectile.new()
+	orb.kind = "vacuum"
 	orb.color = Color(0.65, 0.35, 1.0)
 	orb.size = 0.22
 	orb.gravity = 9.0
@@ -2879,14 +2882,14 @@ func _spawn_orb(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
 
 
 # The vortex evaporates any Minion in reach, whatever it looks like (Ted, Nov 18).
-func _vacuum_minions(center: Vector3) -> void:
+func _vacuum_minions(center: Vector3, reach := Skills.VACUUM_RADIUS) -> void:
 	if mode == "practice":
-		if is_instance_valid(player.minion) and player.minion.global_position.distance_to(center) <= Skills.VACUUM_RADIUS:
+		if is_instance_valid(player.minion) and player.minion.global_position.distance_to(center) <= reach:
 			player.minion.pop()
 		return
 	if net and net.is_host:
 		for owner in net.minions.keys():
-			if (net.minions[owner]["pos"] as Vector3).distance_to(center) <= Skills.VACUUM_RADIUS:
+			if (net.minions[owner]["pos"] as Vector3).distance_to(center) <= reach:
 				net._minion_gone(owner, true)
 
 
@@ -2912,31 +2915,65 @@ func _fire_splash(owner: int, spot: Vector3) -> void:
 			"until": _now() + hop + Skills.FIRE_LIFETIME}
 
 
+var _vortex_count := 0      # ids, so "vortex_caught" fx find the right vortex
+var _vortices := {}         # vortex id -> the Vortex on this screen
+
+
 func _vacuum_at(center: Vector3) -> void:
-	var caught := _vacuum_pulse(center, {}, Skills.VACUUM_TIME)
-	broadcast_fx("vortex", [center, caught])
+	_vortex_count += 1
+	var caught := _vacuum_pulse(center, {}, 0, _vortex_count, false)
+	broadcast_fx("vortex", [center, caught, _vortex_count])
 	print("[decider] vacuum orb %s" % ("CAUGHT a demon" if caught else "found nothing"))
 
 
-# Host / practice: the vortex yanks every demon in range back to its middle, every VACUUM_PULSE seconds until it
-# dies, so running away doesn't work. 'seen' keeps track of who it already caught (they get the smaller drain).
-func _vacuum_pulse(center: Vector3, seen: Dictionary, left: float) -> bool:
+# Host / practice: every VACUUM_PULSE seconds until it dies, the vortex yanks every demon in its (shrinking) reach
+# most of the way to its middle, harder as it goes, so running away doesn't work: far stronger than the props'
+# pull, whatever the demon looks like. 'seen' keeps track of who it already caught (they get the smaller drain).
+# When "is a demon caught right now" changes, everyone hears about it (just that, never who).
+func _vacuum_pulse(center: Vector3, seen: Dictionary, n: int, id: int, was: bool) -> bool:
 	if not is_inside_tree() or state == State.ENDED:
 		return false
+	var t := n * Skills.VACUUM_PULSE
+	var reach := Vortex.radius_at(t)
+	var pull := 0.55 + 0.4 * Vortex.power_at(t)   # share of the way to the middle, per yank
 	var caught := false
+	var i := 0
 	for d in demon_targets():
-		if d.global_position.distance_to(center) <= Skills.VACUUM_RADIUS:
+		if d.global_position.distance_to(center) <= reach:
 			caught = true
-			var offset := Vector3(randf_range(-0.6, 0.6), 0.0, randf_range(-0.6, 0.6))
+			var a := float(n * 3 + i) * 2.4   # (a little scatter so they don't stack exactly; no shared random)
+			var flat_to: Vector3 = d.global_position.lerp(center, pull) + Vector3(cos(a), 0.0, sin(a)) * 0.3
+			# (pulled across the ground and set down on whatever's there: never into a wall or block the
+			# orb happened to hit)
+			var to: Vector3 = ground_below(Vector3(flat_to.x, maxf(d.global_position.y, center.y) + 1.5, flat_to.z),
+					[d] + props + demon_targets())   # (onto the ground or structures, not onto the props piling in)
 			var first := not seen.has(d)
 			seen[d] = true
-			_affect_demon(d, center + offset, Skills.VACUUM_HATRED_DRAIN if first else Skills.VACUUM_PULSE_DRAIN,
-				left + Skills.VACUUM_LOCKOUT, "VACUUMED!")
-	_vacuum_minions(center)
-	left -= Skills.VACUUM_PULSE
-	if left > 0.05:
-		get_tree().create_timer(Skills.VACUUM_PULSE).timeout.connect(func(): _vacuum_pulse(center, seen, left))
+			_affect_demon(d, to, Skills.VACUUM_HATRED_DRAIN if first else Skills.VACUUM_PULSE_DRAIN,
+				Skills.VACUUM_TIME - t + Skills.VACUUM_LOCKOUT, "VACUUMED!")
+		i += 1
+	_vacuum_minions(center, reach)
+	if n > 0 and caught != was:
+		broadcast_fx("vortex_caught", [id, caught])
+	if (n + 1) * Skills.VACUUM_PULSE < Skills.VACUUM_TIME - 0.05:
+		get_tree().create_timer(Skills.VACUUM_PULSE).timeout.connect(func(): _vacuum_pulse(center, seen, n + 1, id, caught))
 	return caught
+
+
+# Every screen: the vortex itself, and the props it drags in.
+func _vortex_fx(args: Array) -> void:
+	var center: Vector3 = args[0]
+	var v := Vortex.new()
+	v.caught = bool(args[1])
+	v.ground_y = ground_below(center + Vector3.UP * 0.6).y
+	_fx_parent().add_child(v)
+	v.global_position = center
+	for k in _vortices.keys():
+		if not is_instance_valid(_vortices[k]):
+			_vortices.erase(k)
+	if args.size() > 2:
+		_vortices[int(args[2])] = v
+	_pull_props(center, v)
 
 
 # Yank a demon somewhere, drain Hatred, lock their skills.
@@ -2963,7 +3000,7 @@ func _can_see(a: Node3D, b: Node3D) -> bool:
 func _affect_demon(node: Node3D, target: Vector3, hatred_drain: float, lockout: float, label: String) -> void:
 	if node is BotDemon:
 		var tw := node.create_tween()
-		tw.tween_property(node, "global_position", Vector3(target.x, node.global_position.y, target.z), 0.3)
+		tw.tween_property(node, "global_position", target, 0.3)   # (set down where it's sent: never slid into a block)
 	elif net:
 		net.affect_node(node, target, hatred_drain, lockout, label)
 
@@ -3419,11 +3456,11 @@ func fx(kind: String, args: Array) -> void:
 				b.global_position = args[1]
 				b.velocity = args[2]
 		"vortex":
-			var v := Vortex.new()
-			v.caught = args[1]
-			_fx_parent().add_child(v)
-			v.global_position = args[0]
-			_pull_props(args[0])
+			_vortex_fx(args)
+		"vortex_caught":
+			var vc = _vortices.get(int(args[0]))
+			if vc != null and is_instance_valid(vc):
+				vc.set_caught(bool(args[1]))
 		"sparkle":
 			Effects.sparkle_trail(_fx_parent(), args[0], args[1])
 		"prop_taken":
@@ -3492,20 +3529,21 @@ func _make_shell(index: int, pos: Vector3, yaw: float) -> void:
 	Effects.dissolve(prop, 6.0)
 
 
-# The vortex drags nearby props toward its middle. Every computer runs the same
-# math on the same starting positions, so every screen ends up identical.
-func _pull_props(center: Vector3) -> void:
+# The vortex drags nearby props toward its middle (vortex.gd moves them every frame). Every computer runs the
+# same math on the same starting positions, so every screen ends up identical.
+func _pull_props(center: Vector3, v: Node3D) -> void:
+	var near := []
 	for prop in props:
 		if not is_instance_valid(prop) or not prop.is_in_group("prop"):
 			continue
-		var flat := Vector3(prop.global_position.x - center.x, 0.0, prop.global_position.z - center.z)
-		var d := flat.length()
-		if d >= Skills.VACUUM_RADIUS or d < 0.01:
+		if not Vortex.in_reach(prop.global_position - center):
 			continue
-		var target := Vector3(center.x, prop.global_position.y, center.z) + flat / d * maxf(0.9, d * 0.2)
-		var tw: Tween = prop.create_tween()
-		tw.tween_property(prop, "global_position", target, 2.0).set_ease(Tween.EASE_IN)
-		prop.set_meta("moved_to", target)   # (for anyone joining later)
+		var knock: Node = prop.get_node_or_null("Knock")
+		if knock and knock.is_physics_processing():
+			continue   # mid-slide: knock.gd has it
+		near.append(prop)
+		prop.set_meta("moved_to", Vortex.final_position(center, prop.global_position))   # (for anyone joining later)
+	v.pull(near)
 
 
 # ---------- loose props: shoving them about (see knock.gd) ----------
@@ -4144,7 +4182,7 @@ func _build_sounds() -> void:
 		"hurt": Sfx.voice([[240, 150, 0.16, 1.0, 0.0], [150, 120, 0.08, 0.6, 0.0]], 0.3, 0.75, 0.06, 0.04),
 	}
 	for kind in Blessings.names():
-		streams["throw_" + kind] = Sfx.throw_sound(kind)
+		streams["throw_" + kind] = BlessingSounds.throw(kind)
 	for sound_name in streams:
 		var asp := AudioStreamPlayer.new()
 		asp.max_polyphony = 4   # overlapping plays layer instead of cutting off

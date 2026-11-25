@@ -78,6 +78,16 @@ var _change_tag := ""
 var _change_time := 0.0
 var _drag_before := ""         # the map as it was when a move/rotate/resize began
 var _drag_piece := {}
+# Grouping (Ted, Nov 25): the other pieces selected along with `selected` (Ctrl + click adds/removes; a
+# piece with a "group" brings its whole group; Alt + click picks just the one). Moves, turns, deletes,
+# copies and looks/colours apply to all of them.
+var members: Array = []
+var _group_label: Label
+var _group_btn: Button
+var _ungroup_btn: Button
+var _member_start := {}       # index -> [position, basis] when a move/turn began
+var _member_before := {}      # index -> piece copy (to undo a cancelled drag online)
+const SHARE_KEYS := ["look", "color", "lights", "always", "flicker", "energy", "range", "spot", "angle"]
 var _drag_mouse := Vector2.ZERO
 var _drag_offset := Vector3.ZERO
 var _drag_t0 := 0.0
@@ -258,6 +268,7 @@ func _rebuild_ground() -> void:
 
 
 func _rebuild_all() -> void:
+	members.clear()
 	for n in nodes:
 		if is_instance_valid(n):
 			n.free()
@@ -656,23 +667,51 @@ func set_value(i: int, key: String, value, tag := "") -> void:
 		p[key] = value
 	map["pieces"][i] = _cleaned_piece(p)
 	_refresh_piece(i)
+	if i == selected and key in SHARE_KEYS:
+		# the same look / colour / light setting on every selected piece of the same kind
+		for m in members:
+			var q := piece(m)
+			if q.is_empty() or q["type"] != p["type"]:
+				continue
+			q[key] = value
+			map["pieces"][m] = _cleaned_piece(q)
+			_refresh_piece(m)
 	if i == selected:
 		_sync_inspector()
 	_after_change()
+
+
+# Move every other selected piece by `delta` (they keep their places relative to the main one).
+func _shift_members(delta: Vector3) -> void:
+	for m in members:
+		var q := piece(m)
+		if q.is_empty():
+			continue
+		var np := MapData.vec(q["pos"]) + delta
+		q["pos"] = [snappedf(np.x, 0.001), snappedf(np.y, 0.001), snappedf(np.z, 0.001)]
+		if m < nodes.size() and is_instance_valid(nodes[m]):
+			nodes[m].position = np
 
 
 func delete_selected() -> void:
 	if selected < 0 or not _may_edit():
 		return
 	var t: String = piece(selected)["type"]
-	if t in ["angel_spawn", "demon_spawn"]:
+	if t in ["angel_spawn", "demon_spawn"] and members.is_empty():
 		_say("Every map needs an angel start and a demon start: move it instead.", 4.0)
 		return
 	_begin_change()
-	map["pieces"].remove_at(selected)
+	var gone: Array = [selected] + members
+	gone = gone.filter(func(k): return not piece(k)["type"] in ["angel_spawn", "demon_spawn"])
+	gone.sort()
+	gone.reverse()
+	for k in gone:
+		map["pieces"].remove_at(k)
 	_rebuild_all()
 	select(-1)
 	_after_change()
+	if gone.size() > 1:
+		_say("Removed %d pieces." % gone.size(), 2.5)
 
 
 func duplicate_selected() -> int:
@@ -683,14 +722,104 @@ func duplicate_selected() -> int:
 		_say("A map has just one of those.", 3.0)
 		return -1
 	_begin_change()
-	p["pos"] = [p["pos"][0] + grid * 2.0, p["pos"][1], p["pos"][2] + grid * 2.0]
-	p["id"] = _new_id()
-	map["pieces"].append(p)
-	var i: int = map["pieces"].size() - 1
-	nodes.append(_make_node(piece(i), i))
-	select(i)
+	var others: Array = []
+	var new_groups := {}
+	for src in [selected] + members:
+		var q: Dictionary = piece(src).duplicate(true)
+		if q["type"] in ONLY_ONE:
+			continue
+		q["pos"] = [q["pos"][0] + grid * 2.0, q["pos"][1], q["pos"][2] + grid * 2.0]
+		q["id"] = _new_id()
+		if q.has("group"):   # (a copied group is a new group of its own)
+			if not new_groups.has(q["group"]):
+				new_groups[q["group"]] = "g" + _rand_tag()
+			q["group"] = new_groups[q["group"]]
+		map["pieces"].append(q)
+		var k: int = map["pieces"].size() - 1
+		nodes.append(_make_node(piece(k), k))
+		others.append(k)
+	if others.is_empty():
+		_say("A map has just one of those.", 3.0)
+		return -1
+	var i: int = others.pop_front()
+	select(i, true)
+	members = others
+	_sync_inspector()
 	_after_change()
 	return i
+
+
+# Ctrl + G: the selected pieces become a group (clicking one selects them all). Ctrl + Shift + G undoes it.
+func group_selected() -> void:
+	if selected < 0 or members.is_empty() or not _may_edit():
+		_say("Select two or more pieces first (Ctrl + click adds pieces).", 3.0)
+		return
+	_begin_change()
+	var gid := "g" + _rand_tag()
+	for k in [selected] + members:
+		var q := piece(k)
+		q["group"] = gid
+		map["pieces"][k] = _cleaned_piece(q)
+	_after_change()
+	_sync_inspector()
+	_say("Grouped %d pieces: clicking any of them selects them all. (Alt + click picks just one; Ctrl + Shift + G ungroups.)" % (members.size() + 1), 5.0)
+
+
+func ungroup_selected() -> void:
+	if selected < 0 or not _may_edit():
+		return
+	_begin_change()
+	var n := 0
+	for k in [selected] + members:
+		var q := piece(k)
+		if q.has("group"):
+			q.erase("group")
+			map["pieces"][k] = _cleaned_piece(q)
+			n += 1
+	_after_change()
+	_sync_inspector()
+	_say("Ungrouped %d pieces (they stay selected for now)." % n if n > 0 else "Those aren't grouped.", 3.0)
+
+
+# Ctrl + click: add a piece to the selection, or take it out.
+func toggle_member(i: int) -> void:
+	if i < 0:
+		return
+	if selected < 0:
+		select(i)
+		return
+	if online and _claimed_by_other(piece_id(i)) != 0:
+		_say("Someone else is working on that one.", 2.5)
+		return
+	var add := [i] + _group_mates(i)
+	if i == selected or members.has(i):
+		for k in add:
+			members.erase(k)
+		if i == selected:
+			if members.is_empty():
+				select(-1)
+				return
+			var nxt: int = members.pop_front()
+			var rest := members.duplicate()
+			select(nxt, true)
+			members = rest
+	else:
+		for k in add:
+			if k != selected and not members.has(k):
+				members.append(k)
+	_sync_inspector()
+	_say("%d pieces selected. (Ctrl + G to group them for good.)" % (members.size() + 1), 3.0)
+
+
+func _group_mates(i: int) -> Array:
+	var out := []
+	var g = piece(i).get("group")
+	if g == null:
+		return out
+	for k in map["pieces"].size():
+		if k != i and map["pieces"][k].get("group") == g and (not online or _claimed_by_other(piece_id(k)) == 0):
+			out.append(k)
+	return out
 
 
 func undo() -> void:
@@ -756,7 +885,9 @@ func set_setting(key: String, value) -> void:
 
 # ---------------- selecting ----------------
 
-func select(i: int) -> void:
+func select(i: int, keep_members := false) -> void:
+	if not keep_members:
+		members.clear()
 	if online and i >= 0 and i < map["pieces"].size():
 		var who := _claimed_by_other(piece_id(i))
 		if who != 0 or not can_edit:
@@ -769,6 +900,8 @@ func select(i: int) -> void:
 		if want != _my_claim:
 			_my_claim = want
 			main.net.build_claim(want)
+	if not keep_members and selected >= 0 and not Input.is_key_pressed(KEY_ALT):
+		members = _group_mates(selected)
 	_sync_inspector()
 
 
@@ -852,6 +985,12 @@ func begin(kind: String) -> void:
 	axis = ""
 	_drag_before = JSON.stringify(map)
 	_drag_piece = piece(selected).duplicate(true)
+	_member_start.clear()
+	_member_before.clear()
+	for m in members:
+		var q := piece(m)
+		_member_start[m] = [MapData.vec(q["pos"]), Basis.from_euler(MapData.rot_rad(q))]
+		_member_before[m] = q.duplicate(true)
 	_drag_mouse = _mouse()
 	_drag_offset = Vector3.ZERO
 	if kind == "move":
@@ -945,6 +1084,11 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 				return
 			p["pos"] = [snappedf(pos.x, 0.001), snappedf(pos.y, 0.001), snappedf(pos.z, 0.001)]
 			nodes[selected].position = pos
+			for m in _member_start:   # the rest of the selection comes along
+				var mp: Vector3 = _member_start[m][0] + (pos - start)
+				piece(m)["pos"] = [snappedf(mp.x, 0.001), snappedf(mp.y, 0.001), snappedf(mp.z, 0.001)]
+				if m < nodes.size() and is_instance_valid(nodes[m]):
+					nodes[m].position = mp
 		"extend":
 			# The pulled end follows the mouse across the ground: whole copies get added (or taken away),
 			# never stretched. The other end stays put.
@@ -993,6 +1137,18 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 			var e := b.get_euler()
 			p["rot"] = [snappedf(rad_to_deg(e.x), 0.01), snappedf(rad_to_deg(e.y), 0.01), snappedf(rad_to_deg(e.z), 0.01)]
 			nodes[selected].rotation = e
+			var turn := b * b0.inverse()   # the rest of the selection swings round with it
+			for m in _member_start:
+				var mp: Vector3 = start + turn * (_member_start[m][0] - start)
+				var me := (turn * (_member_start[m][1] as Basis)).get_euler()
+				var mq := piece(m)
+				mq["pos"] = [snappedf(mp.x, 0.001), snappedf(mp.y, 0.001), snappedf(mp.z, 0.001)]
+				if mq["type"] in ROTATES:
+					mq["rot"] = [snappedf(rad_to_deg(me.x), 0.01), snappedf(rad_to_deg(me.y), 0.01), snappedf(rad_to_deg(me.z), 0.01)]
+				if m < nodes.size() and is_instance_valid(nodes[m]):
+					nodes[m].position = mp
+					if mq["type"] in ROTATES:
+						nodes[m].rotation = me
 		"scale":
 			var factor := maxf(1.0 + (mouse_pos.x - _drag_mouse.x) * 0.006, 0.02)
 			var is_model: bool = p["type"] == "model"
@@ -1075,11 +1231,19 @@ func _end_drag(keep: bool) -> void:
 		if i >= 0:
 			map["pieces"][i] = _cleaned_piece(piece(i))
 			_refresh_piece(i)
+		for m in _member_start:
+			if m < map["pieces"].size():
+				map["pieces"][m] = _cleaned_piece(piece(m))
+				_refresh_piece(m)
 		_say("", 0.0)
 	elif online:
 		if selected >= 0 and not _drag_piece.is_empty():
 			map["pieces"][selected] = _drag_piece.duplicate(true)
 			_refresh_piece(selected)
+		for m in _member_before:
+			if m < map["pieces"].size():
+				map["pieces"][m] = (_member_before[m] as Dictionary).duplicate(true)
+				_refresh_piece(m)
 		_say("Cancelled.", 1.5)
 	else:
 		map = JSON.parse_string(before)
@@ -1160,6 +1324,7 @@ func _key(ev: InputEventKey) -> void:
 			KEY_Z: (redo() if ev.shift_pressed else undo())
 			KEY_Y: redo()
 			KEY_D: if duplicate_selected() >= 0: begin("move")
+			KEY_G: (ungroup_selected() if ev.shift_pressed else group_selected())
 			KEY_S: save()
 			_: handled = false
 	elif drag != "":
@@ -1215,6 +1380,9 @@ func _click(at: Vector2) -> void:
 	var tab := _tab_under(at)
 	if not tab.is_empty():
 		pull_tab(tab[0], tab[1])
+		return
+	if Input.is_key_pressed(KEY_CTRL) or Input.is_key_pressed(KEY_META):
+		toggle_member(_piece_under(at))
 		return
 	select(_piece_under(at))
 	_press_piece = selected
@@ -1364,6 +1532,15 @@ func _draw_lines() -> void:
 		if drag != "" and axis != "":
 			var d := _axis_dir(axis) if drag == "move" else (x.basis * ({"x": Vector3.RIGHT, "y": Vector3.UP, "z": Vector3.BACK}[axis] as Vector3)).normalized()
 			_line(n.global_position - d * 60.0, n.global_position + d * 60.0, AXIS_COLORS[axis])
+	# The rest of the selection, in a paler colour
+	for m in members:
+		if m >= nodes.size() or not is_instance_valid(nodes[m]):
+			continue
+		var mn: Node3D = nodes[m]
+		var mb: AABB = _boxes.get(m, AABB(Vector3(-0.5, 0, -0.5), Vector3.ONE)).grow(0.05)
+		var mx := mn.global_transform
+		for e in [[0, 1], [1, 3], [3, 2], [2, 0], [4, 5], [5, 7], [7, 6], [6, 4], [0, 4], [1, 5], [2, 6], [3, 7]]:
+			_line(mx * mb.get_endpoint(e[0]), mx * mb.get_endpoint(e[1]), Color(1.0, 0.75, 0.35))
 	# Pull tabs on a selected structure: glowing balls (seen through walls) with an arrow pointing out
 	var sel_p: Dictionary = piece(selected) if selected >= 0 else {}
 	var tabs := _tabs()
@@ -2035,6 +2212,7 @@ func slide_to_touch(key: Key) -> void:
 	if best >= 50.0:
 		_say("Nothing that way to slide up against.", 3.0)
 		return
+	_shift_members(move * best)
 	set_value(selected, "pos", MapData.vec(piece(selected)["pos"]) + move * best, "slide")
 	_say("Slid %.2f m, up against the next piece." % best, 3.0)
 
@@ -2066,6 +2244,7 @@ func nudge(key: Key, fine: bool) -> void:
 	var right := ax.cross(Vector3.UP)
 	var move: Vector3 = {KEY_UP: ax, KEY_DOWN: -ax, KEY_RIGHT: right, KEY_LEFT: -right,
 			KEY_PAGEUP: Vector3.UP, KEY_PAGEDOWN: Vector3.DOWN}[key]
+	_shift_members(move * step)
 	set_value(selected, "pos", MapData.vec(piece(selected)["pos"]) + move * step, "nudge")
 
 
@@ -2376,6 +2555,15 @@ func _build_ui() -> void:
 	look_row.add_child(_car_lights)
 	_inspector.add_child(look_row)
 	_rows["look"] = look_row
+	var grow := HBoxContainer.new()
+	_group_label = _label(grow, "")
+	_group_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_group_btn = _small_button(grow, "Group", group_selected)
+	_group_btn.tooltip_text = "Make the selected pieces a group: clicking any of them selects them all (Ctrl + G)"
+	_ungroup_btn = _small_button(grow, "Ungroup", ungroup_selected)
+	_ungroup_btn.tooltip_text = "Split the group up again (Ctrl + Shift + G)"
+	_inspector.add_child(grow)
+	_rows["group"] = grow
 	var srow := HBoxContainer.new()
 	_light_spot = CheckBox.new()
 	_light_spot.text = "Spotlight"
@@ -2632,6 +2820,11 @@ func _sync_inspector() -> void:
 		return
 	var p := piece(selected)
 	var t: String = p["type"]
+	var grouped: bool = p.has("group")
+	_rows["group"].visible = not members.is_empty() or grouped
+	_group_label.text = ("%d selected%s" % [members.size() + 1, " (a group)" if grouped else ""]) if not members.is_empty() else "In a group"
+	_group_btn.visible = not members.is_empty()
+	_ungroup_btn.visible = grouped
 	var title := t
 	for q in PIECES:
 		if q[0] == t:
@@ -2693,4 +2886,4 @@ func _say(text: String, seconds: float) -> void:
 
 
 func _help_text() -> String:
-	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend   Shift+wheel turn   Alt+wheel size   Ctrl+wheel look   Arrows nudge (hold to keep going; Shift: slide up against the next piece)   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
+	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Ctrl+click: select several   Ctrl+G group (Alt+click one of a group)   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend   Shift+wheel turn   Alt+wheel size   Ctrl+wheel look   Arrows nudge (hold to keep going; Shift: slide up against the next piece)   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
