@@ -172,7 +172,9 @@ var _local_check: CheckBox
 func enter(start_map: Dictionary, start_path := "") -> void:
 	testing = false
 	map = MapData.clean(start_map)
-	path = start_path if start_path.begins_with(MapData.USER_DIR) else ""
+	path = start_path if MapData.is_saveable(start_path) else ""
+	shared_save = MapData.is_shared(path)
+	_remember_disk()
 	dirty = false
 	_undo.clear()
 	_redo.clear()
@@ -1612,21 +1614,62 @@ func autosave() -> bool:
 		return false
 	var target := path
 	if target == "":
-		target = MapData.user_path_for(map["name"])
+		target = MapData.user_path_for(map["name"], shared_save)
 		if FileAccess.file_exists(target):
-			target = MapData.user_path_for("%s (autosave)" % map["name"])
+			target = MapData.user_path_for("%s (autosave)" % map["name"], shared_save)
+	elif _changed_on_disk(target):
+		target = _copy_path()   # (someone else saved the shared map meanwhile: don't wipe their work)
 	if not MapData.save_file(map, target):
 		_say("Autosave failed: couldn't write " + ProjectSettings.globalize_path(target), 6.0)
 		return false
 	path = target
+	_remember_disk()
 	dirty = false
 	_refresh_open_list()
 	_say("Autosaved \"%s\"." % target.get_file().get_basename(), 3.0)
 	return true
 
 
+# Shared maps (Ted, Nov 25): "Shared" next to Save saves into the shared maps folder. Two people can have
+# the same shared map open on their own PCs: if the file changed on disk since we opened (or last saved)
+# it, someone else saved it, so ours goes in a copy instead of wiping their work.
+var shared_save := false
+var _shared_check: CheckBox
+var _disk_time := 0
+
+
+func _remember_disk() -> void:
+	_disk_time = FileAccess.get_modified_time(path) if path != "" and FileAccess.file_exists(path) else 0
+
+
+func _changed_on_disk(target: String) -> bool:
+	return target == path and _disk_time > 0 and FileAccess.file_exists(target) and FileAccess.get_modified_time(target) != _disk_time
+
+
+func _copy_path() -> String:
+	var who: String = main.name_edit.text.strip_edges() if main and main.name_edit else ""
+	var base := "%s (%s's copy)" % [map["name"], who if who != "" else "my"]
+	var target := MapData.user_path_for(base, shared_save)
+	var n := 2
+	while FileAccess.file_exists(target):
+		target = MapData.user_path_for("%s %d" % [base, n], shared_save)
+		n += 1
+	return target
+
+
 func save() -> bool:
-	var target := MapData.user_path_for(map["name"])
+	var target := MapData.user_path_for(map["name"], shared_save)
+	if _changed_on_disk(target):
+		var copy := _copy_path()
+		if not MapData.save_file(map, copy):
+			_say("Couldn't save to " + ProjectSettings.globalize_path(copy), 6.0)
+			return false
+		path = copy
+		_remember_disk()
+		dirty = false
+		_refresh_open_list()
+		_say("Someone else saved \"%s\" while you had it open, so yours is saved as a copy: %s" % [map["name"], copy.get_file()], 8.0)
+		return true
 	if target != path and FileAccess.file_exists(target) and _confirm != "save":
 		_confirm = "save"
 		_save_button.text = "Replace \"%s\"?" % map["name"]
@@ -1638,9 +1681,10 @@ func save() -> bool:
 		_say("Couldn't save to " + ProjectSettings.globalize_path(target), 6.0)
 		return false
 	path = target
+	_remember_disk()
 	dirty = false
 	_refresh_open_list()
-	_say("Saved to " + ProjectSettings.globalize_path(target), 5.0)
+	_say(("Saved to the shared folder: " if MapData.is_shared(target) else "Saved to ") + ProjectSettings.globalize_path(target), 5.0)
 	return true
 
 
@@ -1654,7 +1698,9 @@ func open(file_path: String) -> bool:
 	_end_drag(false)
 	_begin_change()
 	map = m
-	path = file_path if file_path.begins_with(MapData.USER_DIR) else ""
+	path = file_path if MapData.is_saveable(file_path) else ""
+	shared_save = MapData.is_shared(path)
+	_remember_disk()
 	dirty = false
 	_shared_reset()
 	_rebuild_ground()
@@ -2389,6 +2435,16 @@ func _build_ui() -> void:
 		_open_pick.select(0))
 	bar2.add_child(_open_pick)
 	_save_button = _small_button(bar2, "Save", func(): save())
+	_shared_check = CheckBox.new()
+	_shared_check.text = "Shared"
+	_shared_check.focus_mode = Control.FOCUS_NONE
+	_shared_check.tooltip_text = "Save into the shared maps folder (set it in Settings), so friends syncing that folder get it too"
+	_shared_check.toggled.connect(func(on):
+		shared_save = on and MapData.has_shared()
+		if on and not MapData.has_shared():
+			_shared_check.set_pressed_no_signal(false)
+			_say("Pick a shared maps folder first: Settings > Shared maps folder.", 4.0))
+	bar2.add_child(_shared_check)
 	_small_button(bar2, "Open maps folder", func(): OS.shell_open(ProjectSettings.globalize_path(MapData.USER_DIR)))
 	_test_button = _small_button(bar2, "Test play", test_play)
 	_small_button(bar2, "Undo", undo)
@@ -2784,7 +2840,7 @@ func _refresh_open_list() -> void:
 	_open_pick.add_item("Open a map...")
 	_open_pick.set_item_metadata(0, "")
 	for e in MapData.list_maps():
-		_open_pick.add_item(e["name"] + ("  (built in)" if e["built_in"] else ""))
+		_open_pick.add_item(e["name"] + ("  (built in)" if e["built_in"] else ("  (shared)" if e.get("shared", false) else "")))
 		_open_pick.set_item_metadata(_open_pick.item_count - 1, e["path"])
 	_open_pick.select(0)
 
@@ -2792,6 +2848,8 @@ func _refresh_open_list() -> void:
 func _sync_settings() -> void:
 	if _name_edit == null:
 		return
+	if _shared_check:
+		_shared_check.set_pressed_no_signal(shared_save)
 	if _name_edit.text != map["name"]:
 		_name_edit.text = map["name"]
 	if _author_edit.text != map["author"]:

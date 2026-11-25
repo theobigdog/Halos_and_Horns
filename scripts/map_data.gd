@@ -74,7 +74,26 @@ static func save_file(map: Dictionary, path: String) -> bool:
 	return true
 
 
-# Every map we can play: built-in ones first, then the player's own.
+# A shared maps folder (Ted, Nov 25): any folder on this PC, e.g. one OneDrive / Dropbox / Google Drive
+# keeps in sync between friends' computers. Its maps show up next to your own, and Creative can save there.
+# "" = none. (Settings & controls; main.gd keeps it in the settings file.)
+static var shared_dir := ""
+
+
+static func has_shared() -> bool:
+	return shared_dir != "" and DirAccess.dir_exists_absolute(shared_dir)
+
+
+# Is this a map file we may save over (our own folder or the shared one), not a built-in one?
+static func is_saveable(path: String) -> bool:
+	return path.begins_with(USER_DIR) or is_shared(path)
+
+
+static func is_shared(path: String) -> bool:
+	return shared_dir != "" and path != "" and path.begins_with(shared_dir)
+
+
+# Every map we can play: built-in ones first, then the player's own, then the shared folder's.
 static func list_maps() -> Array:
 	var out := []
 	for p in BUILT_IN:
@@ -90,16 +109,27 @@ static func list_maps() -> Array:
 			if fname.ends_with(".json"):
 				var m := load_file(USER_DIR + "/" + fname)
 				if not m.is_empty():
-					out.append({"path": USER_DIR + "/" + fname, "name": m["name"], "built_in": false})
+					out.append({"path": USER_DIR + "/" + fname, "name": m["name"], "built_in": false, "shared": false})
+	if has_shared():
+		var sd := DirAccess.open(shared_dir)
+		if sd:
+			var sfiles := Array(sd.get_files())
+			sfiles.sort()
+			for fname in sfiles:
+				if fname.ends_with(".json"):
+					var m := load_file(shared_dir.path_join(fname))
+					if not m.is_empty():
+						out.append({"path": shared_dir.path_join(fname), "name": m["name"], "built_in": false, "shared": true})
 	return out
 
 
-static func user_path_for(map_name: String) -> String:
+static func user_path_for(map_name: String, shared := false) -> String:
 	var safe := ""
 	for ch in map_name.to_lower():
 		safe += ch if (ch >= "a" and ch <= "z") or (ch >= "0" and ch <= "9") else "_"
 	safe = safe.strip_edges().substr(0, 40)
-	return "%s/%s.json" % [USER_DIR, safe if safe.replace("_", "") != "" else "map"]
+	var dir := shared_dir if shared and has_shared() else USER_DIR
+	return dir.path_join("%s.json" % (safe if safe.replace("_", "") != "" else "map"))
 
 
 static func empty_map(map_name := "New map") -> Dictionary:

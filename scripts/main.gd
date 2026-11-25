@@ -714,7 +714,7 @@ func _add_block(center: Vector3, size: Vector3, color: Color, rot := Vector3.ZER
 func refresh_map_list() -> void:
 	_map_pick.clear()
 	for entry in MapData.list_maps():
-		_map_pick.add_item(entry["name"] + ("" if entry["built_in"] else "  (yours)"))
+		_map_pick.add_item(entry["name"] + ("" if entry["built_in"] else ("  (shared)" if entry.get("shared", false) else "  (yours)")))
 		_map_pick.set_item_metadata(_map_pick.item_count - 1, entry["path"])
 		if entry["path"] == map_path:
 			_map_pick.select(_map_pick.item_count - 1)
@@ -1488,6 +1488,61 @@ Online, the host's setting is the one that counts."
 	_chat_size_pick.step = 1
 	_chat_size_pick.value_changed.connect(func(v): _set_chat_size(int(v)))
 	grid.add_child(_chat_size_pick)
+	# A shared maps folder (Ted, Nov 25): pick a folder your cloud drive syncs with friends'
+	var shl := Label.new()
+	shl.text = "Shared maps folder"
+	shl.tooltip_text = "A folder that OneDrive, Dropbox, Google Drive or similar keeps in sync with your friends.
+Its maps show up next to yours, and Creative's \"Shared\" box saves there."
+	grid.add_child(shl)
+	var shrow := HBoxContainer.new()
+	shrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_shared_label = Label.new()
+	_shared_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_shared_label.clip_text = true
+	_shared_label.tooltip_text = shl.tooltip_text
+	shrow.add_child(_shared_label)
+	var pick := Button.new()
+	pick.text = "Choose..."
+	pick.pressed.connect(_choose_shared_dir)
+	shrow.add_child(pick)
+	var clear := Button.new()
+	clear.text = "None"
+	clear.pressed.connect(func():
+		_set_shared_dir("")
+		_save_settings())
+	shrow.add_child(clear)
+	grid.add_child(shrow)
+	_set_shared_dir(MapData.shared_dir)
+
+
+var _shared_label: Label
+
+
+func _set_shared_dir(dir: String) -> void:
+	MapData.shared_dir = dir.strip_edges()
+	if _shared_label:
+		_shared_label.text = MapData.shared_dir if MapData.shared_dir != "" else "(none)"
+		if MapData.shared_dir != "" and not MapData.has_shared():
+			_shared_label.text += "  (not found)"
+	if _map_pick:
+		refresh_map_list()
+
+
+func _choose_shared_dir() -> void:
+	var fd := FileDialog.new()
+	fd.access = FileDialog.ACCESS_FILESYSTEM
+	fd.file_mode = FileDialog.FILE_MODE_OPEN_DIR
+	fd.title = "Pick the shared maps folder (one your cloud drive syncs)"
+	fd.use_native_dialog = true
+	if MapData.shared_dir != "":
+		fd.current_dir = MapData.shared_dir
+	fd.dir_selected.connect(func(d):
+		_set_shared_dir(d)
+		_save_settings()
+		fd.queue_free())
+	fd.canceled.connect(fd.queue_free)
+	add_child(fd)
+	fd.popup_centered_ratio(0.6)
 
 
 func _volume_row(grid: GridContainer, text: String, on_change: Callable) -> HSlider:
@@ -1758,6 +1813,7 @@ func _load_settings() -> void:
 	hellfire_splashes = clampi(int(_settings.get_value("options", "hellfire_splashes", 3)), 0, 8)
 	_splash_pick.set_value_no_signal(hellfire_splashes)
 	set_ui_scale(float(_settings.get_value("options", "ui_scale", 1.0)))
+	_set_shared_dir(str(_settings.get_value("options", "shared_maps", "")))
 	var presets = _settings.get_value("wardrobe", "presets", [])
 	wardrobe_presets = []
 	if typeof(presets) == TYPE_ARRAY:
@@ -1800,6 +1856,7 @@ func _save_settings() -> void:
 	_settings.set_value("options", "hellfire_splashes", hellfire_splashes)
 	_settings.set_value("options", "chat_size", chat_font_size)
 	_settings.set_value("options", "ui_scale", ui_scale)
+	_settings.set_value("options", "shared_maps", MapData.shared_dir)
 	_settings.set_value("wardrobe", "outfits", outfits)
 	_settings.set_value("wardrobe", "presets", wardrobe_presets)
 	_settings.save(SETTINGS_PATH)

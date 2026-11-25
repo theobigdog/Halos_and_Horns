@@ -414,6 +414,33 @@ func _run() -> void:
 	var count_before: int = ed.map["pieces"].size()
 	ed.delete_selected()
 	check(ed.map["pieces"].size() == count_before - 3, "...deleting removes the whole selection")
+	# A shared maps folder: saving there, it shows up in the lists, and someone else's newer save is never wiped
+	var shared := ProjectSettings.globalize_path("user://test_shared_maps")
+	DirAccess.make_dir_recursive_absolute(shared)
+	var keep_shared: String = MapData.shared_dir
+	var keep_name: String = ed.map["name"]
+	var keep_p: String = ed.path
+	MapData.shared_dir = shared
+	ed.map["name"] = "Shared test map"
+	ed.shared_save = true
+	ed.path = ""
+	ed.save()
+	var shared_file: String = ed.path
+	var listed: bool = MapData.list_maps().any(func(e): return e.get("shared", false) and e["path"] == shared_file)
+	check(MapData.is_shared(shared_file) and FileAccess.file_exists(shared_file) and listed, "Creative saves into the shared maps folder, and it's listed (%s)" % shared_file.get_file())
+	ed._disk_time -= 5   # (as if someone else saved it on their PC after we opened it)
+	ed.dirty = true
+	ed.save()
+	check(ed.path != shared_file and ed.path.contains("copy") and FileAccess.file_exists(shared_file), "...and if someone else saved it meanwhile, ours goes in a copy (%s)" % ed.path.get_file())
+	for f in DirAccess.get_files_at(shared):
+		DirAccess.remove_absolute(shared.path_join(f))
+	DirAccess.remove_absolute(shared)
+	MapData.shared_dir = keep_shared
+	ed.shared_save = false
+	ed.map["name"] = keep_name
+	ed.path = keep_p
+	ed._remember_disk()
+	ed.dirty = true
 	# Autosave every 10 minutes (only if something changed; never over another map)
 	var keep_path: String = ed.path
 	var before := DirAccess.get_files_at(MapData.USER_DIR) if DirAccess.dir_exists_absolute(MapData.USER_DIR) else PackedStringArray()
