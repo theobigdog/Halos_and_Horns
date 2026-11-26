@@ -593,11 +593,20 @@ static func head_hull(c: String, hat: bool) -> PackedVector3Array:
 			var mi := p as MeshInstance3D
 			for v in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
 				out.append(to_bone * (mi.transform * v))
-		if hat:
+		if hat and not out.is_empty():
+			# Only the part of a hat that hugs the head (a helmet's dome, a hood): a brim or a helmet's own
+			# spikes reach far out, and horns rooted there stood well away from the head (Ted, Nov 26).
+			var box := AABB(out[0], Vector3.ZERO)
+			for v in out:
+				box = box.expand(v)
+			var centre := box.get_center()
+			var reach := box.size.length() * 0.5 * 1.15
 			for m in _hat(c):
 				var mi := m as MeshInstance3D
 				for v in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
-					out.append(mi.transform * v)
+					var p: Vector3 = mi.transform * v
+					if p.distance_to(centre) < reach:
+						out.append(p)
 	_hulls[key] = out
 	return out
 

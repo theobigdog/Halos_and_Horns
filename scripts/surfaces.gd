@@ -4,6 +4,8 @@
 # Every surface is made once and shared.
 extends RefCounted
 
+const WoodGrain = preload("res://scripts/wood_grain.gd")
+
 # noise: FastNoiseLite type. freq: grain size (bigger = finer). stretch: how much the
 # pattern is drawn out along the piece's height (wood and hay grain run lengthwise).
 # dark: the darkest the pattern gets (1.0 = no pattern). bump: how strong the
@@ -49,6 +51,11 @@ static func _noise(kind: String) -> FastNoiseLite:
 static func _textures(kind: String) -> void:
 	if _albedo.has(kind):
 		return
+	if kind == "wood":
+		# the shared wood grain, baked (tools/make_wood_texture.py; Ted, Nov 26: the same on everything wooden)
+		_albedo[kind] = load(WoodGrain.TEXTURE)
+		_normal[kind] = load(WoodGrain.NORMALS)
+		return
 	var k: Dictionary = KINDS[kind]
 	var alb := NoiseTexture2D.new()
 	alb.width = SIZE
@@ -86,4 +93,6 @@ static func apply(m: StandardMaterial3D, kind: String) -> void:
 	m.uv1_triplanar_sharpness = 4.0
 	var s: float = k["scale"]
 	m.uv1_scale = Vector3(s, s / k["stretch"], s)
+	if kind == "wood":   # (the baked grain covers 0.5 m across by 5 m along, up the piece)
+		m.uv1_scale = Vector3(1.0 / WoodGrain.TILE.x, 1.0 / WoodGrain.TILE.y, 1.0 / WoodGrain.TILE.x)
 	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC

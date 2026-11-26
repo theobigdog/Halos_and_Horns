@@ -169,7 +169,7 @@ void fragment() {
 	vec3 col = r > 0.86 ? char_col : crimson;
 	// the star filled a richer crimson, the panels round it darker
 	float R1 = 0.7;
-	float R2 = 0.3;
+	float R2 = 0.2674;   // (the inner corners of a pentagram drawn on R1: R1 * cos(72) / cos(36))
 	float a0 = ang - 1.5708;
 	float k = 6.28318 / 5.0;
 	float m = mod(a0 + k * 0.5, k) - k * 0.5;
@@ -194,14 +194,11 @@ void fragment() {
 	float line_d = 9.0;
 	for (int i = 0; i < 5; i++) {
 		float at = 1.5708 + 6.28318 * float(i) / 5.0;
-		float ac = at + 6.28318 / 10.0;
-		float an = at + 6.28318 / 5.0;
+		// a pentagram (Ted, Nov 26): each point joined to the point two along, the lines crossing
+		float a2 = at + 6.28318 * 2.0 / 5.0;
 		vec2 tip = vec2(cos(at), sin(at)) * R1;
-		vec2 cor = vec2(cos(ac), sin(ac)) * R2;
-		vec2 nxt = vec2(cos(an), sin(an)) * R1;
-		line_d = min(line_d, seg(p, tip, cor));
-		line_d = min(line_d, seg(p, cor, nxt));
-		line_d = min(line_d, seg(p, tip, nxt));
+		vec2 far_tip = vec2(cos(a2), sin(a2)) * R1;
+		line_d = min(line_d, seg(p, tip, far_tip));
 		line_d = min(line_d, seg(p, tip, vec2(cos(at), sin(at)) * 0.8));
 	}
 	gd = min(gd, line_d - 0.03) + saw;

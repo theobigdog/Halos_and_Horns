@@ -113,8 +113,11 @@ check "a made-up hit claim is refused" "grep -q \"refused Ava's hit claim\" '$OU
 if grep -q 'lit the fuse' "$OUT/Ben.log"; then
 	check "the host lit Ben's fuse" "grep -q '\[host\] Ben lit a fuse' '$OUT/host.log'"
 	check "the others saw his prop animate" "grep -q 'a prop animated' '$OUT/Ava.log'"
-	check "Ben blew up (and was caught)" "grep -q '\[host\] Ben blew up' '$OUT/host.log'"
-	check "everyone heard about it" "grep -q 'Ben blew up!' '$OUT/Ava.log'"
+	# (an angel can still redeem him in the 1.5 s before the bang: then there's no bang to check)
+	if ! awk '/lit the fuse/{f=1;next} f&&/redeemed Ben|Ben blew up/{print;exit}' "$OUT/Ben.log" | grep -q 'redeemed Ben'; then
+		check "Ben blew up (and was caught)" "grep -q '\[host\] Ben blew up' '$OUT/host.log'"
+		check "everyone heard about it" "grep -q 'Ben blew up!' '$OUT/Ava.log'"
+	fi
 fi
 check "everyone hears who redeemed whom" "grep -qE '\\[news\\] [A-Za-z]+ redeemed [A-Za-z]+!' '$OUT/Ava.log'"
 if [ $(grep -c 'was caught' "$OUT/host.log") -ge 2 ]; then

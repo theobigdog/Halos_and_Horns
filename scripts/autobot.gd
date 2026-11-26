@@ -209,6 +209,8 @@ func _play_demon(delta: float, p) -> void:
 func _try_kaboom(p) -> void:
 	if not options.has("kaboom") or _used.has("kaboom") or main.state != main.State.HUNTING or _role_time < 15.5:
 		return
+	if _minion_steer > 0.0:
+		return   # (still steering its minion out: lighting the fuse now would call the minion off)
 	_used["kaboom"] = true
 	p.force_possess("tnt_crate")
 	get_tree().create_timer(0.6).timeout.connect(func():

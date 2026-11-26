@@ -20,8 +20,9 @@ const LOOKS := {
 			"rings": 11.0, "heat": 0.25, "cracks": 0.3, "gloss": 0.45},
 	"horns_nubs": {"base": Color(0.05, 0.04, 0.04), "crest": Color(0.13, 0.1, 0.09), "tip": Color(1.0, 0.35, 0.05),
 			"rings": 3.0, "heat": 0.55, "cracks": 1.0, "gloss": 0.3},
-	"horns_twist": {"base": Color(0.78, 0.72, 0.6), "crest": Color(0.95, 0.9, 0.8), "tip": Color(0.03, 0.02, 0.025),
-			"rings": 0.0, "heat": 0.0, "cracks": 0.15, "gloss": 0.7},
+	# (Ted, Nov 26: "more wicked... mostly black, with angry red streaks": glowing streaks follow the twist)
+	"horns_twist": {"base": Color(0.025, 0.018, 0.02), "crest": Color(0.12, 0.03, 0.03), "tip": Color(1.0, 0.12, 0.02),
+			"rings": 0.0, "heat": 0.5, "cracks": 0.7, "gloss": 0.8, "streaks": 2.25},
 	"horns_four": {"base": Color(0.03, 0.02, 0.035), "crest": Color(0.2, 0.08, 0.22), "tip": Color(0.75, 0.15, 1.0),
 			"rings": 7.0, "heat": 0.8, "cracks": 0.5, "gloss": 0.6},
 }
@@ -35,6 +36,7 @@ uniform float rings = 9.0;
 uniform float heat_amount = 1.0;
 uniform float crack_glow = 0.5;
 uniform float gloss = 0.5;
+uniform float streaks = 0.0;   // >0: glowing streaks spiralling round the horn this many turns
 varying vec3 lp;
 void vertex() { lp = VERTEX; }
 float h3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
@@ -62,6 +64,14 @@ void fragment() {
 	col = mix(col, tip_col * (heat_amount > 0.0 ? 0.3 : 1.0), tipw * 0.85);
 	float flick = 0.85 + 0.15 * sin(TIME * 3.0 + u * 12.0) * sin(TIME * 1.7 + 2.0);
 	float glow = heat_amount * (pow(tipw, 3.0) * 2.0 + groove * tipw) + crack * (0.4 + heat_amount) * 1.4;
+	if (streaks > 0.0) {
+		// angry red veins running up the horn with its twist, wavering, brighter toward the tip
+		float sv = fract(UV.x * 3.0 - u * streaks + 0.06 * sin(u * 40.0 + g * 6.0));
+		float streak = 1.0 - smoothstep(0.0, 0.07, abs(sv - 0.5));
+		streak *= 0.45 + 0.55 * smoothstep(0.0, 0.7, u);
+		col = mix(col, tip_col * 0.35, streak * 0.8);
+		glow += streak * 1.6;
+	}
 	ALBEDO = col;
 	EMISSION = tip_col * glow * flick;
 	ROUGHNESS = mix(0.9, 0.35, gloss * (0.5 + 0.5 * ridge));
@@ -108,6 +118,7 @@ static func material(kind: String) -> ShaderMaterial:
 		m.set_shader_parameter("heat_amount", look["heat"])
 		m.set_shader_parameter("crack_glow", look["cracks"])
 		m.set_shader_parameter("gloss", look["gloss"])
+		m.set_shader_parameter("streaks", look.get("streaks", 0.0))
 		_cache[key] = m
 	return _cache[key]
 
@@ -152,7 +163,7 @@ static func _root_shift(kind: String, part: int, origin: Vector3, hull: PackedVe
 			reach = along
 	if reach <= 0.0:
 		return Vector3.ZERO
-	var sink := _radius(kind, part, 0.0) * SCALE * 0.55   # buried a little over half its thickness
+	var sink := _radius(kind, part, 0.0) * SCALE * 0.8   # buried most of its thickness: no gap shows from any side
 	var anchor := centre + dir * (reach - sink)
 	return (anchor - root) / SCALE
 

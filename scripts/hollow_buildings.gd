@@ -12,6 +12,7 @@
 extends RefCounted
 
 const Graphics = preload("res://scripts/graphics.gd")
+const WoodGrain = preload("res://scripts/wood_grain.gd")
 
 const KINDS := {
 	"cottage": "Cottage",
@@ -26,7 +27,7 @@ const T := 0.25 # wall thickness
 const FLOOR := 0.15 # ground floor top
 
 # Materials (one mesh surface each).
-enum { PLASTER, BRICK, STONE, PLANKS, ROOF, TRIM, HAY, BOARDS, FLAG }
+enum { PLASTER, BRICK, STONE, PLANKS, ROOF, TRIM, HAY, BOARDS, FLAG, TIMBER }
 
 const SHADER := """
 shader_type spatial;
@@ -89,9 +90,12 @@ void fragment() {
 			float fy = fract(p.y / w);
 			float fx = fract(x / len);
 			float gap = max(1.0 - smoothstep(0.0, 0.07, min(fy, 1.0 - fy)), 1.0 - smoothstep(0.0, 0.006, min(fx, 1.0 - fx)));
-			float grain = vn(vec2(x * 1.5, p.y * 30.0));
-			vec3 pc = base * (0.8 + 0.28 * h21(vec2(row, seg))) * (0.84 + 0.22 * grain);
+			// the shared wood grain (wood_grain.gd), each board starting somewhere of its own in it
+			vec2 board = vec2(row, seg);
+			vec3 wg = wood_grain(vec2(x + h21(board + 1.3) * 40.0, p.y + h21(board + 5.7) * 3.0), mode == 7 ? 0.8 : 0.45);
+			vec3 pc = base * (0.86 + 0.2 * h21(board)) * wg.x;
 			base = mix(pc, base * 0.35, gap * 0.8);
+			rough = wg.z;
 		} else if (mode == 4) {
 			vec2 cell = vec2(0.36, 0.3);
 			vec2 b = uv / cell;
@@ -103,6 +107,12 @@ void fragment() {
 			float lap = smoothstep(0.0, 1.0, f.y);
 			vec3 tc = base * (0.8 + 0.26 * h21(id)) * (0.7 + 0.4 * lap) * (0.92 + 0.1 * n);
 			base = mix(tc, base * 0.45, edge * 0.7);
+		} else if (mode == 9) {
+			// old timber (the ruin's beams, Ted, Nov 26): the shared grain, aged (uv.x runs along the grain,
+			// and each beam's uv starts at its own offset: Bld.grain_off)
+			vec3 wg = wood_grain(uv, 1.0);
+			sh = wg.x;
+			rough = wg.z;
 		} else if (mode == 6) {
 			float s = vn(vec2(uv.x * 3.0, uv.y * 40.0)) * 0.6 + vn(vec2(uv.x * 9.0 + 4.0, uv.y * 70.0)) * 0.4;
 			sh = 0.68 + 0.45 * s;
@@ -188,7 +198,7 @@ static func _mat(m: int, low: bool) -> ShaderMaterial:
 		return _mats[key]
 	if _shader == null:
 		_shader = Shader.new()
-		_shader.code = SHADER
+		_shader.code = SHADER.replace("void fragment() {", WoodGrain.GLSL + "\nvoid fragment() {")
 	var sm := ShaderMaterial.new()
 	sm.shader = _shader
 	sm.set_shader_parameter("mode", m)
@@ -205,7 +215,7 @@ static func _op(u: float, w: float, b: float, t: float, k: String = "win") -> Di
 	return {"u": u, "w": w, "b": b, "t": t, "k": k}
 
 
-# A squared timber 0.2 m thick from a to b (centre line), solid.
+# A squared timber 0.2 m thick from a to b (centre line), solid, with the grain along it.
 static func _beam(b: Bld, a: Vector3, c: Vector3, col: Color) -> void:
 	var dir := (c - a).normalized()
 	var x := Vector3.UP.cross(dir)
@@ -213,7 +223,19 @@ static func _beam(b: Bld, a: Vector3, c: Vector3, col: Color) -> void:
 		x = Vector3.RIGHT
 	x = x.normalized()
 	var bas := Basis(x, dir.cross(x), dir)
-	b.box(TRIM, (a + c) * 0.5, Vector3(0.2, 0.2, a.distance_to(c)), col, true, bas)
+	b.grain = dir
+	b.grain_off = WoodGrain.offset_for(a + c)
+	b.box(TIMBER, (a + c) * 0.5, Vector3(0.2, 0.2, a.distance_to(c)), col, true, bas)
+	b.grain = Vector3.ZERO
+
+
+# A squared timber between two corners, the grain along its longest side.
+static func _timber(b: Bld, p0: Vector3, p1: Vector3, col: Color, collide := false) -> void:
+	var s := (p1 - p0).abs()
+	b.grain = Vector3.RIGHT if s.x >= s.y and s.x >= s.z else (Vector3.UP if s.y >= s.z else Vector3.BACK)
+	b.grain_off = WoodGrain.offset_for(p0 + p1)
+	b.ab(TIMBER, p0, p1, col, collide)
+	b.grain = Vector3.ZERO
 
 
 # ---------------------------------------------------------------- the corner shop's goods
@@ -320,6 +342,8 @@ static func _crate(b: Bld, rng: RandomNumberGenerator, at: Vector3, what: String
 class Bld:
 	var sts := {}
 	var shapes: Array = []
+	var grain := Vector3.ZERO   # TIMBER: the way the wood grain runs (set while a beam is drawn)
+	var grain_off := Vector2.ZERO   # ...and where in the grain this beam starts (so no two look alike)
 	var lo := Vector3(INF, INF, INF)
 	var hi := Vector3(-INF, -INF, -INF)
 
@@ -331,6 +355,12 @@ class Bld:
 		return sts[m]
 
 	func _uv(p: Vector3, n: Vector3, bas: Basis) -> Vector2:
+		if grain != Vector3.ZERO:
+			var across := n.cross(grain)
+			if across.length() < 0.1:   # the sawn end: end grain
+				var t1 := grain.cross(Vector3.UP if absf(grain.y) < 0.9 else Vector3.RIGHT).normalized()
+				return Vector2(p.dot(t1) * 3.0, p.dot(grain.cross(t1)) * 3.0)
+			return Vector2(p.dot(grain), p.dot(across.normalized())) + grain_off
 		if absf(n.y) > 0.7:
 			return Vector2(p.dot(bas.x), p.dot(bas.z))
 		var t := Vector3.UP.cross(n)
@@ -412,6 +442,12 @@ class Bld:
 	func ab(m: int, p0: Vector3, p1: Vector3, col: Color, collide := true) -> void:
 		var a := p0.min(p1)
 		var b := p0.max(p1)
+		if not collide:
+			# Looks-only pieces (trim, beams, bands, goods) stand a few mm proud on every side, so none of
+			# their faces lies in the very plane of a wall's, floor's or another piece's face: two surfaces in
+			# one plane flicker as the camera moves (Ted, Nov 26: tops and bottoms of walls, door frames).
+			a -= Vector3.ONE * 0.004
+			b += Vector3.ONE * 0.004
 		if (b - a).x < 0.001 or (b - a).y < 0.001 or (b - a).z < 0.001:
 			return
 		box(m, (a + b) * 0.5, b - a, col, collide)
@@ -506,6 +542,11 @@ class Bld:
 	func shell(m: int, w: float, d: float, y0: float, y1: float, ops: Dictionary, col: Color, trim: Color, shut = null, collide := true, th := T, do_frames := true) -> void:
 		var hw := w * 0.5
 		var hd := d * 0.5
+		if not do_frames:
+			# (Ted, Nov 26, still flickering at the tops and bottoms: a cornice band's inside face lay exactly
+			# on the wall's inside face. Every band and plinth is now a touch thicker, so its inside stands
+			# just proud of the wall.)
+			th += 0.02
 		if not do_frames and not ops.is_empty():
 			# a plinth round the foot of the walls, cut for the same doors: its cut faces would lie in the
 			# very planes of the wall's own and flicker, so its openings are a touch wider (Nov 26)
@@ -514,6 +555,8 @@ class Bld:
 				wider[side] = (ops[side] as Array).map(func(o):
 					var o2: Dictionary = o.duplicate()
 					o2["w"] = o2["w"] + 0.03
+					if o2["b"] <= y0 + FLOOR + 0.01:
+						o2["b"] = y0 - 1.0   # a doorway: no plinth step of its own, its top was in the wall's threshold's plane
 					return o2)
 			ops = wider
 		var f: Array = ops.get("front", [])
@@ -998,7 +1041,7 @@ static func _ruin(b: Bld, look: int) -> void:
 			# (Ted, Nov 26: beams "resting" on air.) Wherever timber bears on a wall, the wall still stands
 			# high enough to hold it: under the surviving corner of the upper floor (back-left), and where the
 			# fallen joist and the leaning beam meet the back wall.
-			if c < 0.0 and axis == 0 and (m < -0.9 or absf(m - 1.0) < 0.45 or absf(m - 2.4) < 0.45):
+			if c < 0.0 and axis == 0 and (m < -0.9 or absf(m - 1.0) < 0.45 or absf(m - 3.4) < 0.45):
 				top = maxf(top, 3.25 if m < -0.9 else 2.75)
 			if c < 0.0 and axis == 1 and m < -0.6:
 				top = maxf(top, 3.25)
@@ -1043,17 +1086,56 @@ static func _ruin(b: Bld, look: int) -> void:
 	b.ab(STONE, Vector3(-hw - 0.55, 0.0, -2.0), Vector3(-hw + 0.02, 4.4, -0.8), wall.darkened(0.12))
 	b.ab(STONE, Vector3(-hw - 0.45, 4.4, -1.9), Vector3(-hw - 0.05, 4.9, -1.3), wall.darkened(0.12))
 	# A corner of the upper floor still hanging on: floorboards on joists, the joists' ends set into the back
-	# wall and resting on a girder at the front, the girder held by the left wall and one post.
-	b.ab(PLANKS, Vector3(-hw + T, 2.95, -hd + T), Vector3(-1.4, 3.15, -1.0), wood)
-	for x in [-3.6, -2.4, -1.6]:
-		b.ab(TRIM, Vector3(x - 0.1, 2.75, -hd + T * 0.5), Vector3(x + 0.1, 2.95, -0.95), wood, false)
-	b.ab(TRIM, Vector3(-hw + T * 0.5, 2.55, -1.15), Vector3(-1.25, 2.75, -0.95), wood)          # girder
-	b.ab(TRIM, Vector3(-1.55, FLOOR, -1.15), Vector3(-1.35, 2.55, -0.95), wood)                # its post
+	# wall and resting on a girder at the front, the girder held by the left wall and one post. The boards
+	# are broken off raggedly at the front, and the rest of that floor lies slumped down to the ground floor,
+	# still hanging off the girder (Ted, Nov 26: "the collapsed 2nd floor would make it look nicer").
+	b.cbox(Vector3((-hw + T - 1.4) * 0.5, 3.05, (-hd + T - 1.0) * 0.5), Vector3(-1.4 - (-hw + T), 0.2, -1.0 - (-hd + T)))
+	var x := -hw + T
+	while x < -1.45:
+		var bw := minf(0.22, -1.4 - x)
+		var reach := -1.0 + rng.randf_range(-0.25, 0.12)
+		_timber(b, Vector3(x + 0.005, 2.95, -hd + T), Vector3(x + bw - 0.005, 3.15, reach), wood.lightened(rng.randf_range(-0.08, 0.08)))
+		x += bw
+	for jx in [-3.6, -2.4, -1.6]:
+		_timber(b, Vector3(jx - 0.1, 2.75, -hd + T * 0.5), Vector3(jx + 0.1, 2.95, -0.95), wood)
+	_timber(b, Vector3(-hw + T * 0.5, 2.55, -1.15), Vector3(-1.25, 2.75, -0.95), wood, true)    # girder
+	_timber(b, Vector3(-1.55, FLOOR, -1.15), Vector3(-1.35, 2.55, -0.95), wood, true)          # its post
+	# the slumped part: boards from the girder's edge down to the floor, a little uneven, one walkable slope
+	var top_z := -0.9
+	var foot_z := 1.45
+	var top_y := 2.8
+	var foot_y := FLOOR + 0.06
+	var slope_dir := Vector3(0, foot_y - top_y, foot_z - top_z).normalized()
+	var slope_up := Vector3.RIGHT.cross(slope_dir)
+	if slope_up.y < 0.0:
+		slope_up = -slope_up
+	var sb := Basis(Vector3.RIGHT, slope_up, Vector3.RIGHT.cross(slope_up))
+	var cx := -3.8
+	while cx < -1.95:
+		var lift := rng.randf_range(0.0, 0.04)
+		var blen := Vector2(foot_z - top_z, top_y - foot_y).length() + rng.randf_range(-0.35, 0.1)
+		var mid := Vector3(cx + 0.105, top_y, top_z) + slope_dir * blen * 0.5 + slope_up * (0.06 + lift)
+		b.grain = slope_dir
+		b.grain_off = WoodGrain.offset_for(mid)
+		b.box(TIMBER, mid, Vector3(0.2, 0.05, blen), wood.lightened(rng.randf_range(-0.1, 0.06)), false, sb)
+		b.grain = Vector3.ZERO
+		cx += 0.215
+	b.cbox(Vector3(-2.85, (top_y + foot_y) * 0.5 + 0.06, (top_z + foot_z) * 0.5), Vector3(1.9, 0.12, Vector2(foot_z - top_z, top_y - foot_y).length()), sb)
+	# a few loose boards that fell off it
+	for k in 3:
+		var at := Vector3(rng.randf_range(-3.6, -2.2), FLOOR + 0.03 + 0.05 * k, rng.randf_range(1.7, 2.6))
+		b.grain = Basis(Vector3.UP, rng.randf() * TAU) * Vector3.BACK
+		b.grain_off = WoodGrain.offset_for(at)
+		b.box(TIMBER, at, Vector3(0.2, 0.05, rng.randf_range(0.8, 1.6)), wood.lightened(rng.randf_range(-0.1, 0.05)), false,
+				Basis(Vector3.UP, atan2(b.grain.x, b.grain.z)))
+		b.grain = Vector3.ZERO
 	b.ab(TRIM, Vector3(-1.6, FLOOR, -1.2), Vector3(-1.3, FLOOR + 0.08, -0.9), wood.darkened(0.2), false)   # pad stone
 	# a joist that came loose at one end: still in its socket in the back wall, the other end down on the floor
 	_beam(b, Vector3(1.0, 2.6, -hd + T * 0.4), Vector3(1.0, FLOOR + 0.1, 0.9), wood)
-	# a beam that fell and leans against the back wall
-	_beam(b, Vector3(2.4, FLOOR + 0.1, -0.55), Vector3(2.4, 2.35, -hd + T + 0.11), wood)
+	# a beam that fell and leans against the back wall, on solid wall between the window and the corner
+	# (Ted, Nov 26: it stood just off the wall; it was in front of the window hole), its top end biting
+	# into the masonry a little
+	_beam(b, Vector3(3.4, FLOOR + 0.1, -0.75), Vector3(3.4, 2.35, -hd + T + 0.02), wood)
 	# and one lying across the floor, its far end propped up on a block of fallen masonry
 	var prop_at := Vector3(1.35, 0.0, 2.15)
 	b.box(STONE, prop_at + Vector3(0, 0.23, 0), Vector3(0.6, 0.46, 0.5), wall.darkened(0.1), true, Basis(Vector3.UP, 0.3))

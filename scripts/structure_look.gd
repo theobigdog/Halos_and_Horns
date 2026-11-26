@@ -12,6 +12,8 @@
 # atlas texture and model family, shared by every copy. Low graphics keeps the original materials.
 extends RefCounted
 
+const WoodGrain = preload("res://scripts/wood_grain.gd")
+
 enum { GENERIC, MASONRY, BUILDING, WOOD, METAL, ROAD, CAR, FLOOR, FABRIC, LIT, TILE }
 
 const SHADER := """
@@ -172,14 +174,13 @@ void fragment() {
 		spec = 0.6;
 	}
 	if (wood > 0.5 && glass < 0.5 && family != 2 && family != 6) {
-		// wood: grain running along the part (up on uprights, along x on tops), with darker streaks
-		vec3 q = an.y > 0.7 ? lp * vec3(1.0, 6.0, 9.0) : lp * vec3(8.0, 0.9, 8.0);
-		float rings = fbm(q * 1.6) * 9.0;
-		float streak = smoothstep(0.35, 0.0, abs(fract(rings) - 0.5) - 0.12);
-		float fibre = noise3(q * 12.0);
-		tone *= 1.0 - streak * 0.11 * near - (fibre - 0.5) * 0.06 * fine;
-		height += streak * 0.0015 * fine + fibre * 0.0008 * fine;
-		rough = 0.68 + streak * 0.12;
+		// wood: the shared grain (wood_grain.gd, the same as the buildings' boards and the hand-built
+		// props: Ted, Nov 26), running up uprights and along x on tops
+		vec2 gg = an.y > 0.7 ? lp.xz : vec2(lp.y, face.x);
+		vec3 wg = wood_grain(gg, 0.45);
+		tone *= mix(1.0, wg.x / 0.9, near);
+		height += wg.y * fine;
+		rough = wg.z;
 	}
 	if ((family == 0 || family == 3 || family == 8 || family == 9) && grey > 0.5 && h.z > 0.22 && h.z < 0.8 && glass < 0.5) {
 		// iron fittings on props: bands, hinges, nails
@@ -351,7 +352,7 @@ static func _shader(q: int) -> Shader:
 	var key := "high" if q >= 2 else "medium"
 	if not _shaders.has(key):
 		var sh := Shader.new()
-		sh.code = SHADER.replace("render_mode cull_back;", "render_mode cull_back;\n"
+		sh.code = SHADER.replace("void fragment() {", WoodGrain.GLSL + "\nvoid fragment() {").replace("render_mode cull_back;", "render_mode cull_back;\n"
 				+ ("#define BUMP\n#define OCTAVES 3" if q >= 2 else "#define OCTAVES 2"))
 		_shaders[key] = sh
 	return _shaders[key]
