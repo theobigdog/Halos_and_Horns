@@ -31,6 +31,8 @@ const PropLib = preload("res://scripts/prop_library.gd")
 const Bouncy = preload("res://scripts/bouncy.gd")
 const Models = preload("res://scripts/models.gd")
 const Shrine = preload("res://scripts/shrine.gd")
+const Characters = preload("res://scripts/characters.gd")
+const HornCrowns = preload("res://scripts/horn_crowns.gd")
 
 const PIECES := [
 	["block", "Block"], ["cylinder", "Cylinder"],
@@ -130,6 +132,8 @@ var _builders_sig := ""
 var _left_panel: Control
 var _new_button: Button
 var _test_button: Button
+var test_role := "demon"          # Test play as a demon or an angel (Ted, Nov 26: it was always demon)
+var _test_role_button: Button
 var _extend_button: Button
 var _top_panel: Control
 var _light_range: SpinBox
@@ -422,9 +426,12 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 	dm.bottom_radius = 1.25
 	dm.height = 0.03
 	disc.mesh = dm
-	var floor_m := StandardMaterial3D.new()
-	floor_m.albedo_color = Color(1.0, 0.95, 0.8, 0.35) if angel else Color(0.08, 0.02, 0.02, 0.75)
-	floor_m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	# (Nov 26: a painted circle instead of a flat one: rays of light and a ring of runes for the angels,
+	# scorched, cracked ground glowing like embers for the demons)
+	var floor_m := ShaderMaterial.new()
+	floor_m.shader = _marker_floor_shader()
+	floor_m.set_shader_parameter("angel", angel)
+	floor_m.set_shader_parameter("tint", color)
 	disc.material_override = floor_m
 	disc.position.y = 0.02
 	n.add_child(disc)
@@ -446,6 +453,8 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 		bm.top_radius = 0.75
 		bm.bottom_radius = 1.15
 		bm.height = 4.5
+		bm.cap_top = false
+		bm.cap_bottom = false
 		beam.mesh = bm
 		var bmat := StandardMaterial3D.new()
 		bmat.albedo_color = Color(1.0, 0.93, 0.7, 0.14)
@@ -467,19 +476,15 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 		halo.position.y = 2.0
 		halo.rotation.x = 0.25
 		n.add_child(halo)
-		for side in [-1.0, 1.0]:   # little wings either side of the halo
+		# real feathered wings either side of the halo (Ted, Nov 26: they were "single rectangles"), the same
+		# wings the angels wear, folded up a little like they're about to take off
+		for side in [-1.0, 1.0]:
 			var wing := MeshInstance3D.new()
-			var wm := BoxMesh.new()
-			wm.size = Vector3(0.5, 0.16, 0.03)
-			wing.mesh = wm
-			var white := StandardMaterial3D.new()
-			white.albedo_color = Color(1, 1, 0.97)
-			white.emission_enabled = true
-			white.emission = Color(1, 0.97, 0.9)
-			white.emission_energy_multiplier = 0.6
-			wing.material_override = white
-			wing.position = Vector3(0.62 * side, 2.05, 0)
-			wing.rotation.z = 0.35 * side
+			wing.mesh = Characters._angel_wing_mesh(side)
+			wing.material_override = Characters._angel_mat("natural")
+			wing.position = Vector3(0.32 * side, 1.95, 0)
+			wing.scale = Vector3.ONE * 0.95
+			wing.rotation = Vector3(0.0, -0.3 * side, 0.3 * side)
 			n.add_child(wing)
 	else:
 		# a five-pointed star in the circle, drawn in glowing red lines
@@ -498,22 +503,11 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 			line.position = (p0 + p1) * 0.5
 			line.rotation.y = -atan2(p1.z - p0.z, p1.x - p0.x)
 			n.add_child(line)
-		# a pair of horns floating above
-		var dark := StandardMaterial3D.new()
-		dark.albedo_color = Color(0.15, 0.06, 0.06)
-		dark.emission_enabled = true
-		dark.emission = Color(0.5, 0.05, 0.02)
-		for side in [-1.0, 1.0]:
-			var horn := MeshInstance3D.new()
-			var cm := CylinderMesh.new()
-			cm.top_radius = 0.0
-			cm.bottom_radius = 0.12
-			cm.height = 0.6
-			horn.mesh = cm
-			horn.material_override = dark
-			horn.position = Vector3(0.22 * side, 1.9, 0)
-			horn.rotation.z = -0.5 * side
-			n.add_child(horn)
+		# a pair of the demons' own devil horns above, over a pair of glowing eyes (Ted, Nov 26: the old cones)
+		var horns := HornCrowns.make("horns", 0.0)
+		horns.position = Vector3(0, 1.85, 0)
+		horns.scale = Vector3.ONE * 1.2
+		n.add_child(horns)
 		var eye_m := StandardMaterial3D.new()
 		eye_m.albedo_color = Color(1.0, 0.3, 0.1)
 		eye_m.emission_enabled = true
@@ -546,6 +540,54 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 	tag.position.y = 2.9
 	n.add_child(tag)
 	_add_pick_box(n, Vector3(1.2, 2.0, 1.2))
+
+
+static var _marker_shader: Shader
+
+
+static func _marker_floor_shader() -> Shader:
+	if _marker_shader == null:
+		_marker_shader = Shader.new()
+		_marker_shader.code = """
+shader_type spatial;
+render_mode blend_mix, cull_disabled, unshaded;
+uniform bool angel = true;
+uniform vec3 tint : source_color;
+varying vec3 lp;
+void vertex() { lp = VERTEX; }
+float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float n2(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y);
+}
+void fragment() {
+	vec2 p = lp.xz / 1.25;            // -1 .. 1 across the circle
+	float r = length(p);
+	float a = atan(p.y, p.x);
+	if (r > 1.0) { discard; }
+	vec3 col;
+	float alpha;
+	if (angel) {
+		// soft light, slowly turning rays, and a ring of little rune marks
+		float rays = 0.5 + 0.5 * sin(a * 12.0 + TIME * 0.4);
+		float ring = smoothstep(0.03, 0.0, abs(r - 0.82));
+		float runes = step(0.5, fract(a * 24.0 / 6.28318 + TIME * 0.05)) * smoothstep(0.05, 0.0, abs(r - 0.9)) * step(0.3, n2(vec2(floor(a * 24.0 / 6.28318 + TIME * 0.05), 3.0)) );
+		col = mix(vec3(1.0, 0.97, 0.88), tint, 0.4 + 0.3 * rays) * (1.2 + ring * 1.5 + runes * 1.2);
+		alpha = (0.18 + 0.18 * rays * (1.0 - r)) * (1.0 - smoothstep(0.85, 1.0, r)) + ring * 0.7 + runes * 0.6;
+	} else {
+		// scorched earth: dark char, cracks glowing hot and pulsing
+		float n = n2(p * 6.0) * 0.6 + n2(p * 14.0) * 0.4;
+		float crack = 1.0 - smoothstep(0.0, 0.05, abs(n2(p * 5.0 + 4.0) - 0.5));
+		crack *= smoothstep(1.0, 0.3, r);
+		float pulse = 0.75 + 0.25 * sin(TIME * 2.0 + n * 6.0);
+		col = mix(vec3(0.05, 0.02, 0.015) * (0.6 + n), tint * 2.5 * pulse, crack);
+		alpha = (0.85 - 0.35 * smoothstep(0.7, 1.0, r)) * (0.7 + 0.3 * n) + crack * 0.3;
+	}
+	ALBEDO = col;
+	ALPHA = clamp(alpha, 0.0, 1.0);
+}
+"""
+	return _marker_shader
 
 
 # The piece's size in its own space, from what it looks like.
@@ -1757,10 +1799,12 @@ func new_map() -> void:
 func test_play() -> void:
 	if online:
 		if hosting:
+			main.net.solo_role = test_role   # (when you're the only one building)
 			main.net.build_test_play()
 		return
 	sleep()
 	testing = true
+	main.role = test_role
 	main.test_map_from_editor(map.duplicate(true))
 
 
@@ -2475,6 +2519,10 @@ func _build_ui() -> void:
 	bar2.add_child(_shared_check)
 	_small_button(bar2, "Open maps folder", func(): OS.shell_open(ProjectSettings.globalize_path(MapData.USER_DIR)))
 	_test_button = _small_button(bar2, "Test play", test_play)
+	_test_role_button = _small_button(bar2, "as: Demon", func():
+		test_role = "angel" if test_role == "demon" else "demon"
+		_test_role_button.text = "as: " + test_role.capitalize())
+	_test_role_button.tooltip_text = "Which side you play when you test the map (click to switch)."
 	_small_button(bar2, "Undo", undo)
 	_small_button(bar2, "Redo", redo)
 	_snap_check = CheckBox.new()

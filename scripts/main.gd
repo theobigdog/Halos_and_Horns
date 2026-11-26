@@ -63,6 +63,7 @@ const Vortex = preload("res://scripts/vortex.gd")
 const Projectile = preload("res://scripts/projectile.gd")
 const BlessingSounds = preload("res://scripts/blessing_sounds.gd")
 const Updater = preload("res://scripts/updater.gd")
+const GameRules = preload("res://scripts/game_rules.gd")
 
 const GAME_CODENAME := "Power-ups"
 const HIDE_TIME := 30.0
@@ -235,8 +236,19 @@ var music: Music               # the soundtrack (music.gd)
 var _music_volume := 0.6
 var _sound_volume := 1.0
 var _quality_pick: OptionButton
-var _splash_pick: SpinBox
-var hellfire_splashes := 3     # Hellfire: extra pools it splashes into around the first (Settings; the host's counts)
+# Game rules (game_rules.gd): Standard, or the player's own Custom set (saved). The host's count online.
+var rules_custom := GameRules.standard()
+var rules_use_custom := false
+var rules_panel: Control
+var _rules_inputs := {}           # rule -> SpinBox / CheckBox
+var _rules_pick: OptionButton     # lobby: Standard / Custom
+var _rules_summary: Label
+var _switch_side: Button          # pause menu, practice / testing a map: play the other team
+var _solo_pick: OptionButton      # lobby, host alone: which team you play
+var _solo_row: HBoxContainer
+var _solo_popup: Control          # host alone: someone joined mid-round
+var _solo_label: Label
+var _solo_until := 0.0
 var _music_slider: HSlider
 var _sound_slider: HSlider
 
@@ -373,10 +385,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE and controls_panel.visible:
 		_close_controls()
 		return
+	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE and rules_panel != null and rules_panel.visible:
+		_close_rules()
+		return
 	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
 		pause_panel.visible = not pause_panel.visible
 		# (a test round from Creative: a way back to building, offline or as the host online)
 		_back_to_editor.visible = (mode == "practice" and editor != null and editor.testing) 				or (mode == "online" and net != null and net.is_host and net.test_round)
+		_switch_side.visible = mode == "practice"
+		_switch_side.text = "Switch to the %s" % ("demons" if role == "angel" else "angels")
 		_refresh_mouse()
 	elif event.is_action_pressed("toggle_tuning"):
 		tuning_panel.visible = not tuning_panel.visible
@@ -394,6 +411,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # The mouse is free whenever a menu or panel is open; otherwise it steers.
 func _any_panel_open() -> bool:
 	return menu_panel.visible or pause_panel.visible or tuning_panel.visible or lobby_panel.visible \
+			or (rules_panel != null and rules_panel.visible) or (_solo_popup != null and _solo_popup.visible) \
 			or shrine_panel.visible or chat_edit.visible or (controls_panel != null and controls_panel.visible) \
 			or (wardrobe != null and wardrobe.visible)
 
@@ -411,6 +429,15 @@ func _tick_waiting_game() -> void:
 			waiting_game.stop()
 			if waiting_game.best > old_best:
 				_save_settings()   # (a new Whack-an-Imp best, kept between games)
+			# how it went, against the record (Ted, Nov 26)
+			var got: int = waiting_game.score
+			if got > 0:
+				if got > old_best and old_best > 0:
+					_toast("Whack-an-Imp: %d bonks. NEW RECORD! (beat %d)" % [got, old_best], 4.0)
+				elif old_best > 0:
+					_toast("Whack-an-Imp: %d bonks (your record: %d)" % [got, old_best], 4.0)
+				else:
+					_toast("Whack-an-Imp: %d bonks. That's your record to beat!" % got, 4.0)
 		_refresh_mouse()
 	elif on:
 		waiting_game.set_seconds_left(time_left)
@@ -1355,6 +1382,7 @@ func _build_menu() -> void:
 	name_edit.text_changed.connect(func(_t): if _settings_loaded: _save_settings())   # (kept between games and updates)
 	_build_loadout(box)
 	_button(box, "Practice (single player)", start_practice)
+	_button(box, "Game rules (gravity, damage, power-ups...)", _open_rules)
 	_button(box, "Creative (build maps)", open_editor)
 	_button(box, "Wardrobe (your angel and demon)", _open_wardrobe)
 	box.add_child(HSeparator.new())
@@ -1412,6 +1440,15 @@ func _build_pause_menu() -> void:
 		_refresh_mouse())
 	_back_to_editor = _button(box, "Back to Creative", back_to_editor)
 	_back_to_editor.visible = false
+	# (testing a map: try it from either side; Ted, Nov 26)
+	_switch_side = _button(box, "Switch side", func():
+		pause_panel.visible = false
+		role = "demon" if role == "angel" else "angel"
+		if editor != null:
+			editor.test_role = role
+		start_round()
+		_refresh_mouse())
+	_switch_side.visible = false
 	_button(box, "Settings & controls", _open_controls)
 	_leave_button = _button(box, "Leave to main menu", _try_leave)
 	pause_panel.visible = false
@@ -1549,18 +1586,6 @@ func _build_options(box: VBoxContainer) -> void:
 	_quality_pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_quality_pick.item_selected.connect(func(i): graphics.apply(i))
 	grid.add_child(_quality_pick)
-	var sl := Label.new()
-	sl.text = "Hellfire splash pools"
-	sl.tooltip_text = "How many extra pools of fire a Hellfire splashes into around where it lands.
-Online, the host's setting is the one that counts."
-	grid.add_child(sl)
-	_splash_pick = SpinBox.new()
-	_splash_pick.min_value = 0
-	_splash_pick.max_value = 8
-	_splash_pick.step = 1
-	_splash_pick.tooltip_text = sl.tooltip_text
-	_splash_pick.value_changed.connect(func(v): hellfire_splashes = int(v))
-	grid.add_child(_splash_pick)
 	var cl := Label.new()
 	cl.text = "Chat text size"
 	grid.add_child(cl)
@@ -1795,6 +1820,42 @@ func _build_lobby() -> void:
 		if net and _kick_pick.selected >= 0:
 			net.kick_by_name(_kick_pick.get_item_text(_kick_pick.selected), "The host kicked you."))
 	kick_row.add_child(kick_btn)
+	var rules_row := HBoxContainer.new()
+	var rules_lbl := Label.new()
+	rules_lbl.text = "Game rules"
+	rules_lbl.custom_minimum_size.x = 140
+	rules_row.add_child(rules_lbl)
+	_rules_pick = OptionButton.new()
+	_rules_pick.add_item("Standard")
+	_rules_pick.add_item("Custom")
+	_rules_pick.item_selected.connect(func(i):
+		rules_use_custom = i == 1
+		_sync_rules_ui()
+		_save_settings())
+	rules_row.add_child(_rules_pick)
+	var rules_edit := Button.new()
+	rules_edit.text = "Edit custom..."
+	rules_edit.pressed.connect(_open_rules)
+	rules_row.add_child(rules_edit)
+	lobby_times.add_child(rules_row)
+	_rules_summary = Label.new()
+	_rules_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_rules_summary.custom_minimum_size.x = 400
+	_rules_summary.add_theme_color_override("font_color", Color(0.8, 0.85, 1.0))
+	lobby_times.add_child(_rules_summary)
+	_solo_row = HBoxContainer.new()
+	var solo_lbl := Label.new()
+	solo_lbl.text = "Play alone as"
+	solo_lbl.custom_minimum_size.x = 140
+	_solo_row.add_child(solo_lbl)
+	_solo_pick = OptionButton.new()
+	_solo_pick.add_item("Demon")
+	_solo_pick.add_item("Angel")
+	_solo_pick.item_selected.connect(func(i):
+		if net:
+			net.solo_role = "angel" if i == 1 else "demon")
+	_solo_row.add_child(_solo_pick)
+	lobby_times.add_child(_solo_row)
 	lobby_start = _button(box, "Start round", func():
 		if net:
 			net.hide_time = HIDE_CHOICES[_time_pick["Hiding time"]]
@@ -1808,6 +1869,143 @@ func _build_lobby() -> void:
 	_button(box, "Settings & controls", _open_controls)
 	_button(box, "Leave", func(): _show_menu(""))
 	lobby_panel.visible = false
+
+
+# ---------------- playing alone online ----------------
+# Host, alone in a round, and someone joined: the round restarts with them when the countdown runs out,
+# unless the host keeps it going (Ted, Nov 26).
+func solo_join_prompt(who: String, seconds: float) -> void:
+	if _solo_popup == null:
+		var parts := _panel(380)
+		_solo_popup = parts[0]
+		var box: VBoxContainer = parts[1]
+		_solo_label = Label.new()
+		_solo_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		_solo_label.custom_minimum_size.x = 360
+		box.add_child(_solo_label)
+		_button(box, "Keep my round going (they join it)", func():
+			_solo_popup.visible = false
+			if net:
+				net.solo_keep()
+			_refresh_mouse())
+		_button(box, "Restart now", func():
+			_solo_popup.visible = false
+			if net:
+				net.solo_restart()
+			_refresh_mouse())
+	_solo_until = _now() + seconds
+	_solo_popup.set_meta("who", who)
+	_solo_popup.visible = true
+	_solo_tick()
+	_refresh_mouse()
+
+
+func _solo_tick() -> void:
+	if _solo_popup == null or not _solo_popup.visible:
+		return
+	var left := _solo_until - _now()
+	if left <= 0.0 or net == null or not net.solo_round:
+		_solo_popup.visible = false
+		_refresh_mouse()
+		if net and net.solo_round:
+			net.solo_restart()
+		return
+	_solo_label.text = "%s joined! Restarting the round with them in %d..." % [_solo_popup.get_meta("who"), ceili(left)]
+	get_tree().create_timer(0.25).timeout.connect(_solo_tick)
+
+
+# ---------------- game rules ----------------
+
+func active_rules() -> Dictionary:
+	return GameRules.clean(rules_custom) if rules_use_custom else GameRules.standard()
+
+
+func _sync_rules_ui() -> void:
+	if _rules_pick:
+		_rules_pick.select(1 if rules_use_custom else 0)
+	if _rules_summary:
+		_rules_summary.text = GameRules.summary(active_rules())
+	for k in _rules_inputs:
+		var w: Control = _rules_inputs[k]
+		if w is SpinBox:
+			(w as SpinBox).set_value_no_signal(rules_custom[k])
+		elif w is CheckBox:
+			(w as CheckBox).set_pressed_no_signal(rules_custom["powerups"][k])
+
+
+func _open_rules() -> void:
+	if rules_panel == null:
+		_build_rules_panel()
+	_sync_rules_ui()
+	rules_panel.visible = true
+	_refresh_mouse()
+
+
+func _close_rules() -> void:
+	rules_panel.visible = false
+	_sync_rules_ui()
+	_save_settings()
+	_refresh_mouse()
+
+
+# The Custom rules (Ted, Nov 26). Changing anything here switches the game to Custom.
+func _build_rules_panel() -> void:
+	var parts := _panel(460)
+	rules_panel = parts[0]
+	var box: VBoxContainer = parts[1]
+	var title := Label.new()
+	title.text = "Custom game rules"
+	title.add_theme_font_size_override("font_size", 22)
+	box.add_child(title)
+	var note := Label.new()
+	note.text = "Used when the rules are set to Custom (in the lobby, or for practice). Online, the host's rules count."
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size.x = 440
+	box.add_child(note)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	box.add_child(grid)
+	for k in GameRules.NUMBERS:
+		var r: Array = GameRules.NUMBERS[k]
+		var lbl := Label.new()
+		lbl.text = r[0]
+		lbl.tooltip_text = r[5]
+		lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+		lbl.custom_minimum_size.x = 220
+		grid.add_child(lbl)
+		var sb := SpinBox.new()
+		sb.min_value = r[1]
+		sb.max_value = r[2]
+		sb.step = r[3]
+		sb.tooltip_text = r[5]
+		if k != "splashes":
+			sb.prefix = "x"
+		sb.value_changed.connect(func(v):
+			rules_custom[k] = int(v) if k == "splashes" else v
+			rules_use_custom = true
+			_sync_rules_ui())
+		grid.add_child(sb)
+		_rules_inputs[k] = sb
+	var pl := Label.new()
+	pl.text = "Power-ups that can turn up"
+	box.add_child(pl)
+	var pgrid := GridContainer.new()
+	pgrid.columns = 2
+	box.add_child(pgrid)
+	for k in GameRules.POWERUP_KINDS:
+		var cb := CheckBox.new()
+		cb.text = "%s (%s)" % [PowerUps.LABELS[k], "angels" if k in PowerUps.ANGEL_KINDS else "demons"]
+		cb.toggled.connect(func(on):
+			rules_custom["powerups"][k] = on
+			rules_use_custom = true
+			_sync_rules_ui())
+		pgrid.add_child(cb)
+		_rules_inputs[k] = cb
+	_button(box, "Reset to standard", func():
+		rules_custom = GameRules.standard()
+		_sync_rules_ui())
+	_button(box, "Done", _close_rules)
+	rules_panel.visible = false
 
 
 func _time_choice(parent: Control, label_text: String, choices: Array, default_index: int, on_pick := Callable()) -> void:
@@ -1910,8 +2108,11 @@ func _load_settings() -> void:
 	var q := clampi(int(_settings.get_value("options", "graphics", 1)), 0, 2)
 	_quality_pick.select(q)
 	graphics.apply(q)
-	hellfire_splashes = clampi(int(_settings.get_value("options", "hellfire_splashes", 3)), 0, 8)
-	_splash_pick.set_value_no_signal(hellfire_splashes)
+	rules_custom = GameRules.clean(JSON.parse_string(str(_settings.get_value("rules", "custom", "{}"))))
+	if _settings.has_section_key("options", "hellfire_splashes") and not _settings.has_section_key("rules", "custom"):
+		rules_custom["splashes"] = clampi(int(_settings.get_value("options", "hellfire_splashes", 3)), 0, 8)   # (it was a Settings option)
+	rules_use_custom = bool(_settings.get_value("rules", "use_custom", false))
+	_sync_rules_ui()
 	set_ui_scale(float(_settings.get_value("options", "ui_scale", 1.0)))
 	_set_shared_dir(str(_settings.get_value("options", "shared_maps", "")))
 	if waiting_game != null:
@@ -1956,7 +2157,8 @@ func _save_settings() -> void:
 	_settings.set_value("options", "music", _music_volume)
 	_settings.set_value("options", "sound", _sound_volume)
 	_settings.set_value("options", "graphics", Graphics.quality)
-	_settings.set_value("options", "hellfire_splashes", hellfire_splashes)
+	_settings.set_value("rules", "custom", JSON.stringify(rules_custom))
+	_settings.set_value("rules", "use_custom", rules_use_custom)
 	_settings.set_value("options", "chat_size", chat_font_size)
 	_settings.set_value("options", "show_fps", _fps_pick.button_pressed)
 	_settings.set_value("options", "ui_scale", ui_scale)
@@ -2266,6 +2468,7 @@ func leave_editor() -> void:
 
 func start_practice() -> void:
 	_hide_menus()
+	GameRules.current = active_rules()
 	mode = "practice"
 	player.net_mode = ""
 	start_round()
@@ -2430,8 +2633,11 @@ func online_lobby(names: Array, host_phase: String) -> void:
 	lobby_build.visible = is_host
 	lobby_times.visible = is_host
 	if is_host:
-		lobby_start.disabled = names.size() < 2
-		lobby_start.text = "Start round" if names.size() >= 2 else "Start round (need at least 2 players)"
+		lobby_start.disabled = false
+		lobby_start.text = "Start round" if names.size() >= 2 else "Start round (just you, for now)"
+		_solo_row.visible = names.size() < 2
+		_solo_pick.select(1 if net.solo_role == "angel" else 0)
+		_rules_summary.text = GameRules.summary(active_rules())
 		if net.using_relay():
 			if _room_code == "":
 				lobby_info.text = "Opening a room on the relay server..."
@@ -2652,7 +2858,7 @@ func kaboom_fx(pos: Vector3) -> void:
 	_play_at(PropAnimSounds.get_sound("kaboom"), pos, 1.0, 4.0)
 	_shake_near(pos, 0.9, 22.0)
 	if round_root:
-		_blast_props(pos, PropAnims.KABOOM_RADIUS + 2.0, BLAST_SHOVE * 1.6)
+		_blast_props(pos, PropAnims.KABOOM_RADIUS * GameRules.f("blast") + 2.0, BLAST_SHOVE * 1.6)
 
 
 func online_dazed(seconds: float) -> void:
@@ -2801,7 +3007,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 			_auth_fires[_fire_counter] = {"owner": user_key, "pos": spot, "lit_at": _now() + flight[1],
 				"until": _now() + flight[1] + Skills.FIRE_LIFETIME}
 			print("[decider] hellfire lit")
-			if hellfire_splashes > 0:
+			if GameRules.splashes() > 0:
 				get_tree().create_timer(flight[1]).timeout.connect(func(): _fire_splash(user_key, spot))
 		"fear":
 			# Every angel close by who can see the demon panics.
@@ -3139,11 +3345,11 @@ func _vacuum_minions(center: Vector3, reach := Skills.VACUUM_RADIUS) -> void:
 func _fire_splash(owner: int, spot: Vector3) -> void:
 	if not is_inside_tree() or state == State.ENDED:
 		return
-	var n := hellfire_splashes
+	var n := GameRules.splashes()
 	var turn := randf() * TAU
 	for i in n:
 		var a := turn + TAU * i / n + randf_range(-0.3, 0.3)
-		var reach := randf_range(Skills.FIRE_SPLASH_MIN, Skills.FIRE_SPLASH_MAX)
+		var reach := randf_range(Skills.FIRE_SPLASH_MIN, Skills.FIRE_SPLASH_MAX) * GameRules.f("blast")
 		var to := ground_below(spot + Vector3(cos(a), 0.0, sin(a)) * reach + Vector3.UP * 3.0)
 		if absf(to.y - spot.y) > 3.0:
 			continue   # over a ledge or up a wall: skip that one
@@ -3368,7 +3574,7 @@ func give_powerup(user_key: int, kind: String, where: Vector3) -> void:
 		broadcast_fx("fire_burst", [where])
 		var burned := 0
 		for e in team_entries():
-			if e[2] == "angel" and e[1].global_position.distance_to(where) <= PowerUps.FIRE_BURST_RADIUS:
+			if e[2] == "angel" and e[1].global_position.distance_to(where) <= PowerUps.FIRE_BURST_RADIUS * GameRules.f("blast"):
 				burned += 1
 				if mode == "practice":
 					e[1].burning = maxf(e[1].burning, Skills.FIRE_LINGER * 2.0)
@@ -3633,7 +3839,7 @@ func fx(kind: String, args: Array) -> void:
 				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.3, sin(a)) * PowerUps.FIRE_BURST_RADIUS * 0.6, Color(1.0, 0.45, 0.05, 0.85), 2.2)
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.5, Color(1.0, 0.3, 0.0, 0.9), 3.5)
 			Effects.smoke(_fx_parent(), args[0] + Vector3.UP * 0.5, Color(0.25, 0.12, 0.08), 2.0)
-			_blast_props(args[0], PowerUps.FIRE_BURST_RADIUS, 6.0)
+			_blast_props(args[0], PowerUps.FIRE_BURST_RADIUS * GameRules.f("blast"), 6.0)
 			_shake_near(args[0], 0.4, 14.0)
 		"cherub":
 			var c := Cherub.new()

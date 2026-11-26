@@ -112,21 +112,49 @@ static func material(kind: String) -> ShaderMaterial:
 	return _cache[key]
 
 
-# Both horns (and any extras) of this kind, for a head whose top is at `top`.
-static func make(kind: String, top: float) -> Node3D:
+# Both horns (and any extras) of this kind, for a head whose top is at `top`. Given the head's points
+# (`hull`, head bone space), each horn is moved so its root sits just inside the head's surface, in the
+# direction it was drawn from the head's centre, so it grows out of the skull instead of hovering by it.
+static func make(kind: String, top: float, hull := PackedVector3Array()) -> Node3D:
 	if not LOOKS.has(kind):
 		kind = "horns"
 	var n := Node3D.new()
-	# (the KayKit heads are big and round: the horns are drawn at 1.5x and their roots sunk into the sides)
+	# (the KayKit heads are big and round: the horns are drawn at 1.5x)
 	n.position.y = top + ROOT_DROP
 	n.scale = Vector3.ONE * SCALE
-	for side in [-1.0, 1.0]:
-		for part in _parts(kind):
+	for part in _parts(kind):
+		var off := _root_shift(kind, part, n.position, hull)
+		for side in [-1.0, 1.0]:
 			var mi := MeshInstance3D.new()
 			mi.mesh = _mesh(kind, part, side)
 			mi.material_override = material(kind)
+			mi.position = Vector3(off.x * side, off.y, off.z)
 			n.add_child(mi)
 	return n
+
+
+# How far to move one (right-hand) horn, in the horns' own scaled space, to plant its root in the head.
+static func _root_shift(kind: String, part: int, origin: Vector3, hull: PackedVector3Array) -> Vector3:
+	if hull.is_empty():
+		return Vector3.ZERO
+	var box := AABB(hull[0], Vector3.ZERO)
+	for v in hull:
+		box = box.expand(v)
+	var centre := box.get_center()
+	var root := origin + _path(kind, part, 0.0) * SCALE
+	var dir := (root - centre).normalized()
+	# the head's surface that way: the farthest point within a narrow cone around it
+	var reach := -1.0
+	for v in hull:
+		var d := v - centre
+		var along := d.dot(dir)
+		if along > 0.0 and along > d.length() * 0.94 and along > reach:
+			reach = along
+	if reach <= 0.0:
+		return Vector3.ZERO
+	var sink := _radius(kind, part, 0.0) * SCALE * 0.55   # buried a little over half its thickness
+	var anchor := centre + dir * (reach - sink)
+	return (anchor - root) / SCALE
 
 
 static func _parts(kind: String) -> Array:

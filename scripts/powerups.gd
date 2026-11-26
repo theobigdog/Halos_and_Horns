@@ -18,6 +18,7 @@ extends Node
 
 const Skills = preload("res://scripts/skills.gd")
 const Sfx = preload("res://scripts/sfx.gd")
+const GameRules = preload("res://scripts/game_rules.gd")   # (each power-up can be switched off: Ted, Nov 26)
 
 const ANGEL_KINDS := ["sense", "quick_throw", "quick_skills", "quick_run"]
 const DEMON_KINDS := ["fast_hatred", "fire_burst", "heal", "heal", "vanish"]   # (healing turns up twice as often)
@@ -83,8 +84,9 @@ var catch_drop := ANGEL_CATCH_DROP   # (tests set it to 1 with --sure-drops, so 
 
 
 func demon_caught(where: Vector3) -> void:
-	if randf() < catch_drop and _count("angel") < MAX_ANGEL_PICKUPS:
-		_drop("angel", ANGEL_KINDS.pick_random(), where)
+	var kinds := GameRules.allowed(ANGEL_KINDS)
+	if randf() < catch_drop and _count("angel") < MAX_ANGEL_PICKUPS and not kinds.is_empty():
+		_drop("angel", kinds.pick_random(), where)
 	_last_angel_help = _now()
 
 
@@ -111,18 +113,21 @@ func decider_tick(delta: float) -> void:
 	# Demon power-ups, dropped by the angels.
 	if not angels.is_empty() and not demons.is_empty():
 		_demon_timer -= 0.2
-		if _demon_timer <= 0.0 and _count("demon") < MAX_EACH_TEAM:
+		var demon_kinds := GameRules.allowed(DEMON_KINDS)
+		if _demon_timer <= 0.0 and _count("demon") < MAX_EACH_TEAM and not demon_kinds.is_empty():
 			var a = angels.pick_random()[1]
-			_drop("demon", DEMON_KINDS.pick_random(), a.global_position)
+			_drop("demon", demon_kinds.pick_random(), a.global_position)
 			var busy := clampf(_movement / 2.5, 0.0, 1.0)
 			var interval := DEMON_DROP_BASE / (1.0 + 0.15 * maxf(people.size() - 2, 0)) * (1.0 - 0.4 * busy)
 			_demon_timer = maxf(interval, DEMON_DROP_MIN)
 
 	# Struggling angels get a hand.
-	if not angels.is_empty() and t - _last_angel_help > ANGEL_HELP_AFTER and _count("angel") < MAX_ANGEL_PICKUPS:
+	var angel_kinds := GameRules.allowed(ANGEL_KINDS)
+	if not angels.is_empty() and t - _last_angel_help > ANGEL_HELP_AFTER and _count("angel") < MAX_ANGEL_PICKUPS \
+			and not angel_kinds.is_empty():
 		var a = angels.pick_random()[1]
 		var ang := randf() * TAU
-		_drop("angel", ANGEL_KINDS.pick_random(), a.global_position + Vector3(cos(ang), 0, sin(ang)) * randf_range(3.0, 5.0))
+		_drop("angel", angel_kinds.pick_random(), a.global_position + Vector3(cos(ang), 0, sin(ang)) * randf_range(3.0, 5.0))
 		_last_angel_help = t
 
 	# Expired, or picked up?

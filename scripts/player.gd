@@ -16,6 +16,7 @@ signal bumped(thing, impulse)             # we ran into a loose prop, or a disgu
 signal no_room                            # tried to change into something that doesn't fit here
 signal animate_pressed(n)                 # E: our disguise does its thing (the n-th press since we became it)
 
+const GameRules = preload("res://scripts/game_rules.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const PropAnims = preload("res://scripts/prop_anims.gd")
 const Projectile = preload("res://scripts/projectile.gd")
@@ -486,14 +487,14 @@ func _physics_process(delta: float) -> void:
 	else:
 		if flying:
 			# Thrust up against plain gravity; WASD steers like any other time in the air.
-			var g_fly: float = gravity * tuning["gravity_scale"]
+			var g_fly: float = gravity * tuning["gravity_scale"] * GameRules.f("gravity") * GameRules.f("gravity")
 			# Already falling? Catch yourself much harder, so the fall stops quickly
 			# (taking off from the ground or a jump feels the same as before).
 			var thrust := FLY_THRUST * (FLY_CATCH_BOOST if velocity.y < 0.0 else 1.0)
 			velocity.y = minf(velocity.y + (thrust - g_fly) * delta, FLY_MAX_RISE)
 			_fall_speed = 0.0
 		elif not on_floor:
-			var g: float = gravity * tuning["gravity_scale"]
+			var g: float = gravity * tuning["gravity_scale"] * GameRules.f("gravity")
 			if velocity.y < 0.0:
 				g *= tuning["fall_multiplier"]   # fall faster than you rise: less floaty
 			velocity.y -= g * delta
@@ -1108,14 +1109,14 @@ func _update_sprint(delta: float, wants_to_run: bool) -> void:
 	elif _sprint_regen_wait > 0.0:
 		_sprint_regen_wait -= delta
 	else:
-		sprint_stamina = minf(sprint_stamina + SPRINT_REGEN * delta, SPRINT_MAX)
+		sprint_stamina = minf(sprint_stamina + SPRINT_REGEN * GameRules.f("stamina") * delta, SPRINT_MAX)
 
 
 func _update_throw_stamina(delta: float) -> void:
 	if _throw_regen_wait > 0.0:
 		_throw_regen_wait -= delta
 	elif burning <= 0.0:   # no refilling while standing in demon fire
-		throw_stamina = minf(throw_stamina + THROW_REGEN * throw_regen_multiplier * delta, THROW_STAMINA_MAX)
+		throw_stamina = minf(throw_stamina + THROW_REGEN * throw_regen_multiplier * GameRules.f("stamina") * delta, THROW_STAMINA_MAX)
 
 
 # Subtle first-person bob while moving, plus a small dip when landing.

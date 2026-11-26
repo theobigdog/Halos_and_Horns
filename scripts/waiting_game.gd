@@ -14,6 +14,8 @@ extends Control
 signal finished_score(score: int)
 
 var best := 0
+var record := 0                   # the best going into this game: what you're trying to beat
+const VOLUME_DB := -9.0           # (Ted, Nov 26: "turn down the volume a little")
 var score := 0
 var combo := 0
 
@@ -120,6 +122,7 @@ func _ready() -> void:
 	for i in 6:
 		var p := AudioStreamPlayer.new()
 		p.bus = bus
+		p.volume_db = VOLUME_DB
 		add_child(p)
 		_players.append(p)
 	resized.connect(_layout)
@@ -134,6 +137,7 @@ func start(seconds_left: float) -> void:
 	_total = maxf(seconds_left, 1.0)
 	_elapsed = 0.0
 	_spawn_timer = 0.7
+	record = best
 	score = 0
 	combo = 0
 	_last_tick = -1
@@ -755,7 +759,18 @@ func _draw_overlay() -> void:
 	var ph := 84.0 * _s
 	var margin := 24.0 * _s
 	_plaque(o, Rect2(margin, margin, pw, ph), "BONKS", str(score), _score_bump)
-	_plaque(o, Rect2(w - margin - pw, margin, pw, ph), "BEST", str(maxi(best, score)), 0.0)
+	# The record to beat (Ted, Nov 26: "so they could see how they did relative to the record"), and under
+	# your score, how far off it you are, or that you've beaten it.
+	_plaque(o, Rect2(w - margin - pw, margin, pw, ph), "RECORD", str(record), 0.0)
+	var chase := ""
+	var chase_col := Color(0.55, 0.4, 0.7)
+	if score > record and record > 0:
+		chase = "NEW RECORD!"
+		chase_col = C_GOLD if fmod(_elapsed, 0.5) < 0.3 else Color(1.0, 0.6, 0.85)
+	elif record > 0:
+		chase = "%d to beat it" % (record - score + 1)
+	if chase != "":
+		_text(o, Vector2(w - margin - pw * 0.5, margin + ph + 30.0 * _s), chase, _fs(22), chase_col, maxi(int(6 * _s), 3))
 	if combo >= 2:
 		var cs := 1.0 + _combo_bump * 0.35
 		o.draw_set_transform(Vector2(margin + pw * 0.5, margin + ph + 34.0 * _s), -0.06, Vector2(cs, cs))

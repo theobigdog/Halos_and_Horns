@@ -2,6 +2,7 @@
 # stands still, and fidgets (a little hop) every few seconds so testers can
 # find it fast. Real demons will be real players - this is test-only.
 extends StaticBody3D
+const GameRules = preload("res://scripts/game_rules.gd")
 
 const HOP_EVERY_MIN := 2.0   # seconds between hops (testing: frequent on purpose)
 const HOP_EVERY_MAX := 4.0
@@ -69,7 +70,7 @@ func _process(delta: float) -> void:
 func take_hit(damage: int, _by: Node = null) -> bool:
 	if health <= 0:
 		return false
-	health -= damage
+	health -= roundi(damage * GameRules.f("damage"))
 	# Squash so the angel gets feedback that this one is a demon.
 	var tw := create_tween()
 	tw.tween_property(visual, "scale", Vector3(1.15, 0.85, 1.15), 0.06)

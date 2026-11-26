@@ -205,6 +205,116 @@ static func _op(u: float, w: float, b: float, t: float, k: String = "win") -> Di
 	return {"u": u, "w": w, "b": b, "t": t, "k": k}
 
 
+# A squared timber 0.2 m thick from a to b (centre line), solid.
+static func _beam(b: Bld, a: Vector3, c: Vector3, col: Color) -> void:
+	var dir := (c - a).normalized()
+	var x := Vector3.UP.cross(dir)
+	if x.length() < 0.01:
+		x = Vector3.RIGHT
+	x = x.normalized()
+	var bas := Basis(x, dir.cross(x), dir)
+	b.box(TRIM, (a + c) * 0.5, Vector3(0.2, 0.2, a.distance_to(c)), col, true, bas)
+
+
+# ---------------------------------------------------------------- the corner shop's goods
+
+const GOODS := {
+	"soup": [["#c8302a", "#f2efe6"], ["#2f6db5", "#f2efe6"], ["#2f8a4a", "#f5d65a"]],
+	"soda": [["#d62828", "#ffffff"], ["#1f7a3a", "#ffffff"], ["#f08c1a", "#3a2a1a"], ["#5a2a7a", "#f5d65a"]],
+	"cereal": [["#f2c230", "#c8302a"], ["#3a7fd0", "#ffffff"], ["#e8743a", "#6a3a1a"], ["#7ab04a", "#f5efe0"]],
+	"jar": [["#c8402a", "#d8c8a0"], ["#e8b030", "#d8c8a0"], ["#7a3a5a", "#d8c8a0"]],
+	"milk": [["#f4f4f0", "#3a7fd0"], ["#f4f4f0", "#c8302a"]],
+}
+
+
+# One run of a single product along a shelf from x, stocked a few deep. Returns where it ended.
+static func _shelf_run(b: Bld, rng: RandomNumberGenerator, x: float, x_end: float, y: float, z0: float, z1: float) -> float:
+	var kinds := GOODS.keys()
+	var kind: String = kinds[rng.randi() % kinds.size()]
+	var pal: Array = GOODS[kind][rng.randi() % GOODS[kind].size()]
+	var body := Color(pal[0])
+	var mark := Color(pal[1])
+	var count := rng.randi_range(3, 7)
+	var segs := 10
+	for i in count:
+		match kind:
+			"soup", "soda":
+				var r := 0.045 if kind == "soup" else 0.04
+				var h := 0.11 if kind == "soup" else 0.16
+				if x + r * 2.0 > x_end:
+					return x
+				var z := z1 - r
+				while z - r > z0:
+					var p := Vector3(x + r, y, z)
+					b.cyl(TRIM, p, r, h, Color("#c0c4c8"), segs)                                     # the tin
+					b.cyl(TRIM, p + Vector3(0, h * 0.18, 0), r + 0.002, h * 0.64, body, segs)      # its label
+					b.cyl(TRIM, p + Vector3(0, h * 0.4, 0), r + 0.004, h * 0.16, mark, segs)        # a band on it
+					z -= r * 2.0 + 0.01
+				x += r * 2.0 + 0.012
+			"cereal":
+				var w := 0.2
+				var h := 0.3
+				var dz := 0.07
+				if x + w > x_end:
+					return x
+				var z := z1
+				while z - dz > z0:
+					b.ab(TRIM, Vector3(x, y, z - dz), Vector3(x + w, y + h, z), body, false)
+					z -= dz + 0.005
+				# the front one's face: a picture panel and a stripe for the name
+				b.ab(TRIM, Vector3(x + 0.025, y + 0.04, z1), Vector3(x + w - 0.025, y + 0.17, z1 + 0.003), mark, false)
+				b.ab(TRIM, Vector3(x + 0.015, y + 0.21, z1), Vector3(x + w - 0.015, y + 0.27, z1 + 0.003), mark.lerp(body, 0.5).lightened(0.3), false)
+				x += w + 0.015
+			"jar":
+				var r := 0.05
+				if x + r * 2.0 > x_end:
+					return x
+				var z := z1 - r
+				while z - r > z0:
+					var p := Vector3(x + r, y, z)
+					b.cyl(TRIM, p, r, 0.11, body, segs)                                    # jam showing through
+					b.cyl(TRIM, p + Vector3(0, 0.03, 0), r + 0.002, 0.05, mark, segs)     # paper label
+					b.cyl(TRIM, p + Vector3(0, 0.11, 0), r * 0.92, 0.025, Color("#d8b040"), segs)   # gold lid
+					z -= r * 2.0 + 0.01
+				x += r * 2.0 + 0.012
+			"milk":
+				var w := 0.09
+				if x + w > x_end:
+					return x
+				var z := z1
+				while z - w > z0:
+					b.ab(TRIM, Vector3(x, y, z - w), Vector3(x + w, y + 0.2, z), body, false)
+					# the gable top of a carton
+					b.tri(TRIM, Vector3(x, y + 0.2, z), Vector3(x + w, y + 0.2, z), Vector3(x + w * 0.5, y + 0.26, z), Vector3.BACK, body)
+					b.tri(TRIM, Vector3(x, y + 0.2, z - w), Vector3(x + w, y + 0.2, z - w), Vector3(x + w * 0.5, y + 0.26, z - w), Vector3.FORWARD, body)
+					b.quad(TRIM, Vector3(x, y + 0.2, z), Vector3(x + w * 0.5, y + 0.26, z), Vector3(x + w * 0.5, y + 0.26, z - w), Vector3(x, y + 0.2, z - w), Vector3(-0.7, 0.7, 0), body.darkened(0.05))
+					b.quad(TRIM, Vector3(x + w, y + 0.2, z), Vector3(x + w * 0.5, y + 0.26, z), Vector3(x + w * 0.5, y + 0.26, z - w), Vector3(x + w, y + 0.2, z - w), Vector3(0.7, 0.7, 0), body.darkened(0.05))
+					z -= w + 0.008
+				b.ab(TRIM, Vector3(x + 0.01, y + 0.06, z1), Vector3(x + w - 0.01, y + 0.14, z1 + 0.003), mark, false)
+				x += w + 0.012
+	return x
+
+
+# A wooden crate on the floor, heaped with fruit or loaves.
+static func _crate(b: Bld, rng: RandomNumberGenerator, at: Vector3, what: String) -> void:
+	var wood := Color("#9a7448")
+	var s := Vector3(0.7, 0.45, 0.5)
+	b.ab(BOARDS, at + Vector3(-s.x * 0.5, 0, -s.z * 0.5), at + Vector3(s.x * 0.5, s.y, s.z * 0.5), wood)
+	var top := at.y + s.y
+	match what:
+		"apples", "oranges":
+			var col := Color("#c42a20") if what == "apples" else Color("#f0901a")
+			var other := Color("#e8c040") if what == "apples" else Color("#f8b040")
+			for i in 14:
+				var p := Vector3(at.x + rng.randf_range(-0.27, 0.27), top + rng.randf_range(0.0, 0.08), at.z + rng.randf_range(-0.18, 0.18))
+				b.ball(TRIM, p, 0.05, col.lerp(other, rng.randf() * 0.3))
+		"bread":
+			for i in 4:
+				var p := Vector3(at.x - 0.22 + i * 0.15, top + 0.04, at.z + rng.randf_range(-0.06, 0.06))
+				b.ab(TRIM, p + Vector3(-0.06, -0.04, -0.16), p + Vector3(0.06, 0.05, 0.16), Color("#c88a40"), false)
+				b.ab(TRIM, p + Vector3(-0.045, 0.05, -0.14), p + Vector3(0.045, 0.08, 0.14), Color("#a86a2a"), false)
+
+
 # ---------------------------------------------------------------- the builder
 
 class Bld:
@@ -261,6 +371,38 @@ class Bld:
 				quad(m, fc - a1 - a2, fc + a1 - a2, fc + a1 + a2, fc - a1 + a2, n, col, bas)
 		if collide:
 			cbox(c, s, bas)
+
+	# An upright cylinder standing on `at` (no collision), capped top and bottom.
+	func cyl(m: int, at: Vector3, r: float, h: float, col: Color, segs := 10) -> void:
+		for i in segs:
+			var a0 := TAU * i / segs
+			var a1 := TAU * (i + 1) / segs
+			var d0 := Vector3(cos(a0), 0, sin(a0))
+			var d1 := Vector3(cos(a1), 0, sin(a1))
+			var n := ((d0 + d1) * 0.5).normalized()
+			quad(m, at + d0 * r, at + d1 * r, at + d1 * r + Vector3.UP * h, at + d0 * r + Vector3.UP * h, n, col)
+			tri(m, at + Vector3.UP * h, at + d0 * r + Vector3.UP * h, at + d1 * r + Vector3.UP * h, Vector3.UP, col)
+			tri(m, at, at + d1 * r, at + d0 * r, Vector3.DOWN, col)
+
+	# A small round thing (fruit), flat-shaded but small enough to read as round.
+	func ball(m: int, c: Vector3, r: float, col: Color) -> void:
+		var rings := 4
+		var segs := 7
+		for i in rings:
+			var t0 := PI * i / rings
+			var t1 := PI * (i + 1) / rings
+			for j in segs:
+				var p0 := TAU * j / segs
+				var p1 := TAU * (j + 1) / segs
+				var v0 := Vector3(sin(t0) * cos(p0), cos(t0), sin(t0) * sin(p0))
+				var v1 := Vector3(sin(t0) * cos(p1), cos(t0), sin(t0) * sin(p1))
+				var v2 := Vector3(sin(t1) * cos(p1), cos(t1), sin(t1) * sin(p1))
+				var v3 := Vector3(sin(t1) * cos(p0), cos(t1), sin(t1) * sin(p0))
+				var n := (v0 + v1 + v2 + v3).normalized()
+				if i > 0:
+					tri(m, c + v0 * r, c + v1 * r, c + v2 * r, n, col)
+				if i < rings - 1:
+					tri(m, c + v0 * r, c + v2 * r, c + v3 * r, n, col)
 
 	func cbox(c: Vector3, s: Vector3, bas := Basis()) -> void:
 		var sh := BoxShape3D.new()
@@ -325,8 +467,8 @@ class Bld:
 			if k == "arch":
 				var r: float = op["w"] * 0.5
 				var spring := t - r
-				wl(mat, axis, c, u0 - fw, u0, b, spring, dep, trim, false)
-				wl(mat, axis, c, u1, u1 + fw, b, spring, dep, trim, false)
+				wl(mat, axis, c, u0 - fw, u0 + 0.012, b, spring, dep, trim, false)
+				wl(mat, axis, c, u1 - 0.012, u1 + fw, b, spring, dep, trim, false)
 				var n := 9
 				for i in n:
 					var ang := PI * (i + 0.5) / n
@@ -343,13 +485,17 @@ class Bld:
 					var sz := Vector3(PI * r / n * 1.02 + 0.03, fw + 0.04, dep) if axis == 0 else Vector3(dep, fw + 0.04, PI * r / n * 1.02 + 0.03)
 					box(mat, cc, sz, trim, false, bas)
 				if b > FLOOR + 0.05:
-					wl(mat, axis, c + out * 0.06, u0 - 0.08, u1 + 0.08, b - 0.1, b, dep + 0.12, trim, false)
+					wl(mat, axis, c + out * 0.06, u0 - 0.08, u1 + 0.08, b - 0.1, b + 0.012, dep + 0.12, trim, false)
 				continue
-			wl(mat, axis, c, u0 - fw, u0, b, t + fw, dep, trim, false)
-			wl(mat, axis, c, u1, u1 + fw, b, t + fw, dep, trim, false)
-			wl(mat, axis, c, u0 - fw, u1 + fw, t, t + fw, dep, trim, false)
+			# (Ted, Nov 26: "glitchy, flashy" surfaces round the openings. The trim's inner faces lay exactly on
+			# the wall's cut faces, and the lintel's front on the jambs': two surfaces in one plane flicker. The
+			# trim now stands a hair proud into the opening, and the lintel a hair in front of the jambs.)
+			var lip := 0.012
+			wl(mat, axis, c, u0 - fw, u0 + lip, b, t, dep, trim, false)
+			wl(mat, axis, c, u1 - lip, u1 + fw, b, t, dep, trim, false)
+			wl(mat, axis, c, u0 - fw - lip, u1 + fw + lip, t - lip, t + fw, dep + 0.024, trim, false)
 			if k == "win":
-				wl(mat, axis, c + out * 0.08, u0 - 0.2, u1 + 0.2, b - 0.12, b, dep + 0.16, trim, false)
+				wl(mat, axis, c + out * 0.08, u0 - 0.2, u1 + 0.2, b - 0.12, b + lip, dep + 0.16, trim, false)
 				if shut != null:
 					var sc: float = c + out * (th * 0.5 + 0.07)
 					var sw: float = op["w"] * 0.5
@@ -360,6 +506,16 @@ class Bld:
 	func shell(m: int, w: float, d: float, y0: float, y1: float, ops: Dictionary, col: Color, trim: Color, shut = null, collide := true, th := T, do_frames := true) -> void:
 		var hw := w * 0.5
 		var hd := d * 0.5
+		if not do_frames and not ops.is_empty():
+			# a plinth round the foot of the walls, cut for the same doors: its cut faces would lie in the
+			# very planes of the wall's own and flicker, so its openings are a touch wider (Nov 26)
+			var wider := {}
+			for side in ops:
+				wider[side] = (ops[side] as Array).map(func(o):
+					var o2: Dictionary = o.duplicate()
+					o2["w"] = o2["w"] + 0.03
+					return o2)
+			ops = wider
 		var f: Array = ops.get("front", [])
 		var bk: Array = ops.get("back", [])
 		var r: Array = ops.get("right", [])
@@ -641,17 +797,20 @@ static func _shop(b: Bld, look: int) -> void:
 		b.ab(TRIM, Vector3(x, FLOOR, sz0), Vector3(x + 0.08, 2.3, sz1), cc, false)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4242 + look
-	var goods := [awn, _c("#e8c84a"), _c("#d0603c"), _c("#6aa0d8"), _c("#f0ece0"), _c("#7fb060")]
 	for sy in [0.25, 0.95, 1.65, 2.3]:
 		b.ab(TRIM, Vector3(sx0, sy - 0.05, sz0), Vector3(sx1, sy, sz1), cc, false)
 		if sy > 2.0:
 			continue
-		var x := sx0 + 0.12
-		while x < sx1 - 0.4:
-			var gw := rng.randf_range(0.18, 0.4)
-			var gh := rng.randf_range(0.2, 0.5)
-			b.ab(TRIM, Vector3(x, sy, sz0 + 0.06), Vector3(x + gw, sy + gh, sz1 - 0.06), goods[rng.randi() % goods.size()], false)
-			x += gw + rng.randf_range(0.03, 0.15)
+		# (Ted, Nov 26: "recognizable items, rather than just rectangles"): runs of the same thing, like a
+		# real shop shelf, each a few deep
+		var x := sx0 + 0.14
+		while x < sx1 - 0.5:
+			x = _shelf_run(b, rng, x, sx1 - 0.14, sy, sz0 + 0.05, sz1 - 0.04)
+			x += 0.08
+	# a fruit stand and a bread basket by the counter
+	_crate(b, rng, Vector3(-4.2, FLOOR, 1.6), "apples")
+	_crate(b, rng, Vector3(-3.4, FLOOR, 1.6), "oranges")
+	_crate(b, rng, Vector3(-2.6, FLOOR, 1.6), "bread")
 
 
 static func _barn(b: Bld, look: int) -> void:
@@ -664,7 +823,6 @@ static func _barn(b: Bld, look: int) -> void:
 	var white := _c(WHITE_TRIM)
 	var stone := _c(STONE_GREY)
 	var wood := _c(WOOD)
-	var hay := _c("#e3c463")
 	var ops := {
 		"front": [_op(0.0, 4.0, FLOOR, 4.0, "door")],
 		"back": [_op(0.0, 1.8, 3.5, 4.75, "win")],
@@ -721,20 +879,7 @@ static func _barn(b: Bld, look: int) -> void:
 		b.ab(TRIM, Vector3(x - 0.13, FLOOR, ze - 0.4), Vector3(x + 0.13, loft - 0.25, ze - 0.14), _c(WOOD_DARK))
 	# loft beam along the edge
 	b.ab(TRIM, Vector3(-w * 0.5 + T, loft - 0.45, ze - 0.3), Vector3(w * 0.5 - T, loft - 0.25, ze), _c(WOOD_DARK), false)
-	# hay bales
-	var bales := [
-		[Vector3(-4.6, loft, -4.6), Vector3(1.2, 0.6, 0.8)],
-		[Vector3(-3.3, loft, -4.6), Vector3(1.2, 0.6, 0.8)],
-		[Vector3(-4.0, loft + 0.6, -4.6), Vector3(1.2, 0.6, 0.8)],
-		[Vector3(2.6, loft, -4.3), Vector3(0.8, 0.6, 1.2)],
-		[Vector3(-4.4, FLOOR, 3.6), Vector3(1.2, 0.6, 0.8)],
-		[Vector3(-4.4, FLOOR, 2.7), Vector3(1.2, 0.6, 0.8)],
-	]
-	for bl in bales:
-		var p: Vector3 = bl[0]
-		var s: Vector3 = bl[1]
-		b.box(HAY, p + Vector3(0, s.y * 0.5, 0), s, hay)
-		b.box(TRIM, p + Vector3(0, s.y * 0.5, 0), s + Vector3(0.02, 0.02, -s.z + 0.06) if s.x > s.z else s + Vector3(-s.x + 0.06, 0.02, 0.02), _c("#8a6a3a"), false)
+	# (no hay bales built in: Ted, Nov 26, they didn't match the hay bale props, and maps put real props here)
 	# hay door frame + a little white X on the gable ends
 	b.ab(TRIM, Vector3(-1.2, 4.75, -d * 0.5 - 0.1), Vector3(1.2, 4.95, -d * 0.5 + 0.1), white, false)
 
@@ -840,6 +985,7 @@ static func _ruin(b: Bld, look: int) -> void:
 			cuts.append(g[0])
 			cuts.append(g[1])
 		cuts.sort()
+		var segs := []   # [u0, u1, top, opening or null]
 		for i in cuts.size() - 1:
 			var u0: float = cuts[i]
 			var u1: float = cuts[i + 1]
@@ -849,6 +995,13 @@ static func _ruin(b: Bld, look: int) -> void:
 			var t := (m - a0) / (a1 - a0)
 			var top := base * (0.55 + 0.45 * sin(t * PI * (1.3 + rng.randf() * 0.2) + float(axis))) + rng.randf_range(-0.35, 0.35)
 			top = clampf(top, 0.3, 3.8)
+			# (Ted, Nov 26: beams "resting" on air.) Wherever timber bears on a wall, the wall still stands
+			# high enough to hold it: under the surviving corner of the upper floor (back-left), and where the
+			# fallen joist and the leaning beam meet the back wall.
+			if c < 0.0 and axis == 0 and (m < -0.9 or absf(m - 1.0) < 0.45 or absf(m - 2.4) < 0.45):
+				top = maxf(top, 3.25 if m < -0.9 else 2.75)
+			if c < 0.0 and axis == 1 and m < -0.6:
+				top = maxf(top, 3.25)
 			var gap := false
 			for g in gaps:
 				if m > g[0] and m < g[1]:
@@ -861,12 +1014,25 @@ static func _ruin(b: Bld, look: int) -> void:
 			for op in ops:
 				if m > op["u"] - op["w"] * 0.5 and m < op["u"] + op["w"] * 0.5:
 					hole = op
+			segs.append([u0, u1, top, hole])
+		# Masonry over an opening only stays up where the wall either side of the opening still stands that
+		# high (Nov 26: chunks over windows hung in the air).
+		for i in segs.size():
+			var sg: Array = segs[i]
+			var hole = sg[3]
 			if hole == null:
-				b.wl(STONE, axis, c, u0, u1, 0.0, top, T, wall)
-			else:
-				b.wl(STONE, axis, c, u0, u1, 0.0, minf(hole["b"], top), T, wall)
-				if top > hole["t"] + 0.2:
-					b.wl(STONE, axis, c, u0, u1, hole["t"], top, T, wall)
+				b.wl(STONE, axis, c, sg[0], sg[1], 0.0, sg[2], T, wall)
+				continue
+			b.wl(STONE, axis, c, sg[0], sg[1], 0.0, minf(hole["b"], sg[2]), T, wall)
+			var held := 99.0
+			for dir in [-1, 1]:
+				var j: int = i + dir
+				while j >= 0 and j < segs.size() and segs[j][3] == hole:
+					j += dir
+				held = minf(held, segs[j][2] if j >= 0 and j < segs.size() else 0.0)
+			var top := minf(sg[2], held)
+			if top > hole["t"] + 0.2:
+				b.wl(STONE, axis, c, sg[0], sg[1], hole["t"], top, T, wall)
 		var keep: Array = []
 		for op in ops:
 			if op["k"] == "door":
@@ -876,12 +1042,22 @@ static func _ruin(b: Bld, look: int) -> void:
 	# the old chimney stack still standing on the left
 	b.ab(STONE, Vector3(-hw - 0.55, 0.0, -2.0), Vector3(-hw + 0.02, 4.4, -0.8), wall.darkened(0.12))
 	b.ab(STONE, Vector3(-hw - 0.45, 4.4, -1.9), Vector3(-hw - 0.05, 4.9, -1.3), wall.darkened(0.12))
-	# a corner of the upper floor still hanging on, and loose joists
-	b.ab(PLANKS, Vector3(-hw + T, 2.9, -hd + T), Vector3(-1.4, 3.1, -1.0), wood)
-	for x in [-3.6, -2.4, 1.0]:
-		b.ab(TRIM, Vector3(x - 0.1, 2.75, -hd + T), Vector3(x + 0.1, 2.95, -0.4 if x > 0.0 else 1.0), wood, false)
-	b.box(TRIM, Vector3(2.4, 1.2, -1.6), Vector3(0.2, 0.2, 3.2), wood, true, Basis(Vector3(1, 0, 0), 0.75))
-	b.box(TRIM, Vector3(0.2, 0.55, 1.6), Vector3(3.0, 0.2, 0.22), wood, true, Basis(Vector3(0, 0, 1), 0.3).rotated(Vector3.UP, 0.4))
+	# A corner of the upper floor still hanging on: floorboards on joists, the joists' ends set into the back
+	# wall and resting on a girder at the front, the girder held by the left wall and one post.
+	b.ab(PLANKS, Vector3(-hw + T, 2.95, -hd + T), Vector3(-1.4, 3.15, -1.0), wood)
+	for x in [-3.6, -2.4, -1.6]:
+		b.ab(TRIM, Vector3(x - 0.1, 2.75, -hd + T * 0.5), Vector3(x + 0.1, 2.95, -0.95), wood, false)
+	b.ab(TRIM, Vector3(-hw + T * 0.5, 2.55, -1.15), Vector3(-1.25, 2.75, -0.95), wood)          # girder
+	b.ab(TRIM, Vector3(-1.55, FLOOR, -1.15), Vector3(-1.35, 2.55, -0.95), wood)                # its post
+	b.ab(TRIM, Vector3(-1.6, FLOOR, -1.2), Vector3(-1.3, FLOOR + 0.08, -0.9), wood.darkened(0.2), false)   # pad stone
+	# a joist that came loose at one end: still in its socket in the back wall, the other end down on the floor
+	_beam(b, Vector3(1.0, 2.6, -hd + T * 0.4), Vector3(1.0, FLOOR + 0.1, 0.9), wood)
+	# a beam that fell and leans against the back wall
+	_beam(b, Vector3(2.4, FLOOR + 0.1, -0.55), Vector3(2.4, 2.35, -hd + T + 0.11), wood)
+	# and one lying across the floor, its far end propped up on a block of fallen masonry
+	var prop_at := Vector3(1.35, 0.0, 2.15)
+	b.box(STONE, prop_at + Vector3(0, 0.23, 0), Vector3(0.6, 0.46, 0.5), wall.darkened(0.1), true, Basis(Vector3.UP, 0.3))
+	_beam(b, Vector3(-1.1, FLOOR + 0.1, 1.15), prop_at + Vector3(0, 0.56, 0), wood)
 	# rubble: small bits are only looks, big blocks are solid
 	var spots := [Vector3(hw - 0.6, 0, 0.2), Vector3(hw + 0.8, 0, 0.4), Vector3(-hw + 0.9, 0, -hd + 0.9), Vector3(1.8, 0, hd + 0.8), Vector3(-3.5, 0, 2.2)]
 	for sp in spots:

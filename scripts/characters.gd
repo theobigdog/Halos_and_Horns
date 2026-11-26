@@ -11,6 +11,7 @@
 extends RefCounted
 
 const HornCrowns = preload("res://scripts/horn_crowns.gd")
+const Graphics = preload("res://scripts/graphics.gd")
 const DIR := "res://assets/kaykit_characters/"
 const SOURCES := {
 	"Knight": "adventurers/Knight", "Barbarian": "adventurers/Barbarian", "Mage": "adventurers/Mage",
@@ -35,13 +36,19 @@ const TEAM_CHARS := {
 	"angel": ["Knight", "Barbarian", "Mage", "Rogue", "Rogue_Hooded"],
 	"demon": ["Skeleton_Warrior", "Skeleton_Mage", "Skeleton_Rogue", "Skeleton_Minion"],
 }
+# [id, label, skin colour, hair colour]. Hair (Ted, Nov 26: it took the skin colour, so you couldn't see it):
+# "" keeps the character's own painted hair; the others get a colour that stands out against that skin.
 const SKINS := [
-	["natural", "As drawn", ""], ["pale", "Pale", "#f2dcc8"], ["tan", "Tan", "#c98e62"], ["brown", "Brown", "#8a5a3c"],
-	["dark", "Dark", "#5a3a28"], ["ghost", "Ghostly white", "#e9eef7"], ["gold", "Gold", "#e6b84a"],
-	["hellred", "Hell red", "#b8281e"], ["ash", "Ash grey", "#6c6a70"], ["zombie", "Zombie green", "#7fa35a"],
-	["ocean", "Ocean blue", "#4a7fc2"], ["violet", "Violet", "#8a55c0"], ["coal", "Coal black", "#2a2426"],
-	["sulfur", "Sulfur yellow", "#c9b33a"], ["blood", "Blood", "#6e0f12"], ["rose", "Rose", "#e7a5a0"],
+	["natural", "As drawn", "", ""], ["pale", "Pale", "#f2dcc8", ""], ["tan", "Tan", "#c98e62", ""],
+	["brown", "Brown", "#8a5a3c", "#2b1a10"], ["dark", "Dark", "#5a3a28", "#141010"],
+	["ghost", "Ghostly white", "#e9eef7", "#8fa2c4"], ["gold", "Gold", "#e6b84a", "#6b3410"],
+	["hellred", "Hell red", "#b8281e", ""], ["ash", "Ash grey", "#6c6a70", ""], ["zombie", "Zombie green", "#7fa35a", ""],
+	["ocean", "Ocean blue", "#4a7fc2", "#eef5ff"], ["violet", "Violet", "#8a55c0", ""], ["coal", "Coal black", "#2a2426", ""],
+	["sulfur", "Sulfur yellow", "#c9b33a", ""], ["blood", "Blood", "#6e0f12", ""], ["rose", "Rose", "#e7a5a0", ""],
 ]
+# The KayKit textures are a palette of 8 x 4 swatches; on the adventurers' heads the hair is swatch (1, 0).
+const SWATCHES := Vector2(8, 4)
+const HAIR_SWATCH := Vector2(1, 0)
 const TEAM_SKINS := {
 	"angel": ["natural", "pale", "tan", "brown", "dark", "rose", "ghost", "gold", "ocean"],
 	"demon": ["natural", "hellred", "blood", "ash", "coal", "zombie", "violet", "sulfur"],
@@ -55,6 +62,7 @@ const TRAILS := {
 
 static var _sources := {}          # name -> an instance of that character, kept to copy parts from
 static var _skin_ref := {}         # texture path -> its skin colour
+static var _skin_cell := {}        # texture path -> the palette swatch the skin is painted in
 
 
 static func default_outfit(role: String) -> Dictionary:
@@ -208,9 +216,11 @@ static func build(role: String, outfit: Dictionary, height: float) -> Node3D:
 	var head_c := head.get_slice(":", 0)
 	var upper_c := upper.get_slice(":", 0)
 	var skin_col := ""
+	var hair_col := ""
 	for s in SKINS:
 		if s[0] == outfit["skin"]:
 			skin_col = s[2]
+			hair_col = s[3]
 	var pieces := []
 	# (the Skeleton Mage's skull is its own "_Skull" mesh: without it a bare Mage head was floating eyes and a jaw)
 	pieces += _parts(head_c, ["_Head", "_Head_Hooded", "_Skull", "_Eyes", "_Jaw"])
@@ -222,7 +232,7 @@ static func build(role: String, outfit: Dictionary, height: float) -> Node3D:
 		var mi: MeshInstance3D = p.duplicate()
 		sk.add_child(mi)
 		mi.skeleton = NodePath("..")
-		_recolor(mi, skin_col, role, p.name.ends_with("_Eyes"))
+		_recolor(mi, skin_col, role, p.name.ends_with("_Eyes"), hair_col if p.name.contains("_Head") else "", p.name.contains("_Head"))
 	# Hats and capes hang off bones
 	var hung := []
 	if not head.ends_with(":bare"):
@@ -246,8 +256,9 @@ static func build(role: String, outfit: Dictionary, height: float) -> Node3D:
 	var head_att := BoneAttachment3D.new()
 	head_att.bone_name = "head"
 	sk.add_child(head_att)
-	head_att.add_child(_crown(outfit["crown"], role, head_c.begins_with("Skeleton") and not head.ends_with(":bare") and not _hat(head_c).is_empty()))
-	var wings := _wings(role)
+	var hatted := head_c.begins_with("Skeleton") and not head.ends_with(":bare") and not _hat(head_c).is_empty()
+	head_att.add_child(_crown(outfit["crown"], role, hatted, head_hull(head_c, hatted)))
+	var wings := _wings(role, outfit["skin"])
 	base.add_child(wings)   # (model space: the back is -Z, the chest about 1.1 up)
 	rig.setup(base.find_children("*", "AnimationPlayer", true, false)[0], wings, role)
 	return rig
@@ -273,8 +284,16 @@ static func _add_details(sk: Skeleton3D, c: String, slot: String, role: String, 
 	script.call(slot, sk, att, role, bare)
 
 
-# The skin-coloured bits of a part's texture, recoloured; demons' eyes glow.
-static func _recolor(mi: MeshInstance3D, skin_hex: String, role: String, eyes: bool) -> void:
+# Every body part's surface (Ted, Nov 26: "the quality and resolution of the horns greatly exceeds the other
+# details of the demon skins... bring the rest of the skins (both demon and angel) up to speed without
+# sacrificing too much in the way of performance"). The KayKit parts are painted from a palette of flat
+# swatches; one shader adds the fine detail each kind of surface has, worked out from the swatch's colour:
+# steel gets a brushed sheen and scratches, gold trim shines, cloth a fine weave, leather a grain, skin a
+# soft sheen, hair strands, and bone pores and hairline cracks. No extra triangles: just shading, with
+# relief from screen-space bump, and it fades out with distance so nothing shimmers.
+# The detail follows each part's REST pose (CUSTOM0, added by _with_rest), so it doesn't swim as limbs move.
+# It also does the skin (and hair) recolouring: only the skin's own swatch, keeping each texel's shade.
+static func _recolor(mi: MeshInstance3D, skin_hex: String, role: String, eyes: bool, hair_hex := "", head := false) -> void:
 	if eyes:
 		var glow := StandardMaterial3D.new()
 		glow.albedo_color = Color(1.0, 0.25, 0.1) if role == "demon" else Color(0.6, 0.85, 1.0)
@@ -283,23 +302,71 @@ static func _recolor(mi: MeshInstance3D, skin_hex: String, role: String, eyes: b
 		glow.emission_energy_multiplier = 3.0
 		mi.material_override = glow
 		return
-	if skin_hex == "":
-		return
 	var src := mi.mesh.surface_get_material(0) as StandardMaterial3D if mi.mesh else null
 	if src == null or src.albedo_texture == null:
 		return
+	mi.mesh = _with_rest(mi.mesh)
+	var tex := src.albedo_texture
+	var bony := tex.resource_path.contains("skeleton")
+	var hairy := head and not bony
+	var key := "%s|%s|%s|%s" % [tex.resource_path, skin_hex, hair_hex, hairy]
+	if _surface_mats.has(key):
+		mi.material_override = _surface_mats[key]
+		return
 	var sm := ShaderMaterial.new()
 	sm.shader = _skin_shader()
-	sm.set_shader_parameter("tex", src.albedo_texture)
-	# Skin is a ramp of shades in the texture: match by hue and saturation, keep each texel's shade.
-	var ref := skin_ref(src.albedo_texture)
-	sm.set_shader_parameter("ref_hsv", Vector3(ref.h, ref.s, ref.v))
-	var c := Color(skin_hex)
-	sm.set_shader_parameter("skin_new", Vector3(c.r, c.g, c.b))
+	sm.set_shader_parameter("tex", tex)
+	var ref := skin_ref(tex)
+	sm.set_shader_parameter("ref_v", ref.v)
+	sm.set_shader_parameter("bony", bony)
+	# Only the skin's own swatch (Nov 26: matching by hue also caught the hair, boots and leather straps)
+	sm.set_shader_parameter("skin_cell", _skin_cell.get(tex.resource_path, Vector2(0, 0)))
+	if skin_hex != "":
+		var c := Color(skin_hex)
+		sm.set_shader_parameter("recolor_skin", true)
+		sm.set_shader_parameter("skin_new", Vector3(c.r, c.g, c.b))
+	if hairy:
+		sm.set_shader_parameter("hair_cell", HAIR_SWATCH)
+		if hair_hex != "":
+			var hc := Color(hair_hex)
+			sm.set_shader_parameter("recolor_hair", true)
+			sm.set_shader_parameter("hair_v", maxf(_swatch_colour(tex, HAIR_SWATCH).v, 0.05))
+			sm.set_shader_parameter("hair_new", Vector3(hc.r, hc.g, hc.b))
+	_surface_mats[key] = sm
 	mi.material_override = sm
 
 
 static var _shader: Shader
+static var _surface_mats := {}
+static var _rest_meshes := {}
+
+
+# A copy of a part's mesh with each vertex's own (rest pose) position in CUSTOM0, for the detail to follow.
+static func _with_rest(mesh: Mesh) -> Mesh:
+	if mesh == null or not (mesh is ArrayMesh):
+		return mesh
+	var id := mesh.get_instance_id()
+	if _rest_meshes.has(id):
+		return _rest_meshes[id]
+	var out := ArrayMesh.new()
+	for s in mesh.get_surface_count():
+		var arrays := mesh.surface_get_arrays(s)
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var custom := PackedFloat32Array()
+		custom.resize(verts.size() * 4)
+		for i in verts.size():
+			custom[i * 4] = verts[i].x
+			custom[i * 4 + 1] = verts[i].y
+			custom[i * 4 + 2] = verts[i].z
+		arrays[Mesh.ARRAY_CUSTOM0] = custom
+		var flags := Mesh.ARRAY_CUSTOM_RGBA_FLOAT << Mesh.ARRAY_FORMAT_CUSTOM0_SHIFT
+		var bones = arrays[Mesh.ARRAY_BONES]
+		if bones != null and verts.size() > 0 and (bones as PackedInt32Array).size() == verts.size() * 8:
+			flags |= Mesh.ARRAY_FLAG_USE_8_BONE_WEIGHTS
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays, [], {}, flags)
+		out.surface_set_material(s, mesh.surface_get_material(s))
+	_rest_meshes[id] = out
+	return out
 
 
 static func _skin_shader() -> Shader:
@@ -308,8 +375,17 @@ static func _skin_shader() -> Shader:
 		_shader.code = """
 shader_type spatial;
 uniform sampler2D tex : filter_nearest;   // (raw sRGB: compared as the artist painted it)
-uniform vec3 ref_hsv;
+uniform bool recolor_skin = false;
+uniform float ref_v = 1.0;
 uniform vec3 skin_new;
+uniform vec2 skin_cell = vec2(-9.0);
+uniform bool bony = false;                // a skeleton: its "skin" swatch is bone
+uniform vec2 hair_cell = vec2(-9.0);
+uniform bool recolor_hair = false;
+uniform float hair_v = 1.0;
+uniform vec3 hair_new;
+varying vec3 rp;
+void vertex() { rp = CUSTOM0.xyz; }
 vec3 rgb2hsv(vec3 c) {
 	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
 	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
@@ -320,16 +396,101 @@ vec3 rgb2hsv(vec3 c) {
 vec3 to_linear(vec3 c) {
 	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(0.04045, c));
 }
+float h3(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+float n3(vec3 p) {
+	vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(h3(i), h3(i + vec3(1, 0, 0)), f.x), mix(h3(i + vec3(0, 1, 0)), h3(i + vec3(1, 1, 0)), f.x), f.y),
+			mix(mix(h3(i + vec3(0, 0, 1)), h3(i + vec3(1, 0, 1)), f.x), mix(h3(i + vec3(0, 1, 1)), h3(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
 void fragment() {
 	vec3 c = texture(tex, UV).rgb;
 	vec3 h = rgb2hsv(c);
-	float dh = abs(h.x - ref_hsv.x);
-	dh = min(dh, 1.0 - dh);
-	float k = (1.0 - smoothstep(0.03, 0.05, dh)) * (1.0 - smoothstep(0.18, 0.26, abs(h.y - ref_hsv.y)))
-			* smoothstep(ref_hsv.z - 0.45, ref_hsv.z - 0.3, h.z);
-	vec3 painted = skin_new * clamp(h.z / max(ref_hsv.z, 0.01), 0.0, 1.3);
-	ALBEDO = to_linear(mix(c, painted, k));
-	ROUGHNESS = 0.8;
+	// which palette swatch this texel is in
+	vec2 cell = floor(fract(UV) * vec2(8.0, 4.0));
+	bool is_skin = distance(cell, skin_cell) < 0.5;
+	bool is_hair = distance(cell, hair_cell) < 0.5;
+	if (is_skin && recolor_skin) {
+		c = skin_new * clamp(h.z / max(ref_v, 0.01), 0.0, 1.3);
+	} else if (is_hair && recolor_hair) {
+		c = hair_new * clamp(h.z / hair_v, 0.35, 1.4);
+	}
+	// detail fades out where it would be smaller than a pixel or so
+	float near = 1.0 - smoothstep(0.004, 0.02, length(fwidth(rp)));
+	float n1 = n3(rp * 22.0);
+	float n2 = n3(rp * 95.0);
+	vec3 col = c;
+	float height = 0.0;
+	float rough = 0.78;
+	float metal = 0.0;
+	float spec = 0.45;
+	float rim = 0.0;
+	if (is_skin && bony) {
+		// bone: porous, mottled, with hairline cracks
+		float crack = 1.0 - smoothstep(0.0, 0.035, abs(n3(rp * vec3(16.0, 26.0, 16.0)) - 0.5));
+		crack *= smoothstep(0.5, 0.65, n3(rp * 5.0 + 7.0));
+		col *= (0.92 + 0.12 * n1) * (1.0 - crack * 0.32 * near) * (1.0 - 0.08 * n2 * near);
+		height = (n2 * 0.004 - crack * 0.012) * near;
+		rough = 0.66;
+		spec = 0.45;
+	} else if (is_skin) {
+		col *= 0.96 + 0.06 * n1;
+		height = n2 * 0.0012 * near;
+		rough = 0.55;
+		spec = 0.4;
+		rim = 0.25;
+	} else if (is_hair) {
+		float strand = 0.5 + 0.5 * sin(rp.x * 320.0 + rp.z * 90.0 + n3(rp * vec3(10.0, 40.0, 10.0)) * 3.0);
+		col *= mix(1.0, 0.92 + 0.12 * strand, near) * (0.95 + 0.08 * n1);
+		height = strand * 0.0012 * near;
+		rough = 0.5;
+		spec = 0.55;
+	} else if (h.y < 0.2 && h.z > 0.28 && h.z < 0.9) {
+		// steel: brushed, with the odd scratch catching the light
+		float brushed = n3(rp * vec3(160.0, 6.0, 160.0));
+		float scratch = smoothstep(0.93, 1.0, n3(rp * vec3(70.0, 7.0, 70.0) + n1 * 2.0));
+		col *= 1.05 + (0.12 * brushed + scratch * 0.3) * near;
+		metal = 0.3;
+		rough = 0.3 + 0.14 * n1;
+		spec = 0.7;
+		height = (brushed * 0.0012 - scratch * 0.002) * near;
+	} else if (h.x > 0.08 && h.x < 0.17 && h.y > 0.45 && h.z > 0.6) {
+		// gold trim
+		col *= 0.95 + 0.08 * n2;
+		metal = 0.8;
+		rough = 0.26 + 0.1 * n1;
+		spec = 0.8;
+	} else if (h.x < 0.11 && h.y > 0.25 && h.z < 0.72 && h.z > 0.16) {
+		// leather: a pebbly grain, worn lighter in places
+		float g = n3(rp * 180.0);
+		col *= (0.92 + 0.14 * n1) * (1.0 - 0.12 * g * near);
+		height = g * 0.0025 * near;
+		rough = 0.62;
+		spec = 0.35;
+	} else if (h.z > 0.12) {
+		// cloth: a fine weave
+		float wx = sin((rp.x + rp.z) * 230.0);
+		float wy = sin(rp.y * 230.0);
+		float weave = 0.5 + 0.25 * (wx + wy) * sign(wx * wy);
+		col *= 1.0 + (weave - 0.5) * 0.16 * near;
+		col *= 0.95 + 0.08 * n1;
+		height = weave * 0.0012 * near;
+		rough = 0.92;
+		spec = 0.25;
+		rim = 0.18;
+	}
+	ALBEDO = to_linear(col);
+	METALLIC = metal;
+	ROUGHNESS = rough;
+	SPECULAR = spec;
+	RIM = rim;
+	RIM_TINT = 0.5;
+	vec3 dpx = dFdx(VERTEX);
+	vec3 dpy = dFdy(VERTEX);
+	vec3 r1 = cross(dpy, NORMAL);
+	vec3 r2 = cross(NORMAL, dpx);
+	float det = dot(dpx, r1);
+	vec3 grad = sign(det) * (dFdx(height) * r1 + dFdy(height) * r2);
+	NORMAL = normalize(abs(det) * NORMAL - grad);
 }
 """
 	return _shader
@@ -369,8 +530,31 @@ static func skin_ref(tex: Texture2D) -> Color:
 			if close and counts[k] > top:
 				top = counts[k]
 				best = c
+		_skin_cell[key] = Vector2(0, 0)
+		for c in SOURCES:
+			for p in _parts(c, ["_Head"]):
+				var m := (p as MeshInstance3D).mesh.surface_get_material(0) as StandardMaterial3D
+				if m == null or m.albedo_texture == null or m.albedo_texture.resource_path != key:
+					continue
+				for uv in (p as MeshInstance3D).mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]:
+					var f := Vector2(fposmod(uv.x, 1.0), fposmod(uv.y, 1.0))
+					var px := Vector2i(clampi(int(f.x * img.get_width()), 0, img.get_width() - 1),
+							clampi(int(f.y * img.get_height()), 0, img.get_height() - 1))
+					if img.get_pixelv(px).is_equal_approx(best):
+						_skin_cell[key] = (f * SWATCHES).floor()
 	_skin_ref[key] = best
 	return best
+
+
+# The colour in the middle of one palette swatch.
+static func _swatch_colour(tex: Texture2D, cell: Vector2) -> Color:
+	var img := tex.get_image()
+	if img == null:
+		return Color(0.5, 0.4, 0.3)
+	if img.is_compressed():
+		img.decompress()
+	var px := ((cell + Vector2(0.4, 0.45)) / SWATCHES * Vector2(img.get_width(), img.get_height())).floor()
+	return img.get_pixelv(Vector2i(px))
 
 
 # ---------------- halos, horns and wings ----------------
@@ -391,8 +575,35 @@ static func _plain(c: Color, rough := 0.6) -> StandardMaterial3D:
 	return m
 
 
+# The points of a head (and its hat, if worn) in the head bone's space, so horns can grow out of its
+# surface (Ted, Nov 26: they floated above the skulls, which top out at 0.92, not the 1.15 they assumed).
+static var _hulls := {}
+
+
+static func head_hull(c: String, hat: bool) -> PackedVector3Array:
+	var key := "%s_%s" % [c, hat]
+	if _hulls.has(key):
+		return _hulls[key]
+	var out := PackedVector3Array()
+	var src := _source(c)
+	var sk := _skeleton_of(src) if src else null
+	if sk != null and sk.find_bone("head") >= 0:
+		var to_bone := sk.get_bone_global_rest(sk.find_bone("head")).affine_inverse()
+		for p in _parts(c, ["_Head", "_Head_Hooded", "_Skull"]):
+			var mi := p as MeshInstance3D
+			for v in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+				out.append(to_bone * (mi.transform * v))
+		if hat:
+			for m in _hat(c):
+				var mi := m as MeshInstance3D
+				for v in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+					out.append(mi.transform * v)
+	_hulls[key] = out
+	return out
+
+
 # (in the head bone's space, KayKit units: the top of the head is about 1.1 up from the bone)
-static func _crown(kind: String, role: String, has_hat: bool) -> Node3D:
+static func _crown(kind: String, role: String, has_hat: bool, hull := PackedVector3Array()) -> Node3D:
 	var n := Node3D.new()
 	var top := 1.25 if has_hat else 1.15
 	match kind:
@@ -427,8 +638,9 @@ static func _crown(kind: String, role: String, has_hat: bool) -> Node3D:
 						spike.rotation = Vector3(0, -a, PI / 2)
 					n.add_child(spike)
 		_:
-			# swept, twisted, ridged horns like the shrine's, each kind its own shape and colouring (horn_crowns.gd)
-			n.add_child(HornCrowns.make(kind, top))
+			# swept, twisted, ridged horns like the shrine's, each kind its own shape and colouring (horn_crowns.gd),
+			# their roots sunk into the skull (or helmet)
+			n.add_child(HornCrowns.make(kind, top, hull))
 	return n
 
 
@@ -445,11 +657,10 @@ static func _align_y(dir: Vector3) -> Basis:
 # Each wing lies flat in its own XY plane, reaching out along +X (right wing) or -X (left), and
 # character_rig.gd swings them about Y to fold and spread. (Ted, Nov 21: angel wings were "a bunch of
 # rectangles" and demon wings "triangular flags": now real feathers, and scaly dragon wings.)
-static var _feather: ArrayMesh
 static var _wing_mats := {}
 
 
-static func _wings(role: String) -> Node3D:
+static func _wings(role: String, skin := "natural") -> Node3D:
 	var n := Node3D.new()
 	n.name = "Wings"
 	for side in [-1.0, 1.0]:
@@ -458,115 +669,177 @@ static func _wings(role: String) -> Node3D:
 		wing.position = Vector3(0.14 * side, 1.12, -0.36)
 		n.add_child(wing)
 		if role == "angel":
-			_angel_wing(wing, side)
+			_angel_wing(wing, side, skin)
 		else:
 			_demon_wing(wing, side)
 	return n
 
 
-# One feather: a long tapered vane with a rounded tip and a quill down the middle (a darker line), a
-# little cupped, pointing up its +Y. Shared by every feather (scaled per feather).
-static func _feather_mesh() -> ArrayMesh:
-	if _feather:
-		return _feather
+# Angel wings (Ted, Nov 26: "the feathers are few, and they only kinda look like feathers. They should be
+# thicker, more clearly feathers, maybe even multicolored depending on the angel skin"). Five layers, like a
+# real wing seen from behind: long primaries fanning from the wrist, secondaries along the arm, and three
+# rows of coverts (greater, lesser, and little marginal ones along the leading edge) overlapping their
+# bases. Every feather of a wing is one mesh (one draw call per wing), and the feather shader draws the
+# quill, the barbs, the odd split in the vane and a downy base. Each skin has its own feather colours.
+# Per vertex COLOR: r = which layer (0 coverts .. 1 primaries), g = a per-feather random number.
+const WING_COLOURS := {
+	# skin: [main, tip, quill]
+	"natural": ["#fffdf6", "#ecc66e", "#c9a45a"], "pale": ["#fffdf8", "#e6d3a8", "#c8b48c"],
+	"tan": ["#fbf6ee", "#b98c5e", "#9a7550"], "brown": ["#f6efe2", "#7c5a3a", "#6a4c30"],
+	"dark": ["#f4f5f8", "#4c5670", "#3c4458"], "rose": ["#fff4f5", "#e488a0", "#c76c84"],
+	"ghost": ["#f0f4ff", "#93aee0", "#7f97c4"], "gold": ["#fff3cf", "#d8941a", "#b07418"],
+	"ocean": ["#f3f8ff", "#3b7bd0", "#2c5ea4"],
+}
+
+const FEATHER_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+uniform vec3 main_col : source_color;
+uniform vec3 tip_col : source_color;
+uniform vec3 quill_col : source_color;
+varying vec3 vc;
+void vertex() { vc = COLOR.rgb; }
+void fragment() {
+	float x = UV.x;            // -1 .. 1 across the feather
+	float y = UV.y;            // 0 at the root .. 1 at the tip
+	float ax = abs(x);
+	float tier = vc.r;
+	float seed = vc.g;
+	// a few splits in the vane, where the barbs have come apart
+	float gy = fract(y * 5.0 + seed * 7.3 + step(0.0, x) * 0.41);
+	if (ax > 0.5 && gy < 0.05 * (ax - 0.5) * 2.0 && y > 0.25) {
+		discard;
+	}
+	// barbs: fine lines slanting out from the quill toward the tip
+	float barb = fract(y * 16.0 - ax * 2.5 + seed * 3.0);
+	float b = smoothstep(0.0, 0.45, barb) * smoothstep(1.0, 0.7, barb);
+	float tipw = smoothstep(0.3, 1.0, y) * mix(0.25, 1.0, tier);
+	vec3 col = mix(main_col, tip_col, tipw);
+	// the flight feathers get faint bars across them
+	col *= 1.0 - tier * 0.07 * smoothstep(0.3, 0.7, sin(y * 22.0 + seed * 6.0));
+	col *= 0.9 + 0.1 * b;
+	col *= mix(1.0, 0.86, smoothstep(0.55, 1.0, ax));   // the edges a touch darker, so feathers separate
+	// the quill: a line down the middle, thinning toward the tip
+	float q = 1.0 - smoothstep(0.035, 0.075, ax / max(1.0 - 0.75 * y, 0.05));
+	col = mix(col, quill_col, q * 0.85);
+	// downy, fluffy base
+	col = mix(col, main_col, smoothstep(0.14, 0.0, y) * 0.6);
+	ALBEDO = col;
+	ROUGHNESS = 0.78;
+	SPECULAR = 0.3;
+	RIM = 0.45;
+	RIM_TINT = 0.4;
+	BACKLIGHT = col * 0.3;
+	EMISSION = main_col * 0.06;   // a faint holy glow
+	// a little relief for the barbs and the quill
+	float height = b * 0.0012 + q * 0.002;
+	vec3 dpx = dFdx(VERTEX);
+	vec3 dpy = dFdy(VERTEX);
+	vec3 r1 = cross(dpy, NORMAL);
+	vec3 r2 = cross(NORMAL, dpx);
+	float det = dot(dpx, r1);
+	vec3 grad = sign(det) * (dFdx(height) * r1 + dFdy(height) * r2);
+	NORMAL = normalize(abs(det) * NORMAL - grad);
+}
+"""
+
+
+static func _angel_mat(skin: String) -> ShaderMaterial:
+	var key := "angel_" + skin
+	if not _wing_mats.has(key):
+		var cols: Array = WING_COLOURS.get(skin, WING_COLOURS["natural"])
+		if not _wing_mats.has("feather_shader"):
+			var sh := Shader.new()
+			sh.code = FEATHER_SHADER
+			_wing_mats["feather_shader"] = sh
+		var m := ShaderMaterial.new()
+		m.shader = _wing_mats["feather_shader"]
+		m.set_shader_parameter("main_col", Color(cols[0]))
+		m.set_shader_parameter("tip_col", Color(cols[1]))
+		m.set_shader_parameter("quill_col", Color(cols[2]))
+		_wing_mats[key] = m
+	return _wing_mats[key]
+
+
+# One feather's triangles, in its own space: the vane reaching up +Y (0..1), -1..1 across (x), cupped and
+# with a raised quill, a narrow root and a rounded tip. [position, uv] per vertex, three per triangle.
+static func _feather_tris(rows: int) -> Array:
+	var cols := [-1.0, -0.5, 0.0, 0.5, 1.0]
+	var grid := []
+	for i in rows + 1:
+		var t := 1.0 - pow(1.0 - float(i) / rows, 1.3)   # (rows closer together at the tip, to round it)
+		var w := 0.5 * (0.4 + 0.6 * smoothstep(0.0, 0.22, t)) * sqrt(maxf(0.0, 1.0 - pow((t - 0.5) / 0.5, 6.0) * (1.0 if t > 0.5 else 0.0)))
+		var row := []
+		for x: float in cols:
+			var z := -0.09 * w * x * x + 0.025 * (1.0 - absf(x)) * (1.0 - t)   # cupped, the quill standing proud
+			row.append([Vector3(x * w, t, z), Vector2(x, t)])
+		grid.append(row)
+	var out := []
+	for i in rows:
+		for j in cols.size() - 1:
+			var a: Array = grid[i][j]
+			var b: Array = grid[i][j + 1]
+			var c: Array = grid[i + 1][j + 1]
+			var d: Array = grid[i + 1][j]
+			out.append_array([a, b, c, a, c, d])
+	return out
+
+
+# The whole wing as one mesh (cached: every angel shares it). Right wing reaches +X; the left is mirrored.
+static func _angel_wing_mesh(side: float) -> ArrayMesh:
+	var key := "angel_mesh_%d_%d" % [int(side), Graphics.quality]
+	if _wing_mats.has(key):
+		return _wing_mats[key]
+	var tris := _feather_tris([6, 8, 10][Graphics.quality])
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rows := 10
-	var pts := []
-	for i in rows + 1:
-		var t := float(i) / rows
-		var w := 0.5 * sin(PI * pow(t, 0.75)) * (1.0 - 0.25 * t)   # widest a third of the way up, rounded tip
-		var y := t
-		var cup := 0.06 * w   # the edges curl back a touch
-		pts.append([Vector3(-w, y, -cup), Vector3(0, y, 0.015), Vector3(w, y, -cup)])
-	var edge := Color(0.93, 0.92, 0.95)
-	var vane := Color(1.0, 1.0, 0.98)
-	var quill := Color(0.78, 0.76, 0.72)
-	for i in rows:
-		var a: Array = pts[i]
-		var b: Array = pts[i + 1]
-		for half in 2:
-			var o := half   # 0: left half (edge -> quill), 1: right half (quill -> edge)
-			var p0: Vector3 = a[o]
-			var p1: Vector3 = a[o + 1]
-			var p2: Vector3 = b[o + 1]
-			var p3: Vector3 = b[o]
-			var c0 := edge if o == 0 else quill
-			var c1 := quill if o == 0 else edge
-			for v in [[p0, c0], [p1, c1], [p2, c1], [p0, c0], [p2, c1], [p3, c0]]:
-				st.set_color(v[1].lerp(vane, 0.4) if v[1] != quill else quill)
-				st.add_vertex(v[0])
-	st.generate_normals()
-	_feather = st.commit()
-	return _feather
-
-
-static func _angel_mat() -> StandardMaterial3D:
-	if not _wing_mats.has("angel"):
-		var m := StandardMaterial3D.new()
-		m.vertex_color_use_as_albedo = true
-		m.albedo_color = Color(1, 1, 1)
-		m.roughness = 0.85
-		m.cull_mode = BaseMaterial3D.CULL_DISABLED
-		m.rim_enabled = true
-		m.rim = 0.35
-		m.emission_enabled = true
-		m.emission = Color(1.0, 0.97, 0.88)
-		m.emission_energy_multiplier = 0.12   # a faint holy glow
-		_wing_mats["angel"] = m
-	return _wing_mats["angel"]
-
-
-static func _add_feather(wing: Node3D, at: Vector3, angle: float, length: float, width: float, depth: float) -> void:
-	var mi := MeshInstance3D.new()
-	mi.mesh = _feather_mesh()
-	mi.material_override = _angel_mat()
-	mi.position = at + Vector3(0, 0, depth)
-	mi.rotation.z = angle
-	mi.scale = Vector3(width, length, 1.0)
-	wing.add_child(mi)
-
-
-# An angel wing: a bony leading edge arching up and out, long primary feathers fanning from the tip,
-# secondaries hanging along the arm, and rows of small covert feathers overlapping on top.
-static func _angel_wing(wing: Node3D, side: float) -> void:
 	var shoulder := Vector3.ZERO
-	var elbow := Vector3(0.42 * side, 0.3, 0)
-	var wrist := Vector3(0.95 * side, 0.36, 0)
-	# Primaries: from the wrist, fanning from out-and-up to straight down, longest in the middle
-	for i in 7:
-		var k := float(i) / 6.0
-		var ang := side * lerpf(-1.35, -2.75, k)   # feather +Y rotated: outward then down
-		var length := lerpf(0.72, 0.62, absf(k - 0.35) * 1.5)
-		var at := wrist.lerp(elbow, k * 0.35)
-		_add_feather(wing, at, ang, length, 0.2, -0.01 * i)
-	# Secondaries: along the arm, pointing down and a little out
-	for i in 6:
-		var k := float(i) / 5.0
-		var at := elbow.lerp(shoulder, k * 0.85)
-		var ang := side * lerpf(-2.75, -2.95, k)
-		_add_feather(wing, at, ang, lerpf(0.55, 0.42, k), 0.21, -0.06 - 0.008 * i)
-	# Coverts: two rows of short feathers over the bases, so no gaps show
-	for row in 2:
-		for i in 7:
-			var k := float(i) / 6.0
-			var at := shoulder.lerp(wrist, k) + Vector3(0, 0.03 - 0.09 * row, 0)
-			var ang := side * lerpf(-2.6, -2.2, k)
-			_add_feather(wing, at, ang, 0.26 - row * 0.05, 0.17, 0.02 + 0.01 * row)
-	# The leading edge: a soft rounded arm
-	var arm_mat := _angel_mat()
-	for seg in [[shoulder, elbow], [elbow, wrist]]:
-		var a: Vector3 = seg[0]
-		var b: Vector3 = seg[1]
-		var mi := MeshInstance3D.new()
-		var cm := CapsuleMesh.new()
-		cm.radius = 0.035
-		cm.height = a.distance_to(b) + 0.07
-		mi.mesh = cm
-		mi.material_override = arm_mat
-		mi.position = (a + b) * 0.5 + Vector3(0, 0, 0.005)   # tucked under the coverts (it read as a white pipe from the front)
-		mi.basis = _align_y(b - a)
-		wing.add_child(mi)
+	var elbow := Vector3(0.42, 0.3, 0)
+	var wrist := Vector3(0.95, 0.38, 0)
+	var feathers := []   # [at, angle, length, width, depth, layer]
+	# Primaries: from the wrist, fanning from out-and-up to straight down, the outer ones longest
+	for i in 10:
+		var k := float(i) / 9.0
+		feathers.append([wrist.lerp(elbow, k * 0.45) + Vector3(0, -0.02 * k, 0), lerpf(-1.25, -2.65, k),
+				lerpf(0.86, 0.66, absf(k - 0.25) * 1.3), 0.25, -0.004 * i, 1.0])
+	# Secondaries: along the arm, hanging down and a little out
+	for i in 11:
+		var k := float(i) / 10.0
+		feathers.append([elbow.lerp(shoulder, k * 0.9), lerpf(-2.7, -3.02, k), lerpf(0.66, 0.46, k), 0.25,
+				-0.045 - 0.003 * i, 0.7])
+	# Coverts, overlapping the bases so no gaps show: greater, lesser, then little marginals on the edge
+	for row in 3:
+		var n: int = [12, 12, 9][row]
+		for i in n:
+			var k := float(i) / (n - 1)
+			var along := shoulder.lerp(wrist, k * [1.0, 0.95, 0.9][row])
+			var lift: float = [-0.02, 0.07, 0.13][row]
+			feathers.append([along + Vector3(0, lift, 0), lerpf(-2.7, -2.15, k), [0.36, 0.24, 0.14][row] * lerpf(1.0, 0.85, k),
+					[0.21, 0.19, 0.16][row], -0.07 - 0.012 * row - 0.002 * i, [0.35, 0.15, 0.0][row]])
+	var idx := 0
+	for f in feathers:
+		var basis := Basis(Vector3.BACK, f[1] * side).scaled(Vector3(f[3], f[2], f[3]))
+		var at: Vector3 = f[0]
+		var origin := Vector3(at.x * side, at.y, at.z + f[4])
+		var seed := fposmod(sin(idx * 12.9898) * 43758.5453, 1.0)
+		idx += 1
+		for v in tris:
+			var p: Vector3 = basis * (v[0] as Vector3)
+			st.set_color(Color(f[5], seed, 0.0))
+			st.set_uv(v[1])
+			st.add_vertex(origin + p)
+	st.generate_normals()
+	var mesh := st.commit()
+	_wing_mats[key] = mesh
+	return mesh
+
+
+static func _angel_wing(wing: Node3D, side: float, skin: String) -> void:
+	var mi := MeshInstance3D.new()
+	mi.name = "Feathers"
+	mi.mesh = _angel_wing_mesh(side)
+	mi.material_override = _angel_mat(skin)
+	wing.add_child(mi)
 
 
 const SCALE_SHADER := """

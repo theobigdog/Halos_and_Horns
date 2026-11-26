@@ -491,5 +491,19 @@ func _run() -> void:
 		kept = kept and N.better_name(n) == n and N.displayable_name(n) == n
 	check(kept, "...normal names are left alone")
 
+	# ---- Game rules (Ted, Nov 26): Standard / Custom, anything from outside cleaned ----
+	var GR = load("res://scripts/game_rules.gd")
+	check(GR.is_standard(GR.standard()) and GR.summary(GR.standard()) == "Standard rules", "standard rules read as standard")
+	var wild: Dictionary = GR.clean({"gravity": 99, "damage": "lots", "splashes": -4, "powerups": {"heal": false, "bogus": true}, "extra": 1})
+	check(wild["gravity"] == 2.0 and wild["damage"] == 1.0 and wild["splashes"] == 0 and not wild.has("extra")
+			and not wild["powerups"].has("bogus") and wild["powerups"]["heal"] == false, "rules from outside are clamped and cleaned")
+	var keep_rules: Dictionary = GR.current
+	GR.current = wild
+	check(GR.allowed(["fast_hatred", "heal", "heal", "vanish"]) == ["fast_hatred", "vanish"], "a switched-off power-up never turns up")
+	check(GR.summary(wild).begins_with("Custom:"), "custom rules say what's different")
+	GR.current = keep_rules
+	main.rules_use_custom = false
+	check(GR.is_standard(main.active_rules()), "the game plays Standard unless Custom is picked")
+
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "FAILED", failures])
 	quit(1 if failures else 0)

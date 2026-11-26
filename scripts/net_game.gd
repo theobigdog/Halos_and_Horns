@@ -9,6 +9,7 @@
 # a position and a prop type - nothing that says who it is.
 extends Node
 
+const GameRules = preload("res://scripts/game_rules.gd")
 const RemotePlayer = preload("res://scripts/remote_player.gd")
 const Projectile = preload("res://scripts/projectile.gd")
 const Blessings = preload("res://scripts/blessings.gd")
@@ -235,7 +236,9 @@ func c_hello(player_name: String, version: int, angel_skills: Array, demon_skill
 	print("[host] %s joined" % peers[id]["name"])
 	send_map(id)
 	_broadcast_lobby()
-	if phase == "hiding" or phase == "hunting":
+	if (phase == "hiding" or phase == "hunting") and solo_round:
+		_solo_joined(id)
+	elif phase == "hiding" or phase == "hunting":
 		_add_late_joiner(id)
 	elif phase == "building":
 		build_can[id] = true
@@ -401,13 +404,14 @@ func s_lobby(names: Array, host_phase: String) -> void:
 # ---------------- rounds (host) ----------------
 
 func can_start() -> bool:
-	return is_host and phase == "lobby" and (peers.size() >= 2 or test_round)   # (a Creative test round works on your own)
+	return is_host and phase == "lobby" and peers.size() >= 1   # (on your own too: Ted, Nov 26)
 
 
 func start_round() -> void:
 	if not can_start():
 		return
 	round_seed = randi()
+	GameRules.current = main.active_rules()
 	_used_eids.clear()
 	minions.clear()
 	_clear_remotes()
@@ -415,8 +419,10 @@ func start_round() -> void:
 	ids.shuffle()
 	# About one angel per three players, at least one.
 	var angel_count := maxi(1, int(round(ids.size() / 3.0)))
-	if ids.size() < 2:
-		angel_count = 0   # testing a map alone: you're a demon, free to roam (Sara, Nov 25)
+	solo_round = ids.size() < 2
+	_solo_waiting.clear()
+	if solo_round:
+		angel_count = 1 if solo_role == "angel" else 0   # on your own: the team you picked (Sara, Nov 25; Ted, Nov 26)
 	for i in ids.size():
 		var rec: Dictionary = peers[ids[i]]
 		rec["role"] = "angel" if i < angel_count else "demon"
@@ -496,12 +502,21 @@ func _roster_for(viewer_id: int) -> Array:
 func _send_round_start(id: int) -> void:
 	var rec: Dictionary = peers[id]
 	send_map(id)   # (the map goes first: same channel, so it always arrives before the round)
+	if id != 1:
+		s_rules.rpc_id(id, GameRules.current)   # (and the rules: the same channel, so before the round too)
 	if id == 1:
 		my_eid = rec["eid"]
 		main.online_round_start(round_seed, rec["role"], rec["pos"], phase, phase_time)
 		_apply_roster(_roster_for(1))
 	else:
 		s_round_start.rpc_id(id, round_seed, rec["role"], rec["pos"], phase, phase_time, rec["eid"], _roster_for(id))
+
+
+# The host's game rules (gravity, stamina, damage...): every game plays by them this round.
+@rpc("authority", "call_remote", "reliable")
+func s_rules(d: Dictionary) -> void:
+	GameRules.current = GameRules.clean(d)
+	print("[net] rules: " + GameRules.summary(GameRules.current))
 
 
 # ---------------- the map ----------------
@@ -614,9 +629,44 @@ func _send_rosters() -> void:
 			s_roster.rpc_id(id, _roster_for(id))
 
 
-func _add_late_joiner(id: int) -> void:
+# Someone joined while the host plays alone: the round restarts with them in a few seconds, unless the
+# host clicks to keep going (main.gd's pop-up).
+func _solo_joined(id: int) -> void:
+	_solo_waiting.append(id)
+	var names := []
+	for w in _solo_waiting:
+		if peers.has(w):
+			names.append(peers[w]["name"])
+	main.solo_join_prompt(", ".join(names), SOLO_RESTART_IN)
+	print("[host] %s joined a solo round" % peers[id]["name"])
+
+
+# The pop-up ran out: start over with everyone.
+func solo_restart() -> void:
+	if not is_host or not solo_round or _solo_waiting.is_empty():
+		return
+	_solo_waiting.clear()
+	var was_test := test_round
+	_back_to_lobby()
+	test_round = was_test
+	start_round()
+
+
+# The host kept their round: the newcomers join it, on the other team (so there's someone to play against).
+func solo_keep() -> void:
+	if not is_host or not solo_round:
+		return
+	solo_round = false
+	var other := "demon" if peers[1]["role"] == "angel" else "angel"
+	for w in _solo_waiting:
+		if peers.has(w) and not peers[w]["in_round"]:
+			_add_late_joiner(w, other)
+	_solo_waiting.clear()
+
+
+func _add_late_joiner(id: int, role := "angel") -> void:
 	var rec: Dictionary = peers[id]
-	rec["role"] = "angel"   # late joiners hunt
+	rec["role"] = role   # late joiners hunt (unless they're joining a solo demon's round)
 	rec["redeemed"] = false
 	_reset_round_mirrors(rec)
 	rec["eid"] = _new_eid()
@@ -624,7 +674,7 @@ func _add_late_joiner(id: int) -> void:
 	rec["in_round"] = true
 	rec["stamina"] = THROW_STAMINA_MAX
 	rec["stamina_time"] = now()
-	_place(rec, main.spawn_point("angel", randi() % 4))
+	_place(rec, main.spawn_point(role, randi() % 4))
 	_send_round_start(id)
 	var props_now: Array = main.prop_state()
 	s_prop_state.rpc_id(id, props_now[0], props_now[1])
@@ -703,8 +753,8 @@ func _end_round(message: String) -> void:
 func _check_round_over() -> void:
 	if phase != "hiding" and phase != "hunting":
 		return
-	if test_round and peers.size() < 2:
-		return   # testing alone: nothing to win, just look around (Esc, "Back to Creative" ends it)
+	if (test_round or solo_round) and peers.size() < 2:
+		return   # alone: nothing to win, just play (Esc, "Back to Creative" ends a test)
 	if _demons_left() == 0:
 		_end_round("Every demon was redeemed! Angels win!")
 	elif _angels_left() == 0:
@@ -1056,7 +1106,7 @@ func c_throw(origin: Vector3, velocity: Vector3, kind: String, gravity: float, s
 	# Mirror the blessing stamina so a hacked client can't throw endlessly.
 	# (A little slack for network timing.)
 	var t := now()
-	var regen := THROW_REGEN * (6.0 if t < rec.get("quick_throw_until", 0.0) else 1.0)
+	var regen := THROW_REGEN * (6.0 if t < rec.get("quick_throw_until", 0.0) else 1.0) * GameRules.f("stamina")
 	rec["stamina"] = minf(rec["stamina"] + regen * (t - rec["stamina_time"]), THROW_STAMINA_MAX)
 	rec["stamina_time"] = t
 	if rec["stamina"] < -THROW_COST:
@@ -1315,7 +1365,7 @@ func minion_hit(owner: int, _by: Node, damage: int) -> bool:
 	if not minions.has(owner) or phase != "hunting":
 		return false
 	var m: Dictionary = minions[owner]
-	m["hp"] -= damage
+	m["hp"] -= roundi(damage * GameRules.f("damage"))
 	grant_hatred(owner, Skills.NAUGHTY_MINION_HIT, "your minion fooled an angel")
 	print("[host] a minion was hit")
 	if m["hp"] <= 0:
@@ -1382,7 +1432,7 @@ func damage_player(id: int, damage: int, by := 0) -> bool:
 	main.powerups.angels_made_progress()
 	# Health is kept as a fraction, so switching forms keeps your percentage:
 	# the same hit hurts a stack of books (50 hp) more than a hay bale (150 hp).
-	rec["hp"] -= float(damage) / PropLib.max_hp(rec["form"])
+	rec["hp"] -= float(damage) * GameRules.f("damage") / PropLib.max_hp(rec["form"])
 	var left := maxf(rec["hp"], 0.0)
 	if id == 1:
 		main.online_you_hit(left)
@@ -1788,7 +1838,7 @@ func _kaboom(id: int) -> void:
 	main.broadcast_fx("kaboom", [pos])
 	for other in peers:
 		var o: Dictionary = peers[other]
-		if other != id and o["in_round"] and o["role"] == "angel" and o["pos"].distance_to(pos) <= PropLib.PropAnims.KABOOM_RADIUS:
+		if other != id and o["in_round"] and o["role"] == "angel" and o["pos"].distance_to(pos) <= PropLib.PropAnims.KABOOM_RADIUS * GameRules.f("blast"):
 			daze_player(other, PropLib.PropAnims.KABOOM_DAZE)
 	rec["last_hit_by"] = 0   # (nobody got them: they did it themselves)
 	_catch(id, "%s blew up!" % rec["name"])
@@ -2405,6 +2455,12 @@ func build_test_play() -> void:
 
 
 var test_round := false   # host: this round is a test from building together (short hiding; back to building after)
+# Playing on your own (Ted, Nov 26): the host can start a round alone, on the team they pick. Someone joining
+# mid-round restarts it with them, unless the host keeps their round going (then they join the other team).
+var solo_role := "demon"
+var solo_round := false
+var _solo_waiting := []    # joined during a solo round, waiting on the host's choice
+const SOLO_RESTART_IN := 6.0
 
 
 # Host: stop the test round early (Esc, "Back to Creative") and everyone goes back to building.
