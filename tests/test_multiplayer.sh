@@ -40,7 +40,7 @@ for n in Ava Ben Cal Dee; do
 	[ "$n" = "Dee" ] && extra="--cheat=teleport,fly --skills=teleport,fly"
 	[ "$n" = "Ava" ] && extra="--skills=cherub,vacuum --say=hello_everyone --cheat=claim"
 	[ "$n" = "Cal" ] && extra="--skills=dash,leap"
-	[ "$n" = "Ben" ] && extra="--skills=fire,minion --sayteam=demons_only_secret"
+	[ "$n" = "Ben" ] && extra="--skills=fire,minion --sayteam=demons_only_secret --kaboom"
 	timeout 240 "$GODOT" --headless -- --join=$JOIN $NET --name=$n --autobot --quit-after-round $extra > "$OUT/$n.log" 2>&1 &
 	PIDS+=($!)
 	sleep 0.5
@@ -109,6 +109,13 @@ check "team chat never reaches the other team" "! grep -q 'demons_only_secret' '
 # being off the throw's path or behind walls.)
 check "real hit claims aren't refused as impossible" "! grep -E \"refused (Abe|Ben|Cal|Dee)'s hit claim: (not on that throw's path|through a wall)\" '$OUT/host.log'"
 check "a made-up hit claim is refused" "grep -q \"refused Ava's hit claim\" '$OUT/host.log'"
+# Ben (if still a demon a while into the hunt) turns into a TNT crate and lights the fuse
+if grep -q 'lit the fuse' "$OUT/Ben.log"; then
+	check "the host lit Ben's fuse" "grep -q '\[host\] Ben lit a fuse' '$OUT/host.log'"
+	check "the others saw his prop animate" "grep -q 'a prop animated' '$OUT/Ava.log'"
+	check "Ben blew up (and was caught)" "grep -q '\[host\] Ben blew up' '$OUT/host.log'"
+	check "everyone heard about it" "grep -q 'Ben blew up!' '$OUT/Ava.log'"
+fi
 check "everyone hears who redeemed whom" "grep -qE '\\[news\\] [A-Za-z]+ redeemed [A-Za-z]+!' '$OUT/Ava.log'"
 if [ $(grep -c 'was caught' "$OUT/host.log") -ge 2 ]; then
 	check "everyone hears who the last demon is" "grep -q 'LAST demon standing' '$OUT/Cal.log'"

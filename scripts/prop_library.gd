@@ -13,6 +13,8 @@ const Models = preload("res://scripts/models.gd")
 # lying: already on its side, so it only slides.
 # The original hand-built props. Random scatter and practice bots still use just these.
 const ClassicLook = preload("res://scripts/classic_look.gd")
+const ExtraProps = preload("res://scripts/extra_props.gd")
+const PropAnims = preload("res://scripts/prop_anims.gd")
 
 const CLASSIC := {
 	"barrel": {"shape": "cylinder", "radius": 0.45, "height": 1.0, "label": "Barrel", "hp": 120, "speed": 5.0, "mass": 2.5},
@@ -38,6 +40,7 @@ static var TYPES := _build_types()
 # (a crate, about 0.7 m³, is 110 hp / 5.5 speed / 2.0 mass; an apple is fragile and quick). First guesses.
 static func _build_types() -> Dictionary:
 	var out := CLASSIC.duplicate(true)
+	out.merge(ExtraProps.TYPES.duplicate(true))   # (hand-built ones added later: not in the random scatter)
 	for id in Models.ids("prop"):
 		var s := Models.size(id)
 		var k := pow(maxf(s.x * s.y * s.z, 0.001), 1.0 / 3.0)
@@ -47,6 +50,8 @@ static func _build_types() -> Dictionary:
 				"mass": snappedf(clampf(2.3 * k, 0.3, 4.0), 0.1)}
 		if Models.entry(id).get("round", false):
 			d["round"] = true
+		if LABELS.has(id):
+			d["label"] = LABELS[id]
 		out[id] = d
 	return out
 
@@ -97,7 +102,20 @@ static func scatter_names() -> Array:
 
 
 static func category(type_name: String) -> String:
-	return Models.category(base_type(type_name)) if TYPES.get(type_name, {}).has("model") else "Classic"
+	var d: Dictionary = TYPES.get(base_type(type_name), {})
+	if d.has("cat"):
+		return d["cat"]
+	return Models.category(base_type(type_name)) if d.has("model") else "Classic"
+
+
+# Ted (Nov 26): the lit and unlit torch are one prop now, which E lights and snuffs. The palette only offers the
+# lit one ("Torch"); the unlit one stays a type so maps that used it still load (and it lights up too).
+const LABELS := {"dungeon/torch_lit": "Torch"}
+const NOT_IN_PALETTE := ["dungeon/torch"]
+
+
+static func in_palette(type_name: String) -> bool:
+	return not type_name in NOT_IN_PALETTE
 
 
 # Max health for a demon in this form ("" = demon form).
@@ -234,7 +252,13 @@ static func make_visual(type_name: String) -> Node3D:
 		v.scale = Vector3.ONE * scale_of(type_name)
 		return v
 	if TYPES.get(type_name, {}).has("model"):
-		return Models.instance(TYPES[type_name]["model"])
+		var mv := Models.instance(TYPES[type_name]["model"])
+		PropAnims.dress(mv, type_name)
+		return mv
+	if ExtraProps.has(type_name):
+		var ev := ExtraProps.make(type_name)
+		PropAnims.dress(ev, type_name)
+		return ev
 	var root := Node3D.new()
 	match type_name:
 		"barrel":
@@ -294,4 +318,5 @@ static func make_visual(type_name: String) -> Node3D:
 				wart.height = wart.radius * 1.6
 				var at := _pickle_point(u, ang, 0.98)
 				_add_mesh(root, wart, Color(0.26, 0.42, 0.1), at, "plant")
+	PropAnims.dress(root, type_name)
 	return root

@@ -248,6 +248,12 @@ func _physics_process(delta: float) -> void:
 	rotation.y = sm[1]
 
 
+# Their disguise did its thing (E): the n-th press since they became it.
+func play_anim(n: int) -> void:
+	if _visual and form != "":
+		PropLib.PropAnims.press(_visual, form, n)
+
+
 func play_taunt(taunt_name: String) -> void:
 	_voice.stream = Taunts.stream(taunt_name)
 	_voice.pitch_scale = randf_range(0.96, 1.04)

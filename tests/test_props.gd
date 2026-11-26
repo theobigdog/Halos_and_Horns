@@ -6,6 +6,8 @@ extends SceneTree
 const Graphics = preload("res://scripts/graphics.gd")
 const Effects = preload("res://scripts/effects.gd")
 const Models = preload("res://scripts/models.gd")
+const PropLib = preload("res://scripts/prop_library.gd")
+const PropAnims = preload("res://scripts/prop_anims.gd")
 
 var main: Node
 var failures := 0
@@ -240,6 +242,52 @@ func _run() -> void:
 	check(true, "stomp dust and teleport smoke play without errors")
 	check(main.music != null and main.music.get("_want") == "lobby" or main.music.get("_want") == "hiding" or main.music.get("_want") == "hunt",
 		"the music follows the game (now: %s)" % main.music.get("_want"))
+
+	# ---- Animated props (E) ----
+	var missing := PropAnims.TABLE.keys().filter(func(t): return not PropLib.TYPES.has(t))
+	check(missing.is_empty(), "every animated prop is a real prop type %s" % str(missing))
+	var quiet := true
+	for t in PropAnims.TABLE:
+		var v := PropLib.make_visual(t)
+		main.add_child(v)
+		for n in [1, 2]:
+			PropAnims.press(v, t, n)
+		if v.get_node_or_null("PropAnim") == null:
+			quiet = false
+			print("  no animator on ", t)
+		v.queue_free()
+	await frames(5)
+	check(quiet, "all %d animated props build and play" % PropAnims.TABLE.size())
+	check(PropLib.label("dungeon/torch_lit") == "Torch" and not PropLib.in_palette("dungeon/torch") and PropLib.TYPES.has("dungeon/torch"),
+			"the two torches are one \"Torch\" in the palette (old maps' unlit ones still load)")
+	var real_candle := PropLib.make_visual("dungeon/candle_lit")
+	var copy_candle := PropLib.make_visual("dungeon/candle_lit")
+	check(real_candle.get_node("PropAnim")._p["natives"][0].visible and copy_candle.get_node("PropAnim")._p["natives"][0].visible,
+			"a lit candle starts lit, real or disguise")
+	real_candle.free()
+	copy_candle.free()
+	player.global_position = Vector3(6, 0.1, 22)
+	player.force_possess("halloween/candle")
+	await frames(3)
+	var vis: Node3D = player.visual_root.get_child(player.visual_root.get_child_count() - 1)
+	check(player.try_animate(), "E animates a candle disguise")
+	var anim = vis.get_node("PropAnim")
+	check(anim._p["flames"][0].visible, "...and lights it")
+	check(not player.try_animate(), "...but not again straight away")
+	await frames(40)
+	check(player.try_animate() and not anim._p["flames"][0].visible, "...and E again snuffs it")
+	player.force_possess("apple")
+	await frames(3)
+	check(not player.try_animate(), "an apple has nothing to animate")
+	# Explosives (practice): the fuse burns, there's no backing out, then KABOOM ends the round
+	player.force_possess("tnt_crate")
+	await frames(40)   # (past the cooldown from the candle)
+	check(player.try_animate() and player.fuse_lit, "E lights a TNT crate's fuse")
+	player.unpossess()
+	player.force_possess("apple")
+	check(player.possessed_type == "tnt_crate", "...and you can't change out of it once it's lit")
+	await create_timer(PropAnims.FUSE_TIME + 0.4).timeout
+	check(main.state == main.State.ENDED and player.possessed_type == "", "...KABOOM: the demon blew up and the round is over")
 
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "SOME FAILED", failures])
 	quit(1 if failures > 0 else 0)

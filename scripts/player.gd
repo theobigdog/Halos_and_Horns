@@ -14,8 +14,10 @@ signal melee_used(origin, dir)
 signal released_possessed                 # we left a real (possessed) prop behind
 signal bumped(thing, impulse)             # we ran into a loose prop, or a disguised demon: shove it (host decides)
 signal no_room                            # tried to change into something that doesn't fit here
+signal animate_pressed(n)                 # E: our disguise does its thing (the n-th press since we became it)
 
 const PropLib = preload("res://scripts/prop_library.gd")
+const PropAnims = preload("res://scripts/prop_anims.gd")
 const Projectile = preload("res://scripts/projectile.gd")
 const Effects = preload("res://scripts/effects.gd")
 const Blessings = preload("res://scripts/blessings.gd")
@@ -253,6 +255,8 @@ func _apply_trail() -> void:
 
 func _apply_form() -> void:
 	_rig = null
+	anim_presses = 0
+	fuse_lit = false
 	for child in visual_root.get_children():
 		child.queue_free()
 	_ghost_on = false   # a new look: (still invisible?) the next frame makes it ghostly again
@@ -349,6 +353,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		taunt(true)
 		return
 	if frozen:
+		return
+	if event.is_action_pressed("animate"):
+		try_animate()
 		return
 	if event.is_action_pressed("minion_jump") and role == "demon" and is_instance_valid(minion):
 		minion.jump()   # (no return: the same key is the angels' free look)
@@ -582,6 +589,7 @@ func _physics_process(delta: float) -> void:
 	_update_head_bob(delta, current.length())
 	_update_camera_juice(delta, input_dir)
 	_update_throw_stamina(delta)
+	_anim_cd = maxf(_anim_cd - delta, 0.0)
 
 	if role == "angel":
 		# Holding the button keeps throwing, but slowly (each click throws straight away, in _unhandled_input).
@@ -1228,6 +1236,8 @@ func _leave_possessed() -> void:
 
 # Become a copy of this prop type (named before possess/transform were split).
 func force_possess(type_name: String) -> void:
+	if fuse_lit:
+		return   # (the fuse is lit: you're going up with it)
 	if not _make_room(PropLib.make_shape(type_name), PropLib.height(type_name), false):
 		no_room.emit()
 		return
@@ -1239,7 +1249,7 @@ func force_possess(type_name: String) -> void:
 
 
 func unpossess() -> void:
-	if possessed_type == "":
+	if possessed_type == "" or fuse_lit:
 		return
 	if not _make_room(Bodies.make_shape(role), Bodies.height_for(role)):
 		no_room.emit()
@@ -1348,7 +1358,34 @@ func hold_throw_every() -> float:
 	return QUICK_HOLD_THROW_EVERY if powerup_left("quick_throw") > 0.0 else HOLD_THROW_EVERY
 
 
+# E as a disguised demon: the prop does its thing (prop_anims.gd), here straight away; main passes it on.
+var anim_presses := 0
+var fuse_lit := false     # (an explosive's fuse is burning: no going back)
+var _anim_cd := 0.0
+
+
+func try_animate() -> bool:
+	if role != "demon" or possessed_type == "" or not PropAnims.can_animate(possessed_type) or _anim_cd > 0.0 or fuse_lit:
+		return false
+	_anim_cd = PropAnims.COOLDOWN
+	anim_presses += 1
+	fuse_lit = PropAnims.is_explosive(possessed_type)
+	if visual_root.get_child_count() > 0:
+		PropAnims.press(visual_root.get_child(visual_root.get_child_count() - 1), possessed_type, anim_presses)
+	animate_pressed.emit(anim_presses)
+	return true
+
+
+# Caught in an explosive prop's blast: stunned stiff for a moment (either team), no throwing.
+func daze(seconds: float) -> void:
+	stunned = maxf(stunned, clampf(seconds, 0.0, 3.0))
+	shake(0.6)
+	print("[player] dazed by an explosion")
+
+
 func try_throw() -> bool:
+	if stunned > 0.0:
+		return false
 	if _throw_cooldown > 0.0 or throw_stamina < THROW_COST:
 		return false
 	_throw_strength = clampf(throw_stamina / (THROW_STAMINA_MAX * WEAK_THROW_BELOW), 0.0, 1.0)

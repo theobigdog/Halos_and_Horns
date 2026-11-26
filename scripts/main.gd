@@ -26,6 +26,8 @@ const Fire = preload("res://scripts/fire.gd")
 const Minion = preload("res://scripts/minion.gd")
 const PowerUps = preload("res://scripts/powerups.gd")
 const Keybinds = preload("res://scripts/keybinds.gd")
+const PropAnims = preload("res://scripts/prop_anims.gd")
+const PropAnimSounds = preload("res://scripts/prop_anim_sounds.gd")
 const Bouncy = preload("res://scripts/bouncy.gd")
 const Models = preload("res://scripts/models.gd")
 const Shrine = preload("res://scripts/shrine.gd")
@@ -265,6 +267,7 @@ func _ready() -> void:
 	_build_fps_label()
 	if DisplayServer.get_name() != "headless":
 		Taunts.warm_up()   # (synthesized in the background, so the first taunt doesn't stall the game)
+		PropAnimSounds.warm_up()
 	var numbers := Updater.version_numbers(game_version)
 	while numbers.size() < 3:   # "dev" has no numbers and "0.4" has two: the rest count as 0
 		numbers.append(0)
@@ -284,6 +287,8 @@ func _ready() -> void:
 	add_child(player)
 	player.threw.connect(func(kind): _play("throw_" + kind))
 	player.form_changed.connect(func(): _play("possess"))
+	player.form_changed.connect(_animate_hint)
+	player.animate_pressed.connect(_on_animate)
 	player.hit_confirmed.connect(_on_hit_confirmed)
 	player.taunted.connect(_on_taunted)
 	player.bounced.connect(func(): _play("bounce"))
@@ -2609,6 +2614,52 @@ func is_authority() -> bool:
 	return mode == "practice" or (net != null and net.is_host)
 
 
+# ---------- animated props (E; prop_anims.gd) ----------
+
+func _animate_hint() -> void:
+	if role == "demon" and PropAnims.can_animate(player.possessed_type):
+		_toast("%s: %s" % [Keybinds.key_name("animate"), PropAnims.verb(player.possessed_type)], 2.0)
+
+
+# We pressed E (our own visual already did its thing): online the host passes it on (and lights fuses);
+# in practice an explosive goes off here.
+func _on_animate(n: int) -> void:
+	if mode == "online":
+		if net:
+			net.on_local_animate(n)
+	elif PropAnims.is_explosive(player.possessed_type) and (state == State.HIDING or state == State.HUNTING):
+		get_tree().create_timer(PropAnims.FUSE_TIME).timeout.connect(_practice_kaboom)
+
+
+func _practice_kaboom() -> void:
+	if mode != "practice" or not player.fuse_lit or not (state == State.HIDING or state == State.HUNTING):
+		return
+	var pos := player.global_position
+	kaboom_fx(pos)
+	demon_explosion(pos)
+	player.fuse_lit = false
+	player.unpossess()
+	_end_round("KABOOM! You blew yourself up.")
+
+
+# An explosive prop went off (with the demon inside): a fireball, a big bang, smoke, props flung about.
+func kaboom_fx(pos: Vector3) -> void:
+	var b := DemonBlast.new()
+	_fx_parent().add_child(b)
+	b.global_position = pos + Vector3.UP * 0.4
+	Effects.puff(_fx_parent(), pos + Vector3.UP * 0.6, Color(1.0, 0.55, 0.1, 0.9), 3.2)
+	Effects.smoke(_fx_parent(), pos + Vector3.UP * 0.8, Color(0.12, 0.1, 0.09), 3.0)
+	_play_at(PropAnimSounds.get_sound("kaboom"), pos, 1.0, 4.0)
+	_shake_near(pos, 0.9, 22.0)
+	if round_root:
+		_blast_props(pos, PropAnims.KABOOM_RADIUS + 2.0, BLAST_SHOVE * 1.6)
+
+
+func online_dazed(seconds: float) -> void:
+	player.daze(seconds)
+	_toast("DAZED!", 1.2)
+
+
 func _on_player_skill(id: String, origin: Vector3, dir: Vector3, point: Vector3, index: int) -> void:
 	if id == "minion":
 		_spawn_my_minion(point, index)
@@ -3554,6 +3605,8 @@ func puff_at(pos: Vector3, color: Color, size: float) -> void:
 
 func fx(kind: String, args: Array) -> void:
 	match kind:
+		"kaboom":
+			kaboom_fx(args[0])
 		"hit_blast":
 			var hb := DemonBlast.new()
 			hb.small = true

@@ -1399,7 +1399,7 @@ func s_you_hit(health_fraction: float) -> void:
 
 
 # Mobification: a caught demon is redeemed and joins the angels.
-func _catch(id: int) -> void:
+func _catch(id: int, how := "") -> void:
 	var rec: Dictionary = peers[id]
 	var where: Vector3 = rec["pos"]
 	main.powerups.demon_caught(where)   # every saved soul drops an angel power-up
@@ -1427,6 +1427,8 @@ func _catch(id: int) -> void:
 	_show_team_powerups(id)   # (their old team's power-ups vanish on their side)
 	# Everyone hears about it: "Ava redeemed Ben!"
 	var news := ("%s redeemed %s!" % [by_name, rec["name"]]) if by_name != "" else ("%s was redeemed!" % rec["name"])
+	if how != "":
+		news = how
 	print("[host] " + news)
 	main.announce(news)
 	for other in _client_ids():
@@ -1720,6 +1722,89 @@ func _valid_taunt(role: String, taunt_name: String) -> bool:
 	if parts.size() != 2 or parts[0] != role:
 		return false
 	return parts[1] == "signature" or Taunts.TAUNTS[role].has(parts[1])
+
+
+# ---------- animated props (E) ----------
+
+func on_local_animate(n: int) -> void:
+	if not main.in_online_round():
+		return
+	if is_host:
+		_host_animate(1, n)
+	else:
+		c_animate.rpc_id(1, n)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func c_animate(n: int) -> void:
+	if is_host:
+		_host_animate(multiplayer.get_remote_sender_id(), n)
+
+
+# A disguised demon pressed E: show it on every other screen (by entity id, like a taunt: nothing new for an
+# angel's game to learn), and if it's an explosive, light the fuse.
+func _host_animate(id: int, n: int) -> void:
+	if not peers.has(id) or not peers[id]["in_round"]:
+		return
+	var rec: Dictionary = peers[id]
+	var form: String = rec.get("form", "")
+	if rec["role"] != "demon" or form == "" or not PropLib.PropAnims.can_animate(form):
+		return
+	var t := now()
+	if t - rec.get("anim_at", -100.0) < PropLib.PropAnims.COOLDOWN * 0.8 or rec.get("fuse_form", "") != "":
+		return
+	rec["anim_at"] = t
+	n = clampi(n, 1, 100000)
+	if id != 1 and remotes.has(rec["eid"]):
+		remotes[rec["eid"]].play_anim(n)
+	for other in _client_ids():
+		if other != id:
+			s_prop_anim.rpc_id(other, rec["eid"] if id != 1 else my_eid, n)
+	if PropLib.PropAnims.is_explosive(form):
+		rec["fuse_form"] = form
+		print("[host] %s lit a fuse" % rec["name"])
+		get_tree().create_timer(PropLib.PropAnims.FUSE_TIME).timeout.connect(_kaboom.bind(id))
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_prop_anim(eid: int, n: int) -> void:
+	print("[net] a prop animated")
+	if remotes.has(eid):
+		remotes[eid].play_anim(clampi(n, 1, 100000))
+
+
+# The fuse burned down: the demon goes up with it (and is caught, with nobody to thank), and angels close by
+# are dazed for a moment.
+func _kaboom(id: int) -> void:
+	if not peers.has(id):
+		return
+	var rec: Dictionary = peers[id]
+	var form: String = rec.get("fuse_form", "")
+	rec["fuse_form"] = ""
+	if not rec["in_round"] or rec["role"] != "demon" or rec.get("form", "") != form or not main.in_online_round():
+		return
+	var pos: Vector3 = rec["pos"]
+	print("[host] %s blew up" % rec["name"])
+	main.broadcast_fx("kaboom", [pos])
+	for other in peers:
+		var o: Dictionary = peers[other]
+		if other != id and o["in_round"] and o["role"] == "angel" and o["pos"].distance_to(pos) <= PropLib.PropAnims.KABOOM_RADIUS:
+			daze_player(other, PropLib.PropAnims.KABOOM_DAZE)
+	rec["last_hit_by"] = 0   # (nobody got them: they did it themselves)
+	_catch(id, "%s blew up!" % rec["name"])
+
+
+func daze_player(id: int, seconds: float) -> void:
+	if id == 1:
+		main.online_dazed(seconds)
+	elif peers.has(id):
+		peers[id]["grace_until"] = now() + seconds + 0.5
+		s_dazed.rpc_id(id, seconds)
+
+
+@rpc("authority", "call_remote", "reliable")
+func s_dazed(seconds: float) -> void:
+	main.online_dazed(clampf(seconds, 0.0, 3.0))
 
 
 @rpc("any_peer", "call_remote", "reliable")

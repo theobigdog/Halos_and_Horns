@@ -29,6 +29,27 @@ func frames(n: int) -> void:
 		await physics_frame
 
 
+const PROP_TRIANGLES := 14000
+
+
+# Triangles drawn for this node and everything under it (MultiMeshes count every copy). Spheres and rings
+# still at Godot's default detail are noted in `defaults`.
+func triangles(n: Node, defaults: Array, label: String) -> int:
+	var total := 0
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh != null:
+		var m: Mesh = (n as MeshInstance3D).mesh
+		total += m.get_faces().size() / 3
+		if (m is SphereMesh and (m as SphereMesh).radial_segments >= 64) or (m is TorusMesh and (m as TorusMesh).rings >= 64):
+			defaults.append(label)
+	elif n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh != null:
+		var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh
+		if mm.mesh != null:
+			total += mm.mesh.get_faces().size() / 3 * mm.instance_count
+	for c in n.get_children():
+		total += triangles(c, defaults, label)
+	return total
+
+
 func mesh_box(n: Node3D) -> AABB:
 	var box := AABB()
 	var first := true
@@ -556,6 +577,28 @@ func _run() -> void:
 	ed.dirty = false
 	ed._try_exit()
 	await frames(3)
+
+	# ---- Triangle budget (Ted, Nov 26: keep an eye on polygon counts without anyone having to ask) ----
+	# Every prop stays under PROP_TRIANGLES, and no sphere or ring anywhere is left at Godot's default detail
+	# (64 x 32: about 4,000 triangles each; 324 of them were most of the Town map's 1.65 million).
+	var heavy := []
+	var defaults := []
+	var biggest := ["", 0]
+	for t in PropLib.type_names():
+		var v := PropLib.make_visual(t)
+		var tris := triangles(v, defaults, t)
+		if tris > biggest[1]:
+			biggest = [t, tris]
+		if tris > PROP_TRIANGLES:
+			heavy.append("%s (%d)" % [t, tris])
+		v.free()
+	for id in Models.ids("structure"):
+		var s := Models.instance(id)
+		triangles(s, defaults, id)
+		s.free()
+	print("  biggest prop: %s, %d triangles" % biggest)
+	check(heavy.is_empty(), "every prop is under %d triangles %s" % [PROP_TRIANGLES, str(heavy)])
+	check(defaults.is_empty(), "no sphere or ring is left at Godot's 4,000-triangle default %s" % str(defaults))
 
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "SOME FAILED", failures])
 	quit(1 if failures > 0 else 0)

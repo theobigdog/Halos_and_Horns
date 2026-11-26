@@ -160,6 +160,7 @@ func _play_demon(delta: float, p) -> void:
 		_try_fear(p)
 		_try_minion(p, delta)
 		_try_escape(p)
+		_try_kaboom(p)
 		return
 	_fly_time += delta
 	if _fly_time < 0.8:
@@ -202,6 +203,17 @@ func _play_demon(delta: float, p) -> void:
 	p.force_possess(types[randi() % types.size()])
 	_hidden = true
 	log_line("hiding as a copy of a " + p.possessed_type)
+
+
+# --kaboom: a hidden demon turns into a TNT crate a while into the hunt and lights the fuse (and blows up).
+func _try_kaboom(p) -> void:
+	if not options.has("kaboom") or _used.has("kaboom") or main.state != main.State.HUNTING or _role_time < 15.5:
+		return
+	_used["kaboom"] = true
+	p.force_possess("tnt_crate")
+	get_tree().create_timer(0.6).timeout.connect(func():
+		if p.try_animate():
+			log_line("lit the fuse on a tnt_crate"))
 
 
 # Hidden demon with Teleport: try it once during the hunt.

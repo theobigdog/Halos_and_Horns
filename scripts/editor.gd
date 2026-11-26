@@ -2536,7 +2536,7 @@ func _build_ui() -> void:
 	for bk in HollowBuildings.KINDS:
 		_palette_button(walk_in, HollowBuildings.KINDS[bk], "building:" + bk)
 	# Props (demons can be these), then structures (solid scenery), each by category
-	for group in [["Props", PropLib.type_names(), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
+	for group in [["Props", PropLib.type_names().filter(PropLib.in_palette), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
 		var glabel := _label(pal, "  " + group[0] + " (%d)" % group[1].size())
 		glabel.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
 		_palette_groups.append([glabel, group[0]])

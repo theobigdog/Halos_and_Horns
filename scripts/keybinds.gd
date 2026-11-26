@@ -21,6 +21,7 @@ const ACTIONS := [
 	["toggle_view", "First / third person", "key:%d" % KEY_T],
 	["taunt_random", "Random taunt", "key:%d" % KEY_1],
 	["taunt_signature", "Signature taunt", "key:%d" % KEY_2],
+	["animate", "Animate your prop (demons: light a candle, pop a cork...)", "key:%d" % KEY_E],
 	["chat_all", "Chat to everyone", "key:%d" % KEY_ENTER],
 	["chat_team", "Chat to your team", "key:%d" % KEY_BACKSPACE],
 	["scoreboard", "Roster (hold)", "key:%d" % KEY_TAB],

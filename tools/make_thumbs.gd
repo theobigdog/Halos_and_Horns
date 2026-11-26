@@ -1,6 +1,7 @@
 # Renders a small picture of every piece in Creative's palette into assets/thumbs/ (needs a window,
 # not --headless):   godot --resolution 640x480 -s res://tools/make_thumbs.gd
 # Run it again after adding models or props. Creative shows these next to each name.
+# -- --missing only makes the ones that don't exist yet; -- --only=a,b remakes just those files (e.g. prop_lamp).
 extends SceneTree
 
 const PropLib = preload("res://scripts/prop_library.gd")
@@ -65,7 +66,13 @@ func _run() -> void:
 		var hk: String = bk
 		jobs.append([file_key("building:" + hk), func(): return HollowBuildings.make(hk, 0)])
 	var n := 0
+	var user := " ".join(OS.get_cmdline_user_args())
+	var only: Array = Array(user.get_slice("--only=", 1).get_slice(" ", 0).split(",", false)) if "--only=" in user else []
 	for job in jobs:
+		if "--missing" in user and FileAccess.file_exists("%s/%s.png" % [OUT, job[0]]) and not job[0] in only:
+			continue
+		if not only.is_empty() and not "--missing" in user and not job[0] in only:
+			continue
 		var node: Node3D = job[1].call()
 		stage.add_child(node)
 		_frame(node)
