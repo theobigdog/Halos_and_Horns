@@ -98,6 +98,8 @@ func _build_look() -> void:
 	for i in 3:
 		var ring := MeshInstance3D.new()
 		var t := TorusMesh.new()
+		t.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+		t.ring_segments = 12
 		t.inner_radius = RADIUS * 0.55
 		t.outer_radius = RADIUS * 0.7
 		ring.mesh = t
@@ -122,6 +124,8 @@ func _build_look() -> void:
 				_top.add_child(gap)
 			var band := MeshInstance3D.new()
 			var tb := TorusMesh.new()
+			tb.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+			tb.ring_segments = 12
 			tb.inner_radius = RADIUS - 0.04
 			tb.outer_radius = RADIUS + 0.03
 			band.mesh = tb
@@ -136,6 +140,8 @@ func _build_look() -> void:
 			for i in 8:
 				var rivet := MeshInstance3D.new()
 				var sm := SphereMesh.new()
+				sm.radial_segments = 8   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+				sm.rings = 4
 				sm.radius = 0.045
 				sm.height = 0.05
 				rivet.mesh = sm
@@ -157,6 +163,8 @@ func _build_look() -> void:
 			# A glowing gold rim, and a ring of runes (little glowing stars) slowly turning on top
 			var rim := MeshInstance3D.new()
 			var tr := TorusMesh.new()
+			tr.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+			tr.ring_segments = 12
 			tr.inner_radius = RADIUS - 0.06
 			tr.outer_radius = RADIUS + 0.04
 			rim.mesh = tr

@@ -42,8 +42,37 @@ static func label(full_name: String) -> String:
 	return TAUNTS[parts[0]][parts[1]]
 
 
+static var _lock := Mutex.new()
+static var _warming := false
+
+
 static func stream(full_name: String) -> AudioStreamWAV:
+	_lock.lock()
+	var have: AudioStreamWAV = _cache.get(full_name)
+	_lock.unlock()
+	if have:
+		return have
+	var parts := full_name.split(":")
+	var made: AudioStreamWAV = AngelTaunts.make(parts[1]) if parts[0] == "angel" else DemonTaunts.make(parts[1])
+	_lock.lock()
 	if not _cache.has(full_name):
-		var parts := full_name.split(":")
-		_cache[full_name] = AngelTaunts.make(parts[1]) if parts[0] == "angel" else DemonTaunts.make(parts[1])
-	return _cache[full_name]
+		_cache[full_name] = made
+	made = _cache[full_name]
+	_lock.unlock()
+	return made
+
+
+# Each taunt takes up to half a second to synthesize, and the first one used to be made right when it played,
+# stalling the game (playtest, Nov 26). This makes them all in the background as the game starts.
+static func warm_up() -> void:
+	if _warming:
+		return
+	_warming = true
+	var names := []
+	for role in TAUNTS:
+		for k in TAUNTS[role]:
+			names.append(role + ":" + k)
+		names.append(signature(role))
+	WorkerThreadPool.add_task(func():
+		for n in names:
+			stream(n))

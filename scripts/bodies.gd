@@ -50,6 +50,8 @@ static func make_capsule(role: String) -> Node3D:
 		body.material_override = PropLib.mat(Color(0.95, 0.95, 1.0))
 		var halo := MeshInstance3D.new()
 		var torus := TorusMesh.new()
+		torus.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+		torus.ring_segments = 12
 		torus.inner_radius = 0.18
 		torus.outer_radius = 0.25
 		halo.mesh = torus
@@ -74,6 +76,8 @@ static func make_capsule(role: String) -> Node3D:
 			root.add_child(horn)
 			var eye := MeshInstance3D.new()
 			var sphere := SphereMesh.new()
+			sphere.radial_segments = 12   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+			sphere.rings = 6
 			sphere.radius = 0.06
 			sphere.height = 0.12
 			eye.mesh = sphere

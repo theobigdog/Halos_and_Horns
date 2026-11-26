@@ -40,6 +40,7 @@ const GroundBlock = preload("res://scripts/ground_block.gd")
 const HollowBuildings = preload("res://scripts/hollow_buildings.gd")
 const Backdrop = preload("res://scripts/backdrop.gd")
 const SnowTracks = preload("res://scripts/snow_tracks.gd")
+const SlimeTrail = preload("res://scripts/slime_trail.gd")
 const Music = preload("res://scripts/music.gd")
 const Knock = preload("res://scripts/knock.gd")
 # The current map's layout (filled in by load_map from the map file).
@@ -133,6 +134,7 @@ var _shrine_pick := ["", ""]
 var _shrine_elapsed := 0.0      # seconds since this swap started
 var _shrine_done := false       # picked and confirmed; waiting out the rest of the 3 s
 var _shrine_status: Label
+var _shrine_look: OptionButton  # one of your saved wardrobe looks, put on with the swap (Ted, Nov 26)
 var _was_at_shrine := false   # just walked up to the shrine: show how to use it
 var chat_box: VBoxContainer     # recent chat lines, bottom left
 var chat_edit: LineEdit
@@ -144,6 +146,9 @@ var _ui_scale_pick: OptionButton
 var _scroll_panels := []         # [ScrollContainer, its contents]: panels that scroll when too tall for the screen
 var chat_font_size := 22         # Settings: how big chat text is (each player picks their own; was 17)
 var _chat_size_pick: SpinBox
+var _fps_pick: CheckButton
+var fps_label: Label            # (Settings: "Show FPS", off by default; Ted, Nov 26)
+var _fps_tick := 0.0
 var lobby_chat: PanelContainer   # the lobby's own chat: a log and a box to type in
 var _lobby_chat_log: VBoxContainer
 var _lobby_chat_scroll: ScrollContainer
@@ -257,6 +262,9 @@ const TUNING_SLIDERS := [
 
 func _ready() -> void:
 	add_to_group("main_game")   # (projectiles report demon hits here)
+	_build_fps_label()
+	if DisplayServer.get_name() != "headless":
+		Taunts.warm_up()   # (synthesized in the background, so the first taunt doesn't stall the game)
 	var numbers := Updater.version_numbers(game_version)
 	while numbers.size() < 3:   # "dev" has no numbers and "0.4" has two: the rest count as 0
 		numbers.append(0)
@@ -288,6 +296,7 @@ func _ready() -> void:
 		_bonus_time = 2.5)
 	player.launched.connect(_on_player_launched)
 	player.bumped.connect(_on_player_bumped)
+	player.no_room.connect(func(): _toast("No room to change here!", 1.5))
 	player.hit_taken.connect(_on_player_hit_taken)
 	player.skill_used.connect(_on_player_skill)
 	player.pick_minion_form = random_map_prop_type
@@ -428,7 +437,7 @@ func _build_shrine_panel() -> void:
 	shrine_panel = parts[0]
 	var box: VBoxContainer = parts[1]
 	var title := Label.new()
-	title.text = "Shrine: swap your skills"
+	title.text = "Shrine: swap your skills and look"
 	title.add_theme_font_size_override("font_size", 26)
 	box.add_child(title)
 	var row := HBoxContainer.new()
@@ -439,6 +448,9 @@ func _build_shrine_panel() -> void:
 		ob.item_selected.connect(func(i): _on_shrine_pick(slot, ob.get_item_metadata(i)))
 		row.add_child(ob)
 		_shrine_buttons.append(ob)
+	_shrine_look = OptionButton.new()
+	_shrine_look.tooltip_text = "Put on one of the looks you saved in the Wardrobe (or a matching set)"
+	box.add_child(_shrine_look)
 	_shrine_status = Label.new()
 	box.add_child(_shrine_status)
 	_button(box, "Done", _confirm_shrine)
@@ -477,6 +489,19 @@ func _try_open_shrine() -> void:
 			ob.set_item_tooltip(ob.item_count - 1, Skills.SKILLS[id]["desc"])
 			if id == _shrine_pick[slot]:
 				ob.select(ob.item_count - 1)
+	_shrine_look.clear()
+	_shrine_look.add_item("Look: keep what I'm wearing")
+	_shrine_look.set_item_metadata(0, null)
+	for p in wardrobe_presets:
+		if p.get("team") == role:
+			_shrine_look.add_item("Look: " + str(p.get("name", "?")))
+			_shrine_look.set_item_metadata(_shrine_look.item_count - 1, p.get("outfit", {}))
+	for m in Characters.matching_sets(role):
+		_shrine_look.add_item("Look: matching " + m[0])
+		var dressed: Dictionary = Characters.clean_outfit(m[1], role)
+		dressed["trail"] = outfits[role].get("trail", "")   # (a matching set dresses you; your colour stays)
+		_shrine_look.set_item_metadata(_shrine_look.item_count - 1, dressed)
+	_shrine_look.select(0)
 	_shrine_elapsed = 0.0
 	_shrine_done = false
 	shrine_panel.visible = true
@@ -529,8 +554,15 @@ func _update_shrine(delta: float) -> void:
 		_save_settings()
 		if net:
 			net.shrine_swap(loadout[role])
+		var look = _shrine_look.get_item_metadata(_shrine_look.selected) if _shrine_look.selected >= 0 else null
+		var new_look := look is Dictionary
+		if new_look:
+			var o := outfits.duplicate(true)
+			o[role] = look
+			set_outfits(o)   # (and tells everyone, like the wardrobe does)
+			_save_settings()
 		_close_shrine()
-		_toast("Skills swapped!", 1.2)
+		_toast("Skills and look swapped!" if new_look else "Skills swapped!", 1.2)
 		return
 	if _shrine_done:
 		_shrine_status.text = "Swapping... %.1f s" % left
@@ -865,6 +897,7 @@ func _build_map() -> void:
 		var tracks := SnowTracks.new()   # footprints and melted patches in the snow
 		world_root.add_child(tracks)
 		tracks.setup(half)
+	world_root.add_child(SlimeTrail.new())   # (pickles leave a fading slime trail)
 	var wall_color := Color(map_data["wall_color"])
 	var span := half * 2 + 2
 	_add_block(Vector3(0, 2, half + 1), Vector3(span, 4, 1), wall_color, Vector3.ZERO, false)
@@ -939,7 +972,8 @@ func _build_map() -> void:
 			"model":
 				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
 				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
-				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)))
+				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)),
+						not p.has("color"))   # (long rows drawn as one batch: Models._batched_row)
 				if p.has("color"):
 					Models.recolor(body, Color(p["color"]))   # a rug in its chosen colour
 				if p.get("lights", false):
@@ -1018,6 +1052,8 @@ static func make_lamp(p: Dictionary, pos: Vector3, show_bulb := true) -> Node3D:
 		return n
 	var bulb := MeshInstance3D.new()
 	var sm := SphereMesh.new()
+	sm.radial_segments = 12   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+	sm.rings = 6
 	sm.radius = 0.12
 	sm.height = 0.24
 	bulb.mesh = sm
@@ -1140,7 +1176,7 @@ func _open_wardrobe() -> void:
 
 func _close_wardrobe() -> void:
 	wardrobe.visible = false
-	if _wardrobe_hid:
+	if _wardrobe_hid and _still_wanted(_wardrobe_hid):
 		_wardrobe_hid.visible = true
 		_wardrobe_hid = null
 	_save_settings()
@@ -1529,6 +1565,15 @@ Online, the host's setting is the one that counts."
 	_chat_size_pick.step = 1
 	_chat_size_pick.value_changed.connect(func(v): _set_chat_size(int(v)))
 	grid.add_child(_chat_size_pick)
+	var fl := Label.new()
+	fl.text = "Show FPS"
+	fl.tooltip_text = "Frames per second in the top left corner, with how many triangles and draw calls each frame takes
+(handy for spotting what slows the game down)."
+	grid.add_child(fl)
+	_fps_pick = CheckButton.new()
+	_fps_pick.tooltip_text = fl.tooltip_text
+	_fps_pick.toggled.connect(func(on): fps_label.visible = on)
+	grid.add_child(_fps_pick)
 	# A shared maps folder (Ted, Nov 25): pick a folder your cloud drive syncs with friends'
 	var shl := Label.new()
 	shl.text = "Shared maps folder"
@@ -1618,13 +1663,22 @@ func _open_controls() -> void:
 	_refresh_mouse()
 
 
+# Closing the wardrobe or settings goes back to the menu it was opened from, unless that menu has gone
+# since (playtest, Nov 26: settings opened in the lobby, the round started, and closing settings brought
+# the lobby back over the hunt, with the controls locked).
+func _still_wanted(panel: Control) -> bool:
+	if panel == lobby_panel:
+		return state == State.LOBBY and mode == "online" and not building_online
+	return true
+
+
 func _close_controls() -> void:
 	_rebinding = ""
 	controls_panel.visible = false
 	if mode == "editor" and editor != null and editor.active():
 		editor.ui.visible = true
 		hud_layer.visible = false
-	if _controls_hid:
+	if _controls_hid and _still_wanted(_controls_hid):
 		_controls_hid.visible = true
 		_controls_hid = null
 	_save_settings()
@@ -1866,6 +1920,7 @@ func _load_settings() -> void:
 	set_outfits(_settings.get_value("wardrobe", "outfits", {}) if typeof(_settings.get_value("wardrobe", "outfits", {})) == TYPE_DICTIONARY else {})
 	_settings_loaded = true
 	_chat_size_pick.set_value_no_signal(clampi(int(_settings.get_value("options", "chat_size", 22)), 12, 40))
+	_fps_pick.button_pressed = bool(_settings.get_value("options", "show_fps", false))
 	_set_chat_size(int(_chat_size_pick.value))
 
 
@@ -1898,6 +1953,7 @@ func _save_settings() -> void:
 	_settings.set_value("options", "graphics", Graphics.quality)
 	_settings.set_value("options", "hellfire_splashes", hellfire_splashes)
 	_settings.set_value("options", "chat_size", chat_font_size)
+	_settings.set_value("options", "show_fps", _fps_pick.button_pressed)
 	_settings.set_value("options", "ui_scale", ui_scale)
 	_settings.set_value("options", "shared_maps", MapData.shared_dir)
 	if waiting_game != null:
@@ -2280,7 +2336,37 @@ func _on_bot_caught(bot) -> void:
 		_toast("Demon caught! %d left" % bots_left, 2.0)
 
 
+# The FPS counter (Settings: Show FPS): on top of everything, menus included, so it also shows what the
+# menus and Creative cost. Triangles and draw calls are what the graphics card was asked to draw.
+func _build_fps_label() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	add_child(layer)
+	fps_label = Label.new()
+	fps_label.position = Vector2(8, 4)
+	fps_label.add_theme_font_size_override("font_size", 15)
+	fps_label.add_theme_color_override("font_color", Color(0.75, 1.0, 0.75))
+	fps_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	fps_label.add_theme_constant_override("outline_size", 4)
+	fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fps_label.visible = false
+	layer.add_child(fps_label)
+
+
+func _update_fps(delta: float) -> void:
+	if not fps_label.visible:
+		return
+	_fps_tick -= delta
+	if _fps_tick > 0.0:
+		return
+	_fps_tick = 0.5
+	var tris := int(Performance.get_monitor(Performance.RENDER_TOTAL_PRIMITIVES_IN_FRAME))
+	var draws := int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME))
+	fps_label.text = "%d FPS   %dk triangles   %d draw calls" % [int(Engine.get_frames_per_second()), tris / 1000, draws]
+
+
 func _process(delta: float) -> void:
+	_update_fps(delta)
 	_tick_waiting_game()
 	if mode == "practice" and state != State.ENDED:
 		time_left -= delta
@@ -3261,6 +3347,8 @@ func _update_sense_bubble(delta: float) -> void:
 	if _sense_bubble == null:
 		_sense_bubble = MeshInstance3D.new()
 		var sm := SphereMesh.new()
+		sm.radial_segments = 32   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+		sm.rings = 16
 		sm.radius = 1.0
 		sm.height = 2.0
 		_sense_bubble.mesh = sm
@@ -3346,6 +3434,18 @@ func _check_naughty(delta: float) -> void:
 				award_hatred(f["owner"], Skills.NAUGHTY_FIRE_PER_SEC * 0.5, "an angel is roasting in your fire")
 
 
+# Decider: is this spot inside a burning Hellfire pool?
+func _in_lit_fire(pos: Vector3, t: float) -> bool:
+	for id in _auth_fires:
+		var f: Dictionary = _auth_fires[id]
+		if t < f["lit_at"] or t > f["until"]:
+			continue
+		var off: Vector3 = pos - f["pos"]
+		if Vector2(off.x, off.z).length() <= Skills.FIRE_RADIUS and off.y > -0.5 and off.y < 1.5:
+			return true
+	return false
+
+
 # Our own angel standing in demon fire? (Slowed, blessings burn away.)
 func _check_burning() -> void:
 	if role != "angel" or state != State.HUNTING:
@@ -3376,6 +3476,15 @@ func _check_cherubs(delta: float) -> void:
 		var node = cherubs.get(cid)
 		if node != null and is_instance_valid(node):
 			c["pos"] = node.global_position   # it may have been knocked somewhere
+		# Hellfire burns a cherub up if it stays in it (playtest, Nov 26: demons' answer to a cherub).
+		if _in_lit_fire(c["pos"], now):
+			c["burn"] = c.get("burn", 0.0) + 0.25
+			if c["burn"] >= Skills.CHERUB_BURN_TIME:
+				_auth_cherubs.erase(cid)
+				broadcast_fx("cherub_burn", [cid])
+				continue
+		else:
+			c["burn"] = 0.0
 			# Once it comes to rest, tell everyone where it ended up (tiny drift fix).
 			if node.is_on_floor() and node.velocity.length() < 0.2 and not c.get("rested", true):
 				c["rested"] = true
@@ -3491,6 +3600,13 @@ func fx(kind: String, args: Array) -> void:
 		"cherub_alarm":
 			if cherubs.has(args[0]) and is_instance_valid(cherubs[args[0]]):
 				cherubs[args[0]].alarmed = args[1]
+		"cherub_burn":
+			if cherubs.has(args[0]) and is_instance_valid(cherubs[args[0]]):
+				var where: Vector3 = cherubs[args[0]].global_position
+				Effects.puff(_fx_parent(), where + Vector3.UP * 0.4, Color(0.25, 0.22, 0.2, 0.85), 1.4)
+				Effects.puff(_fx_parent(), where + Vector3.UP * 0.6, Color(1.0, 0.5, 0.1, 0.8), 0.9)
+				cherubs[args[0]].queue_free()
+			cherubs.erase(args[0])
 		"shrine":
 			if shrine:
 				shrine.flare()

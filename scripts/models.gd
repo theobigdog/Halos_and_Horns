@@ -613,6 +613,8 @@ static func _street_signs(id: String, extra_scale: Vector3) -> Node3D:
 		root.add_child(ext)
 		var cap := MeshInstance3D.new()
 		var sm := SphereMesh.new()
+		sm.radial_segments = 10   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+		sm.rings = 5
 		sm.radius = 0.055
 		sm.height = 0.07
 		cap.mesh = sm
@@ -887,6 +889,8 @@ static func faces(id: String, extra_scale := Vector3.ONE) -> PackedVector3Array:
 		var node := instance(id)
 		_collect(node, Transform3D.IDENTITY, out)
 		node.free()
+		if id.begins_with("city/road"):
+			out = _flatten_paint(out)
 		_faces[id] = out
 	if extra_scale == Vector3.ONE:
 		return _faces[id]
@@ -897,6 +901,26 @@ static func faces(id: String, extra_scale := Vector3.ONE) -> PackedVector3Array:
 		scaled[i] = v * extra_scale
 		i += 1
 	return scaled
+
+
+# The road's painted lines stand 2 cm proud of the asphalt (0.33 vs 0.31), enough for a prop or a disguised
+# demon to snag on them (playtest, Nov 26). The collision gets them pressed flat into the road; you still
+# see them. Their sides become slivers with no area, which are dropped.
+const PAINT_LOW := 0.305
+const PAINT_HIGH := 0.345
+const ROAD_TOP := 0.31
+
+
+static func _flatten_paint(f: PackedVector3Array) -> PackedVector3Array:
+	var out := PackedVector3Array()
+	for i in range(0, f.size() - 2, 3):
+		var tri := [f[i], f[i + 1], f[i + 2]]
+		for k in 3:
+			if tri[k].y > PAINT_LOW and tri[k].y < PAINT_HIGH:
+				tri[k].y = ROAD_TOP
+		if (tri[1] - tri[0]).cross(tri[2] - tri[0]).length() > 0.00001:
+			out.append_array(PackedVector3Array(tri))
+	return out
 
 
 static func _collect(node: Node, xf: Transform3D, out: PackedVector3Array) -> void:
@@ -1039,9 +1063,13 @@ static func recolor(node: Node, color: Color) -> void:
 				m.set_surface_override_material(si, sm)
 
 
-static func make_row(id: String, extra_scale := Vector3.ONE, count := 1, count2 := 1, look := 0) -> Node3D:
+static func make_row(id: String, extra_scale := Vector3.ONE, count := 1, count2 := 1, look := 0, batched := false) -> Node3D:
 	if count <= 1 and count2 <= 1:
 		return make_structure(id, extra_scale, look)
+	if batched and count * count2 >= BATCH_FROM:
+		var b := _batched_row(id, extra_scale, count, count2, look)
+		if b:
+			return b
 	var row := Node3D.new()
 	var step := row_step(id, extra_scale)
 	var step2 := row_step2(id, extra_scale)
@@ -1053,19 +1081,109 @@ static func make_row(id: String, extra_scale := Vector3.ONE, count := 1, count2 
 	return row
 
 
-# A solid structure: the model plus collision matching its real shape.
-static func make_structure(id: String, extra_scale := Vector3.ONE, look := 0) -> StaticBody3D:
+# A long row (or a whole floor) of the same piece, in a game (Nov 26 performance audit: the Town map's
+# floor was 2,362 tiles, each its own object to cull and draw). Each mesh of the piece becomes one
+# MultiMesh holding every copy, so the graphics card gets one draw per mesh instead of one per tile.
+# The collision is exactly what the separate copies had. Only plain pieces (meshes, no lights, signals
+# or anything with a script); stairs and city buildings keep their extra ramps and cores the usual way.
+const BATCH_FROM := 4
+static var _baked := {}
+
+
+static func _batched_row(id: String, extra_scale: Vector3, count: int, count2: int, look: int) -> Node3D:
+	if is_rug(id) or is_stairs(id) or id.begins_with("city/building"):
+		return null
+	var tmpl := instance(id, extra_scale, look)
+	var parts := []
+	if not _plain_parts(tmpl, tmpl, parts):
+		tmpl.free()
+		return null
 	var body := StaticBody3D.new()
-	body.add_child(instance(id, extra_scale, look))
+	var step := row_step(id, extra_scale)
+	var step2 := row_step2(id, extra_scale)
+	var offsets := []
+	for j in maxi(count2, 1):
+		for i in maxi(count, 1):
+			offsets.append(step * i + step2 * j)
+	for part in parts:
+		var mi: MeshInstance3D = part[0]
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		mm.mesh = _baked_mesh(mi)
+		mm.instance_count = offsets.size()
+		for k in offsets.size():
+			mm.set_instance_transform(k, Transform3D(Basis.IDENTITY, offsets[k]) * part[1])
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		mmi.material_override = mi.material_override
+		mmi.material_overlay = mi.material_overlay
+		mmi.cast_shadow = mi.cast_shadow
+		if mi.material_overlay:
+			for param in ["seed", "look"]:
+				var v = mi.get_instance_shader_parameter(param)
+				if v != null:
+					mmi.set_instance_shader_parameter(param, v)
+		body.add_child(mmi)
+	tmpl.free()
+	var shape := _shape(id, extra_scale)
+	for o in offsets:
+		var cs := CollisionShape3D.new()
+		cs.shape = shape
+		cs.position = o
+		body.add_child(cs)
+	return body
+
+
+# The piece's meshes and where each sits, or false if it has anything else (a light, a script...).
+static func _plain_parts(n: Node, holder: Node, out: Array) -> bool:
+	if n.get_script() != null or not (n.get_class() == "Node3D" or n.get_class() == "MeshInstance3D"):
+		return false
+	if not (n as Node3D).visible:
+		return true
+	if n is MeshInstance3D and (n as MeshInstance3D).mesh:
+		out.append([n, _to_holder(n, holder)])
+	for c in n.get_children():
+		if not _plain_parts(c, holder, out):
+			return false
+	return true
+
+
+# The mesh with any per-surface materials the looks gave it built in (a MultiMesh can't override them).
+static func _baked_mesh(mi: MeshInstance3D) -> Mesh:
+	var overrides := []
+	var any := false
+	for si in mi.mesh.get_surface_count():
+		var m := mi.get_surface_override_material(si)
+		overrides.append(m.get_instance_id() if m else 0)
+		any = any or m != null
+	if not any:
+		return mi.mesh
+	var key := "%d:%s" % [mi.mesh.get_instance_id(), overrides]
+	if not _baked.has(key) and mi.mesh is ArrayMesh:
+		var copy: ArrayMesh = mi.mesh.duplicate(false)
+		for si in copy.get_surface_count():
+			if mi.get_surface_override_material(si):
+				copy.surface_set_material(si, mi.get_surface_override_material(si))
+		_baked[key] = copy
+	return _baked.get(key, mi.mesh)
+
+
+static func _shape(id: String, extra_scale: Vector3) -> ConcavePolygonShape3D:
 	var key := "%s@%s" % [id, extra_scale]
 	if not _shapes.has(key):
 		var made := ConcavePolygonShape3D.new()
 		made.set_faces(faces(id, extra_scale))
 		made.backface_collision = true
 		_shapes[key] = made
-	var shape: ConcavePolygonShape3D = _shapes[key]
+	return _shapes[key]
+
+
+# A solid structure: the model plus collision matching its real shape.
+static func make_structure(id: String, extra_scale := Vector3.ONE, look := 0) -> StaticBody3D:
+	var body := StaticBody3D.new()
+	body.add_child(instance(id, extra_scale, look))
 	var cs := CollisionShape3D.new()
-	cs.shape = shape
+	cs.shape = _shape(id, extra_scale)
 	body.add_child(cs)
 	if is_stairs(id):
 		body.add_child(_stair_ramp(id, extra_scale))

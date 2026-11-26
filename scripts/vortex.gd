@@ -212,11 +212,14 @@ func set_caught(on: bool) -> void:
 	caught = on
 
 
+const LOUDNESS := -7.0   # everything the vacuum plays, this much quieter (playtest, Nov 26: really loud)
+
+
 func _sound(stream: AudioStream, db: float, play: bool) -> AudioStreamPlayer3D:
 	var p := AudioStreamPlayer3D.new()
 	p.bus = Sfx.BUS
 	p.stream = stream
-	p.volume_db = db
+	p.volume_db = db + LOUDNESS
 	p.unit_size = 10.0
 	p.max_distance = 90.0
 	add_child(p)
@@ -274,8 +277,8 @@ func _update(delta: float) -> void:
 	_light.omni_range = lerpf(7.0, 9.0, _heat)
 	if _suck:
 		_suck.pitch_scale = lerpf(0.85, 1.45, pw) * (1.0 + 0.1 * _heat)
-		_suck.volume_db = lerpf(-6.0, 0.0, pw) - 5.0 * _heat - 30.0 * out
-		_caught_snd.volume_db = linear_to_db(maxf(_heat * (1.0 - out), 0.0001))
+		_suck.volume_db = lerpf(-6.0, 0.0, pw) - 5.0 * _heat - 30.0 * out + LOUDNESS
+		_caught_snd.volume_db = linear_to_db(maxf(_heat * (1.0 - out), 0.0001)) + LOUDNESS
 		if out >= 1.0:
 			_suck.stop()
 			_caught_snd.stop()

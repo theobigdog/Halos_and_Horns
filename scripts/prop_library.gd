@@ -268,6 +268,8 @@ static func make_visual(type_name: String) -> Node3D:
 			ClassicLook.hay(root)
 		"apple":
 			var a := SphereMesh.new()
+			a.radial_segments = 24   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+			a.rings = 12
 			a.radius = 0.13
 			a.height = 0.24
 			_add_mesh(root, a, Color(0.8, 0.08, 0.1), Vector3(0, 0.12, 0), "glossy")
@@ -286,6 +288,8 @@ static func make_visual(type_name: String) -> Node3D:
 				var u := rng.randf_range(0.12, 0.88)
 				var ang := rng.randf_range(-0.2, PI + 0.2)   # the top and sides (nobody sees its belly)
 				var wart := SphereMesh.new()
+				wart.radial_segments = 8   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+				wart.rings = 4
 				wart.radius = rng.randf_range(0.022, 0.038)
 				wart.height = wart.radius * 1.6
 				var at := _pickle_point(u, ang, 0.98)

@@ -62,6 +62,8 @@ func _ready() -> void:
 
 	_bubble = MeshInstance3D.new()
 	var bs := SphereMesh.new()
+	bs.radial_segments = 32   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+	bs.rings = 16
 	bs.radius = 1.0
 	bs.height = 2.0
 	_bubble.mesh = bs

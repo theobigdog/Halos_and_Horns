@@ -178,8 +178,8 @@ static func _pk_top_y(x: float, z: float) -> float:
 static func _pumpkin_body() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rings := 30
-	var around := PK_LOBES * 10
+	var rings := 18             # (Nov 26 performance audit: was 30 x 10 per lobe)
+	var around := PK_LOBES * 6
 	var groove := Color(0.55, 0.2, 0.03)
 	var mid := Color(0.95, 0.46, 0.05)
 	var ridge := Color(1.0, 0.64, 0.2)
@@ -247,8 +247,8 @@ static func _pumpkin_bits() -> ArrayMesh:
 	var la := 2.5
 	var ld := Vector3(cos(la), 0.0, sin(la))
 	var lc := ld * 0.17
-	var ring_n := 5
-	var ang_n := 60
+	var ring_n := 4
+	var ang_n := 30
 	var size := 0.13
 	var lgrid := []
 	for r in ring_n + 1:
@@ -371,9 +371,10 @@ static func _hay_samples(h: float, step: float) -> Array:
 static func _hay_body() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var xs := _hay_samples(HAY_HALF.x, 0.012)
-	var ys := _hay_samples(HAY_HALF.y, 0.04)
-	var zs := _hay_samples(HAY_HALF.z, 0.04)
+	# (Nov 26 performance audit: was 0.012 / 0.04 / 0.04, 23,700 triangles for one bale)
+	var xs := _hay_samples(HAY_HALF.x, 0.03)
+	var ys := _hay_samples(HAY_HALF.y, 0.07)
+	var zs := _hay_samples(HAY_HALF.z, 0.07)
 	# each face: [axis it faces along, sign, the two sample lists, how to build the box point]
 	for face in 6:
 		var axis := face / 2
@@ -434,7 +435,7 @@ static func _hay_bits() -> ArrayMesh:
 		var pts := []
 		var radii := []
 		var cols := []
-		var n := 72
+		var n := 40
 		for i in n + 1:
 			var a := TAU * i / n + 0.4
 			var d := Vector2(cos(a), sin(a))

@@ -421,6 +421,8 @@ func _build_ornaments() -> void:
 	# A smaller second step on top, and a gold band around the edge
 	_mesh(_cyl(1.15, 1.25, 0.12), stone, Vector3(0, 0.31, 0))
 	var band := TorusMesh.new()
+	band.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+	band.ring_segments = 12
 	band.inner_radius = 1.62
 	band.outer_radius = 1.72
 	_mesh(band, gold, Vector3(0, 0.24, 0)).scale.y = 0.5
@@ -467,6 +469,8 @@ func _build_ornaments() -> void:
 			stroke.rotation.y = rng.randf_range(-1.2, 1.2)
 		if holy and i % 2 == 0:   # some holy runes get a little ring
 			var ring := TorusMesh.new()
+			ring.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+			ring.ring_segments = 12
 			ring.inner_radius = 0.06
 			ring.outer_radius = 0.085
 			_mesh(ring, mat, Vector3(0, 0, -0.17), glyph).scale.y = 0.2
@@ -474,7 +478,6 @@ func _build_ornaments() -> void:
 	# ivory angel pillars with a floating halo, dark demon pillars topped with horns and a trident.
 	var ivory := PropLib.mat(Color(1.0, 0.96, 0.86), "marble")
 	ivory.roughness = 0.25
-	var iron := PropLib.mat(Color(0.2, 0.17, 0.17), "metal")
 	for k in 4:
 		var a := TAU * k / 4.0 + PI / 4.0
 		var at := Vector3(cos(a), 0, sin(a)) * 1.45
@@ -487,6 +490,8 @@ func _build_ornaments() -> void:
 		_mesh(_cyl(0.13, 0.1, 0.1, 12 if holy else 8), gold if holy else dark, Vector3(0, 1.27, 0), pil)
 		if holy:
 			var halo := TorusMesh.new()
+			halo.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+			halo.ring_segments = 12
 			halo.inner_radius = 0.1
 			halo.outer_radius = 0.135
 			var h := _mesh(halo, _gold_mat(), Vector3(0, 1.55, 0), pil)
@@ -499,8 +504,17 @@ func _build_ornaments() -> void:
 			for side in [-1.0, 1.0]:
 				_mesh(_horn_mesh(side), _horn_mat(), Vector3.ZERO, pil).cast_shadow = \
 						GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-			# an iron collar round the base of the horns
-			_mesh(_cyl(0.12, 0.13, 0.05, 8), iron, Vector3(0, 1.34, 0), pil)
+			# The horns grow out of one gnarled knot of horn sitting on the pillar's top, so pillar, knot and
+			# horns read as one piece (playtest, Nov 26: the horns didn't look continuous with the pillar;
+			# they used to stick out of the side of an iron collar).
+			var knot := SphereMesh.new()
+			knot.radius = 0.15
+			knot.height = 0.2
+			knot.radial_segments = 16
+			knot.rings = 8
+			_mesh(knot, _horn_mat(), Vector3(0, 1.36, 0), pil)
+			var neck := _mesh(_cyl(0.135, 0.1, 0.08, 16), _horn_mat(), Vector3(0, 1.3, 0), pil)
+			neck.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Gold sparkles rising on the holy side, red embers on the hellish side
 	_add_motes(HOLY, Vector3(0, 0.4, -0.7), 0.3)
 	_add_motes(HELL, Vector3(0, 0.4, 0.7), -0.3)
@@ -602,7 +616,7 @@ func _horn_mat() -> ShaderMaterial:
 # The horn's centre line (for the right-hand horn; the left one is its mirror image): out sideways and
 # up like before, the line itself corkscrewing a little, and the last fifth hooking in and forward.
 func _horn_path(u: float) -> Vector3:
-	var p := Vector3(0.06 + 0.31 * sin(u * PI * 0.8), 1.34 + 0.36 * u * u, 0.1 * sin(u * PI) * u)
+	var p := Vector3(0.04 + 0.33 * sin(u * PI * 0.8), 1.37 + 0.36 * u * u, 0.1 * sin(u * PI) * u)
 	var th := u * PI * 3.5
 	var a := 0.02 * (1.0 - 0.4 * u)
 	p += Vector3(0.0, a * sin(th), a * (cos(th) - 1.0))

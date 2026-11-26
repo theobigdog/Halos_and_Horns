@@ -5,6 +5,7 @@ extends SceneTree
 
 const Graphics = preload("res://scripts/graphics.gd")
 const Effects = preload("res://scripts/effects.gd")
+const Models = preload("res://scripts/models.gd")
 
 var main: Node
 var failures := 0
@@ -178,6 +179,46 @@ func _run() -> void:
 		main.bump(bot, Vector3(6, 0, 0), player)
 		await frames(30)
 		check(bot.global_position.distance_to(bot0) > 0.2, "...and bumping a demon disguised as a %s shoves it too (%.2f m)" % [bot.prop_type, bot.global_position.distance_to(bot0)])
+
+	# ---- Playtest, Nov 26 ----
+	# The road's painted lines are pressed flat in its collision (props snagged on them)
+	var lips := 0
+	for v in Models.faces("city/road_straight"):
+		if v.y > 0.315 and v.y < 0.345:
+			lips += 1
+	check(lips == 0, "a road's painted lines don't stick up out of its collision (%d points)" % lips)
+	# No room to change back: under something low, a little prop stays a prop
+	player.global_position = Vector3(12, main.ground_below(Vector3(12, 3, 12)).y + 0.05, 12)
+	player.velocity = Vector3.ZERO
+	player.force_possess("apple")
+	await frames(3)
+	var lid := StaticBody3D.new()
+	var lid_shape := CollisionShape3D.new()
+	var lid_box := BoxShape3D.new()
+	lid_box.size = Vector3(3, 0.2, 3)
+	lid_shape.shape = lid_box
+	lid.add_child(lid_shape)
+	main.add_child(lid)
+	lid.global_position = player.global_position + Vector3(0, 0.75, 0)
+	await frames(3)
+	var refused := [false]
+	player.no_room.connect(func(): refused[0] = true, CONNECT_ONE_SHOT)
+	player.unpossess()
+	check(player.possessed_type == "apple" and refused[0], "an apple under a table can't turn back into a demon (no room)")
+	lid.queue_free()
+	await frames(3)
+	player.unpossess()
+	check(player.possessed_type == "", "...and can once it's out in the open")
+	# Long rows of the same piece are drawn as one batch, with every copy still solid
+	var floor_row := Models.make_row("dungeon/floor_tile_small", Vector3.ONE, 5, 4, 0, true)
+	check(floor_row.find_children("*", "MultiMeshInstance3D", true, false).size() > 0 			and floor_row.find_children("*", "MeshInstance3D", true, false).is_empty() 			and floor_row.find_children("*", "CollisionShape3D", true, false).size() == 20,
+			"a 5 x 4 floor is one batched draw per mesh, with 20 solid tiles")
+	floor_row.free()
+	# Settings: Show FPS
+	main._fps_pick.button_pressed = true
+	await process_frame
+	check(main.fps_label.visible, "Show FPS puts the counter up")
+	main._fps_pick.button_pressed = false
 
 	# ---- Graphics settings and music ----
 	for q in [0, 2, 1]:

@@ -10,6 +10,7 @@
 # Angels also get feathered wings and demons bat wings, so the teams always read at a glance.
 extends RefCounted
 
+const HornCrowns = preload("res://scripts/horn_crowns.gd")
 const DIR := "res://assets/kaykit_characters/"
 const SOURCES := {
 	"Knight": "adventurers/Knight", "Barbarian": "adventurers/Barbarian", "Mage": "adventurers/Mage",
@@ -24,7 +25,8 @@ const MODEL_HEIGHT := 2.35         # the KayKit characters' height, head include
 
 const CROWNS := {
 	"angel": [["halo", "Golden halo"], ["halo_double", "Double halo"], ["halo_star", "Starry halo"], ["halo_thorn", "Thorny halo"]],
-	"demon": [["horns", "Devil horns"], ["horns_ram", "Ram horns"], ["horns_goat", "Goat horns"], ["horns_nubs", "Little nubs"]],
+	"demon": [["horns", "Devil horns"], ["horns_ram", "Ram horns"], ["horns_goat", "Goat horns"], ["horns_nubs", "Little nubs"],
+			["horns_twist", "Corkscrew horns"], ["horns_four", "Four horns"]],
 }
 # Each team has its own wardrobe (Ted, Nov 20): angels dress from the adventurers, demons from the
 # skeletons, with matching themes across the two (Knight / Skeleton Warrior, Mage / Skeleton Mage,
@@ -399,6 +401,8 @@ static func _crown(kind: String, role: String, has_hat: bool) -> Node3D:
 			var rings := 2 if kind == "halo_double" else 1
 			for i in rings:
 				var t := TorusMesh.new()
+				t.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+				t.ring_segments = 12
 				t.inner_radius = 0.36 - i * 0.1
 				t.outer_radius = 0.43 - i * 0.1
 				var mi := MeshInstance3D.new()
@@ -423,42 +427,8 @@ static func _crown(kind: String, role: String, has_hat: bool) -> Node3D:
 						spike.rotation = Vector3(0, -a, PI / 2)
 					n.add_child(spike)
 		_:
-			var dark := _plain(Color(0.16, 0.1, 0.1), 0.4)
-			for side in [-1.0, 1.0]:
-				var segs := 1
-				var length := 0.45
-				var bend := 0.35
-				var thick := 0.1
-				match kind:
-					"horns_ram":
-						segs = 4
-						bend = 0.7
-						thick = 0.11
-						length = 0.18
-					"horns_goat":
-						segs = 3
-						bend = 0.25
-						length = 0.28
-						thick = 0.08
-					"horns_nubs":
-						length = 0.16
-						thick = 0.09
-				var at := Vector3(0.28 * side, top - 0.15, 0.05)
-				var dir := Vector3(0.45 * side, 1.0, -0.15).normalized()
-				for s in segs:
-					var cm := CylinderMesh.new()
-					cm.top_radius = thick * (1.0 - float(s + 1) / (segs + 0.5)) if s == segs - 1 else thick * (1.0 - float(s + 1) / (segs + 1.0))
-					cm.bottom_radius = thick * (1.0 - float(s) / (segs + 1.0))
-					cm.height = length
-					var mi := MeshInstance3D.new()
-					mi.mesh = cm
-					mi.material_override = dark
-					var mid := at + dir * length * 0.5
-					mi.position = mid
-					mi.basis = _align_y(dir)
-					n.add_child(mi)
-					at += dir * length
-					dir = (dir + Vector3(0.2 * side, -bend * 0.5, 0.25)).normalized() if kind == "horns_ram" else (dir + Vector3(0.08 * side, 0, 0.12)).normalized()
+			# swept, twisted, ridged horns like the shrine's, each kind its own shape and colouring (horn_crowns.gd)
+			n.add_child(HornCrowns.make(kind, top))
 	return n
 
 

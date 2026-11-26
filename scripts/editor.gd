@@ -430,6 +430,8 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 	n.add_child(disc)
 	var ring := MeshInstance3D.new()
 	var rm := TorusMesh.new()
+	rm.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+	rm.ring_segments = 12
 	rm.inner_radius = 1.18
 	rm.outer_radius = 1.3
 	ring.mesh = rm
@@ -456,6 +458,8 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 		n.add_child(beam)
 		var halo := MeshInstance3D.new()
 		var hm := TorusMesh.new()
+		hm.rings = 32   # (Godot's default 64 x 32 is ~4000 triangles; Nov 26 audit)
+		hm.ring_segments = 12
 		hm.inner_radius = 0.32
 		hm.outer_radius = 0.42
 		halo.mesh = hm
@@ -518,6 +522,8 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 		for side in [-1.0, 1.0]:
 			var eye := MeshInstance3D.new()
 			var em := SphereMesh.new()
+			em.radial_segments = 12   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+			em.rings = 6
 			em.radius = 0.06
 			em.height = 0.12
 			eye.mesh = em
@@ -1565,6 +1571,8 @@ func _draw_lines() -> void:
 	while _tab_balls.size() < tabs.size():
 		var ball := MeshInstance3D.new()
 		var sm := SphereMesh.new()
+		sm.radial_segments = 32   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+		sm.rings = 16
 		sm.radius = 1.0
 		sm.height = 2.0
 		ball.mesh = sm
@@ -2078,6 +2086,8 @@ func _make_ghost(who: String, color: Color) -> Node3D:
 	m.emission_energy_multiplier = 0.8
 	var head := MeshInstance3D.new()
 	var sm := SphereMesh.new()
+	sm.radial_segments = 20   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+	sm.rings = 10
 	sm.radius = 0.35
 	sm.height = 0.7
 	head.mesh = sm

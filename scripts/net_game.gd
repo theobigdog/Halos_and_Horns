@@ -2037,8 +2037,12 @@ func demon_nodes() -> Array:
 	return out
 
 
+# Only the host keeps `phase`; everyone else goes by their own game's state (playtest, Nov 26: joined
+# players' bumps were never sent, because `phase` on their computers stays "lobby" all round).
 func in_round_now() -> bool:
-	return phase == "hiding" or phase == "hunting"
+	if is_host:
+		return phase == "hiding" or phase == "hunting"
+	return main.state == main.State.HIDING or main.state == main.State.HUNTING
 
 
 # A player ran into a loose prop (prop >= 0) or a disguised demon (eid >= 0): the host checks they were
@@ -2077,6 +2081,8 @@ func _bump(id: int, prop: int, eid: int, push: Vector3) -> void:
 		thing = main.player
 	if thing == null or (thing as Node3D).global_position.distance_to(pos) > 3.5:
 		return   # nowhere near it
+	if id != 1:
+		print("[bump] player %d shoved %s" % [id, key])
 	main.bump(thing, push.limit_length(10.0), main.player if id == 1 else null)
 
 

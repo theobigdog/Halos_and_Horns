@@ -358,6 +358,15 @@ func _run() -> void:
 		check(crept < 1.6, "...very slowly (%.2f m in 2.5 s)" % crept)
 		check(far_c != null and (far_c.alarmed or far_c.creep == Vector3.ZERO), "...and a calm one stays put")
 
+	# Hellfire burns up a cherub left sitting in it (playtest, Nov 26)
+	if far_c != null and is_instance_valid(far_c):
+		var spot: Vector3 = far_c.global_position
+		main._auth_fires[9999] = {"owner": -1, "pos": Vector3(spot.x, spot.y - 0.3, spot.z), "lit_at": main._now() - 1.0,
+				"until": main._now() + 6.0}
+		await frames(int(60 * (Skills.CHERUB_BURN_TIME + 0.8)))
+		check(not main._auth_cherubs.has(3) and not main.cherubs.has(3), "a cherub left in Hellfire burns up")
+		main._auth_fires.erase(9999)
+
 	# Vacuum: pulls nearby props in and yanks the demon.
 	var center: Vector3 = bot.global_position + Vector3(3, 0, 0)
 	var near_props := []

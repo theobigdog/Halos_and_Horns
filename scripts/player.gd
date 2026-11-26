@@ -13,6 +13,7 @@ signal skill_used(skill_id, origin, dir, point, index)   # main decides what act
 signal melee_used(origin, dir)
 signal released_possessed                 # we left a real (possessed) prop behind
 signal bumped(thing, impulse)             # we ran into a loose prop, or a disguised demon: shove it (host decides)
+signal no_room                            # tried to change into something that doesn't fit here
 
 const PropLib = preload("res://scripts/prop_library.gd")
 const Projectile = preload("res://scripts/projectile.gd")
@@ -47,7 +48,7 @@ const THROW_COOLDOWN := 0.1       # clicking: up to 10 throws per second
 const HOLD_THROW_EVERY := 0.6     # holding the button down: one throw this often...
 const QUICK_HOLD_THROW_EVERY := 0.1   # ...or a machine gun with Quick Blessings
 const THROW_STAMINA_MAX := 100.0
-const THROW_COST := 12.0          # ~8 throws from full (was 7, ~14)
+const THROW_COST := 10.0          # 10 throws from full (was 7, then 12; Nov 26: "runs out a little too quickly")
 const THROW_REGEN := 18.0         # per second, ~1.5 throws a second once empty (was 30; Quick Blessings: x6)
 const THROW_REGEN_DELAY := 0.0    # pause after a throw before regen starts (0 = always regenerating)
 
@@ -1046,6 +1047,8 @@ static func ghost_material() -> StandardMaterial3D:
 func _warm_ghost() -> void:
 	var dot := MeshInstance3D.new()
 	var s := SphereMesh.new()
+	s.radial_segments = 4   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
+	s.rings = 2
 	s.radius = 0.01
 	s.height = 0.02
 	dot.mesh = s
@@ -1225,6 +1228,9 @@ func _leave_possessed() -> void:
 
 # Become a copy of this prop type (named before possess/transform were split).
 func force_possess(type_name: String) -> void:
+	if not _make_room(PropLib.make_shape(type_name), PropLib.height(type_name), false):
+		no_room.emit()
+		return
 	_leave_possessed()
 	possessed_type = type_name
 	_apply_form()
@@ -1235,11 +1241,65 @@ func force_possess(type_name: String) -> void:
 func unpossess() -> void:
 	if possessed_type == "":
 		return
+	if not _make_room(Bodies.make_shape(role), Bodies.height_for(role)):
+		no_room.emit()
+		return
 	_leave_possessed()
 	possessed_type = ""
 	_apply_form()
 	Effects.puff(get_parent(), global_position + Vector3.UP * 0.8, Color(0.8, 0.1, 0.1, 0.8))
 	form_changed.emit()
+
+
+# Room to change shape right here? (Playtest, Nov 26: an apple under a table changed back into a demon and
+# was stuck inside the table.) The new shape, standing where we are, mustn't overlap anything solid. It's
+# lifted a few cm so the floor we stand on doesn't count; other players don't count, but furniture does.
+const FIT_LIFT := 0.05
+
+
+# props_block: false when copying a prop (we're standing right beside the one we copied, and a copy
+# brushing against furniture just gets nudged aside), true when growing back into a demon.
+# Room here, or a step away (up to NUDGE m, with a clear line to it so never through a wall)? Moves us there.
+const NUDGE := 0.5
+
+
+func _make_room(shape: Shape3D, height: float, props_block := true) -> bool:
+	if _fits(shape, height, props_block, global_position):
+		return true
+	var space := get_world_3d().direct_space_state
+	for d: float in [0.15, 0.3, NUDGE]:
+		for k in 8:
+			var a := TAU * k / 8.0
+			var to := global_position + Vector3(cos(a), 0.0, sin(a)) * d
+			if not _fits(shape, height, props_block, to):
+				continue
+			var mid := Vector3.UP * minf(height * 0.5, 0.5)
+			var ray := PhysicsRayQueryParameters3D.create(global_position + mid, to + mid + (to - global_position).normalized() * 0.3, collision_mask, [get_rid()])
+			if not space.intersect_ray(ray).is_empty():
+				continue
+			global_position = to
+			return true
+	return false
+
+
+func _fits(shape: Shape3D, height: float, props_block := true, at := Vector3.ZERO) -> bool:
+	if not is_inside_tree():
+		return true
+	var q := PhysicsShapeQueryParameters3D.new()
+	q.shape = shape
+	q.transform = Transform3D(global_transform.basis, at + Vector3.UP * (height / 2.0 + FIT_LIFT))
+	q.collision_mask = collision_mask
+	q.exclude = [get_rid()]
+	for hit in get_world_3d().direct_space_state.intersect_shape(q, 8):
+		var c: Object = hit.get("collider")
+		if c is CharacterBody3D or not c is PhysicsBody3D:
+			continue   # other players (and disguised demons) get pushed aside, not in the way
+		if c.is_in_group("prop") and not props_block:
+			continue
+		if possessed_index >= 0 and c.get_meta("prop_index", -1) == possessed_index:
+			continue   # the prop we're possessing (we're standing inside it on purpose)
+		return false
+	return true
 
 
 func confirm_hit() -> void:
