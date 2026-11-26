@@ -11,10 +11,10 @@ const SKILLS := {
 	"cherub": {"team": "angel", "label": "Alarm Cherub", "cooldown": 10.0,
 		"desc": "Throw a cherub that stays for 9 seconds. It hovers there tooting its little horn; if a demon comes close it blasts the horn and shows its detection bubble. Hit it with a blessing to send it flying off to check further away."},
 	"vacuum": {"team": "angel", "label": "Vacuum Orb", "cooldown": 8.0,
-		"desc": "Throw into a pile of props: a vortex that sucks for 5 seconds, dragging props in and yanking any hidden demon back to its middle again and again, draining Hatred. Caught demons can't use skills until 2 seconds after it ends."},
+		"desc": "Throw into a pile of props: a vortex that sucks for 3 seconds, dragging props in and yanking any hidden demon back to its middle again and again, draining Hatred. Caught demons can't use skills until 2 seconds after it ends."},
 	"leap": {"team": "angel", "label": "Holy Leap", "cooldown": 3.0,
 		"desc": "Having it picked makes all your jumps MUCH higher, and you steer hard in the air. Press its key while you're in the air to Cloud Stomp: slam straight down wherever you are and hurt every demon around where you land (most in the middle, more the higher you came from)."},
-	"scripture": {"team": "angel", "label": "Holy Scripture", "cooldown": 5.0,
+	"scripture": {"team": "angel", "label": "Holy Scripture", "cooldown": 7.0,   # (nerfed Nov 25: was 5)
 		"desc": "Hurl a heavy holy book that heat-seeks the nearest demon ahead of it (a Minion fools it too). Wherever it lands it SMITES: a pillar of holy light that hurts every demon within 4 m, knocks them back, locks their skills for a moment and scatters the props. Lob it into a suspicious pile! A direct hit hurts even more."},
 	"word": {"team": "angel", "label": "Holy Word", "cooldown": 8.0,
 		"desc": "Shout a holy word down your crosshair. Any demon it hits while flying (more than 2 m up) is struck out of the sky: it drops like a stone, can't fly again until it lands, and is stunned stiff for half a second."},
@@ -51,7 +51,7 @@ const CHERUB_CREEP_SPEED := 0.4 # m/s it drifts toward a demon it has noticed (v
 const CHERUB_CREEP_STOP := 1.2  # ...and it stops this close, rather than bumping into them
 const CHERUB_FRICTION := 9.0     # m/s lost per second while sliding on the ground (~14 m per kick)
 const LEAP_AIR_ACCEL := 40.0      # steering while leaping (normal air steering is much weaker)
-const SCRIPTURE_DAMAGE := 40       # a direct hit (a blessing does 25)...
+const SCRIPTURE_DAMAGE := 34       # a direct hit (a blessing does 25)... (nerfed Nov 25: was 40)
 const WORD_RANGE := 45.0           # Holy Word reaches this far down the crosshair... (first guesses, Nov 19)
 const WORD_WIDTH := 1.6            # ...and catches anyone within this of the line (a shout, not a sniper shot)
 const WORD_MIN_HEIGHT := 2.0       # only fliers this high off the ground get struck down
@@ -60,8 +60,8 @@ const WORD_DROP_SPEED := 12.0      # they get slammed downward this fast
 const SEEK_RANGE := 14.0           # Holy Scripture heat-seeks the nearest demon (or Minion!) this close to the book...
 const SEEK_CONE := 1.2             # ...and within this many radians (~70 degrees) of where it's heading
 const SMITE_RADIUS := 4.0          # ...and wherever it lands, a holy blast hurts every demon this close (first guesses, Nov 18)
-const SMITE_DAMAGE := 30           # ...this much in the middle
-const SMITE_MIN_DAMAGE := 10       # ...at least this much at the edge
+const SMITE_DAMAGE := 25           # ...this much in the middle (nerfed Nov 25: was 30)
+const SMITE_MIN_DAMAGE := 8        # ...at least this much at the edge (was 10)
 const SMITE_LOCKOUT := 1.5         # ...and their skills (and flying) are locked this long
 const SMITE_PUSH := 2.5            # m it shoves them outward
 const SCRIPTURE_SPEED := 24.0
@@ -103,7 +103,7 @@ const FIRE_SLOW := 0.6            # angels in fire move at 60% speed
 const FIRE_BLESSING_BURN := 45.0  # blessing stamina burned per second while standing in fire
 const VACUUM_RADIUS := 8.0         # reach when it bursts open (first guess, Nov 18: was 6 and "does very little")...
 const VACUUM_RADIUS_END := 2.0     # ...shrinking to this by the end while the suction gets stronger (Ted, Nov 24)
-const VACUUM_TIME := 4.5           # the vortex keeps sucking this long (was a single tug at impact)
+const VACUUM_TIME := 3.0           # the vortex keeps sucking this long (was a single tug at impact)
 const VACUUM_PULSE := 0.4          # how often it yanks every demon in range toward its middle
 const VACUUM_HATRED_DRAIN := 40.0  # the first time it catches a demon...
 const VACUUM_PULSE_DRAIN := 5.0    # ...and every yank after that

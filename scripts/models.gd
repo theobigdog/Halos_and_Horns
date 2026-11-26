@@ -502,7 +502,7 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 		_add_festive(id, holder, extra_scale)
 	_add_glow(id, holder)
 	if e.get("extra", "") == "crosswalk_end":
-		_add_crosswalk(holder, size(id) * extra_scale)
+		_add_crosswalk(id, holder, size(id) * extra_scale, extra_scale)
 	# finer materials (nature_look.gd / structure_look.gd; Nov 24)
 	if NatureLook.is_nature(id):
 		NatureLook.apply(id, model, e.get("extra", ""))
@@ -510,6 +510,8 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 		StructureLook.apply(id, model)
 		if e.get("extra", "") == "green":
 			_make_green(model)
+	if id == "city/trafficlight_C":
+		_drop_blank_sign(id, holder, extra_scale)
 	if id.begins_with("city/trafficlight"):
 		var heads := lamp_spots(id)
 		if not heads.is_empty():
@@ -524,6 +526,56 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 
 # Two green street-name signs crossed on a traffic light's pole (Wife's notes, Nov 21).
 const STREETS := ["Angel Avenue", "Devil Drive"]
+# How high they sit (Sara, Nov 25: they were hidden behind the walk signal box): above the lights on the short
+# poles (on a little pole extension), and above the walk signal on the long-armed one.
+const SIGN_HEIGHT := {"city/trafficlight_A": 3.42, "city/trafficlight_B": 3.42, "city/trafficlight_C": 2.95}
+static var _no_sign := {}
+
+
+# The long-armed traffic light's own street sign is blank (Sara, Nov 25: "remove the blank green sign"):
+# drop its green triangles out by the pole (the lamps are far off on the arm).
+static func _drop_blank_sign(id: String, holder: Node3D, extra_scale: Vector3) -> void:
+	for c in holder.find_children("*", "MeshInstance3D", true, false):
+		var mi: MeshInstance3D = c
+		if not mi.mesh is ArrayMesh:
+			continue
+		var key := "%s:%s" % [id, mi.name]
+		if not _no_sign.has(key):
+			var xf := _to_holder(mi, holder)
+			xf = Transform3D(Basis.from_scale(Vector3.ONE / extra_scale), Vector3.ZERO) * xf
+			_no_sign[key] = _without_sign(mi.mesh, xf)
+		mi.mesh = _no_sign[key]
+
+
+static func _without_sign(src: ArrayMesh, xf: Transform3D) -> ArrayMesh:
+	var out := ArrayMesh.new()
+	for si in src.get_surface_count():
+		var arrays := src.surface_get_arrays(si)
+		var mat := src.surface_get_material(si)
+		var smat := mat as StandardMaterial3D
+		var img: Image = _image_of(smat.albedo_texture) if smat != null and smat.albedo_texture != null else null
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var uvs: PackedVector2Array = arrays[Mesh.ARRAY_TEX_UV]
+		var idx = arrays[Mesh.ARRAY_INDEX]
+		var tris: int = (idx.size() if idx != null else verts.size()) / 3
+		var keep := PackedInt32Array()
+		for t in tris:
+			var abc := [idx[t * 3] if idx != null else t * 3, idx[t * 3 + 1] if idx != null else t * 3 + 1,
+					idx[t * 3 + 2] if idx != null else t * 3 + 2]
+			var drop := false
+			if img != null:
+				var centre: Vector3 = xf * ((verts[abc[0]] + verts[abc[1]] + verts[abc[2]]) / 3.0)
+				if centre.x > 1.3 and centre.y > 2.3 and centre.y < 2.8:
+					var uv := (uvs[abc[0]] + uvs[abc[1]] + uvs[abc[2]]) / 3.0
+					var col := img.get_pixelv(Vector2i(clampi(int(fposmod(uv.x, 1.0) * img.get_width()), 0, img.get_width() - 1),
+							clampi(int(fposmod(uv.y, 1.0) * img.get_height()), 0, img.get_height() - 1)))
+					drop = col.g > 0.3 and col.g > col.r * 1.3 and col.g > col.b * 1.1
+			if not drop:
+				keep.append_array(PackedInt32Array(abc))
+		arrays[Mesh.ARRAY_INDEX] = keep
+		out.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		out.surface_set_material(si, mat)
+	return out
 
 
 static func _street_signs(id: String, extra_scale: Vector3) -> Node3D:
@@ -542,7 +594,31 @@ static func _street_signs(id: String, extra_scale: Vector3) -> Node3D:
 	var root := Node3D.new()
 	root.name = "StreetSigns"
 	root.set_meta("extra", true)   # (not part of the model's own shape: tests measure without it)
-	root.position = Vector3(pole.x, 1.95, pole.z) * extra_scale
+	var at_y: float = SIGN_HEIGHT.get(id, 1.95)
+	root.position = Vector3(pole.x, at_y, pole.z) * extra_scale
+	if id == "city/trafficlight_A":   # (its pole stops at the lights: a short extension carries the signs)
+		var ext := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.04
+		cm.bottom_radius = 0.045
+		cm.height = 0.75
+		cm.radial_segments = 10
+		ext.mesh = cm
+		var pm := StandardMaterial3D.new()
+		pm.albedo_color = Color(0.5, 0.45, 0.5)
+		pm.metallic = 0.4
+		pm.roughness = 0.45
+		ext.material_override = pm
+		ext.position = Vector3(0, 0.05, 0)
+		root.add_child(ext)
+		var cap := MeshInstance3D.new()
+		var sm := SphereMesh.new()
+		sm.radius = 0.055
+		sm.height = 0.07
+		cap.mesh = sm
+		cap.material_override = pm
+		cap.position = Vector3(0, 0.43, 0)
+		root.add_child(cap)
 	var green := StandardMaterial3D.new()
 	green.albedo_color = Color(0.05, 0.42, 0.2)
 	green.roughness = 0.5
@@ -740,17 +816,35 @@ static func car_lights(id: String, extra_scale := Vector3.ONE) -> Node3D:
 
 # A plain road with the crosswalk painted near one end (the city pack only has it in the middle,
 # which looks odd at junctions). Turn the piece to put it at the other end.
-static func _add_crosswalk(holder: Node3D, s: Vector3) -> void:
+static var _road_top := {}
+
+
+# Painted right on the road (Sara, Nov 25: they floated at the height of the curbs): flat quads a hair above
+# the asphalt, found by looking straight down onto the model's own road surface.
+static func _add_crosswalk(id: String, holder: Node3D, s: Vector3, extra_scale: Vector3) -> void:
+	if not _road_top.has(id):
+		var f := PackedVector3Array()
+		var bare := _raw(id)
+		_collect(bare, Transform3D.IDENTITY, f)
+		bare.free()
+		var z0 := size(id).z * 0.3
+		var top := -1.0
+		for t in range(0, f.size() - 2, 3):
+			var hit = Geometry3D.ray_intersects_triangle(Vector3(0.0, 50.0, z0), Vector3.DOWN, f[t], f[t + 1], f[t + 2])
+			if hit != null:
+				top = maxf(top, (hit as Vector3).y)
+		_road_top[id] = top if top >= 0.0 else size(id).y
 	var m := StandardMaterial3D.new()
-	m.albedo_color = Color(0.93, 0.93, 0.9)
-	m.roughness = 0.8
-	var stripe := BoxMesh.new()
-	stripe.size = Vector3(s.x * 0.075, 0.02, s.z * 0.28)
+	m.albedo_color = Color(0.9, 0.9, 0.86)
+	m.roughness = 0.85
+	var stripe := PlaneMesh.new()
+	stripe.size = Vector2(s.x * 0.075, s.z * 0.28)
 	for i in 6:
 		var mi := MeshInstance3D.new()
 		mi.mesh = stripe
 		mi.material_override = m
-		mi.position = Vector3((i - 2.5) * s.x * 0.147, s.y + 0.005, s.z * 0.5 - s.z * 0.2)
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.position = Vector3((i - 2.5) * s.x * 0.147, _road_top[id] * extra_scale.y + 0.006, s.z * 0.5 - s.z * 0.2)
 		holder.add_child(mi)
 
 
@@ -890,6 +984,61 @@ static func is_flat(id: String) -> bool:
 
 # A structure repeated end to end (count), and for floors also side by side (count2): each copy
 # exactly like the first, posts, columns and all.
+# Rugs can be any colour (Sara, Nov 25): the rug's own pattern, hue-turned to the chosen colour (its light and
+# dark parts stay light and dark, so stripes and borders still show).
+const RECOLOR_SHADER := """
+shader_type spatial;
+uniform sampler2D tex : source_color, filter_linear_mipmap;
+uniform vec4 tint : source_color = vec4(1.0);
+uniform vec4 base_tint : source_color = vec4(1.0);
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
+vec3 hsv2rgb(vec3 c) {
+	vec3 p = abs(fract(c.xxx + vec3(1.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+	return c.z * clamp(p - 1.0, 0.0, 1.0);
+}
+void fragment() {
+	vec3 src = texture(tex, UV).rgb * base_tint.rgb;
+	vec3 hs = rgb2hsv(src);
+	vec3 want = rgb2hsv(tint.rgb);
+	// every part takes the chosen hue; how strongly coloured follows the choice; light/dark follows the rug
+	float v = clamp(hs.z * (0.35 + 0.9 * want.z), 0.0, 1.0);
+	float s = clamp(mix(hs.y, want.y, 0.75), 0.0, 1.0);
+	ALBEDO = hsv2rgb(vec3(want.x, s, v));
+	ROUGHNESS = 0.95;
+}
+"""
+static var _recolor_shader: Shader
+
+
+static func is_rug(id: String) -> bool:
+	return id.get_slice("/", 1).begins_with("rug_")
+
+
+static func recolor(node: Node, color: Color) -> void:
+	if _recolor_shader == null:
+		_recolor_shader = Shader.new()
+		_recolor_shader.code = RECOLOR_SHADER
+	for mi in node.find_children("*", "MeshInstance3D", true, false):
+		var m: MeshInstance3D = mi
+		if m.mesh == null:
+			continue
+		for si in m.mesh.get_surface_count():
+			var src = m.mesh.surface_get_material(si)
+			if src is StandardMaterial3D:
+				var sm := ShaderMaterial.new()
+				sm.shader = _recolor_shader
+				sm.set_shader_parameter("tex", src.albedo_texture)
+				sm.set_shader_parameter("base_tint", src.albedo_color)
+				sm.set_shader_parameter("tint", color)
+				m.set_surface_override_material(si, sm)
+
+
 static func make_row(id: String, extra_scale := Vector3.ONE, count := 1, count2 := 1, look := 0) -> Node3D:
 	if count <= 1 and count2 <= 1:
 		return make_structure(id, extra_scale, look)

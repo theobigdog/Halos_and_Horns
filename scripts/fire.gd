@@ -43,7 +43,8 @@ var _lit := false
 
 const FireSounds = preload("res://scripts/fire_sounds.gd")
 var _burn_voice: AudioStreamPlayer3D
-const BURN_DB := 0.0
+const BURN_DB := -5.0       # (Sara, Nov 25: too loud; was 0)
+const WHOOSH_DB := -4.0
 
 const SQUASH := 0.85              # the ball of fire is a little lower than it is wide
 const SINK := 0.12                # its centre sits this far (x radius) above the surface
@@ -365,6 +366,7 @@ func _ready() -> void:
 	_voice.bus = Sfx.BUS
 	_voice.unit_size = 7.0
 	_voice.max_distance = 70.0
+	_voice.volume_db = WHOOSH_DB
 	add_child(_voice)
 	_voice.stream = FireSounds.whoosh()
 	_voice.play()

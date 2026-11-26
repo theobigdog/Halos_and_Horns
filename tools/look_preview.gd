@@ -1,5 +1,5 @@
 # Renders structures/props with the game's sky and lighting, to check how they look.
-#   godot --resolution 1280x720 -s res://tools/look_preview.gd -- --ids=medieval/mountain_A_grass,halloween/tree_pine_yellow_large [--tag=_v1] [--time=day|dusk|night] [--weather=clear|sunny_cloudy|snow|rain...] [--close] [--quality=0|1|2]
+#   godot --resolution 1280x720 -s res://tools/look_preview.gd -- --ids=medieval/mountain_A_grass,halloween/tree_pine_yellow_large [--tag=_v1] [--time=day|dusk|night] [--weather=clear|sunny_cloudy|snow|rain...] [--close] [--quality=0|1|2] [--color=#rrggbb]
 #   (or --match=<text> for every model whose id contains the text, up to 12)
 # Writes tools/previews/look<tag>_overview.png (all of them in a row, seen from a few metres away,
 # like in a game) and with --close also look<tag>_<n>_<id>.png close-ups of each.
@@ -54,6 +54,8 @@ func _go() -> void:
 			continue
 		var s := Models.size(id)
 		var n: Node3D = Models.make_structure(id) if Models.is_structure(id) else Models.instance(id)
+		if args.has("color"):   # --color=#rrggbb: recoloured (rugs)
+			Models.recolor(n, Color(args["color"]))
 		root.add_child(n)
 		x += s.x * 0.5
 		n.position = Vector3(x, 0, 0)

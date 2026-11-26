@@ -8,6 +8,8 @@ const Models = preload("res://scripts/models.gd")
 const Editor = preload("res://scripts/editor.gd")
 const Bouncy = preload("res://scripts/bouncy.gd")
 const Shrine = preload("res://scripts/shrine.gd")
+const GroundBlock = preload("res://scripts/ground_block.gd")
+const HollowBuildings = preload("res://scripts/hollow_buildings.gd")
 const OUT := "res://assets/thumbs"
 const SIZE := 128     # rendered at this, saved at THUMB
 const THUMB := 64
@@ -56,6 +58,12 @@ func _run() -> void:
 	for id in Models.ids("structure"):
 		var mid: String = id
 		jobs.append([file_key("model:" + mid), func(): return Models.instance(mid)])
+	for gk in GroundBlock.KINDS:
+		var g: String = gk
+		jobs.append([file_key("ground:" + g), func(): return GroundBlock.make(g, Vector3(3, 0.6, 3))])
+	for bk in HollowBuildings.KINDS:
+		var hk: String = bk
+		jobs.append([file_key("building:" + hk), func(): return HollowBuildings.make(hk, 0)])
 	var n := 0
 	for job in jobs:
 		var node: Node3D = job[1].call()

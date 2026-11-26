@@ -36,6 +36,8 @@ const Bodies = preload("res://scripts/bodies.gd")
 const Graphics = preload("res://scripts/graphics.gd")
 const Lamp = preload("res://scripts/lamp.gd")
 const Decor = preload("res://scripts/decor.gd")
+const GroundBlock = preload("res://scripts/ground_block.gd")
+const HollowBuildings = preload("res://scripts/hollow_buildings.gd")
 const Backdrop = preload("res://scripts/backdrop.gd")
 const SnowTracks = preload("res://scripts/snow_tracks.gd")
 const Music = preload("res://scripts/music.gd")
@@ -177,6 +179,11 @@ var hint_label: Label
 var controls_label: Label
 var center_label: Label
 var blind_rect: ColorRect
+# Angels' hiding-phase wait (Ted, Nov 25: "something fun or silly to do", and the mouse was stuck captured
+# behind the black screen): Whack-an-Imp on top of the blindfold, with the mouse free.
+const WaitingGame = preload("res://scripts/waiting_game.gd")
+var waiting_game: Control
+var _blind_was := false
 var hurt_rect: ColorRect
 var crosshair: Label
 var _toast_time := 0.0
@@ -377,6 +384,24 @@ func _any_panel_open() -> bool:
 			or (wardrobe != null and wardrobe.visible)
 
 
+func _tick_waiting_game() -> void:
+	if waiting_game == null:
+		return
+	var on: bool = blind_rect.visible and state == State.HIDING and not (editor != null and editor.testing)
+	if on != _blind_was:
+		_blind_was = on
+		if on:
+			waiting_game.start(time_left)
+		else:
+			var old_best: int = waiting_game.best
+			waiting_game.stop()
+			if waiting_game.best > old_best:
+				_save_settings()   # (a new Whack-an-Imp best, kept between games)
+		_refresh_mouse()
+	elif on:
+		waiting_game.set_seconds_left(time_left)
+
+
 func _refresh_mouse() -> void:
 	if mode == "editor":
 		player.input_enabled = false
@@ -385,6 +410,8 @@ func _refresh_mouse() -> void:
 		return
 	var ui_open := _any_panel_open()
 	player.input_enabled = not ui_open
+	if _blind_was:
+		ui_open = true   # (Whack-an-Imp: the mouse is free while we wait to hunt)
 	if DisplayServer.get_name() != "headless":
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if ui_open else Input.MOUSE_MODE_CAPTURED
 
@@ -744,7 +771,7 @@ func load_map(map: Dictionary, path := "") -> void:
 				ONE_USE_BOUNCIES.append(pos)
 				ONE_USE_LOOKS.append(int(p.get("look", 0)))
 			"bouncy_super": SUPER_BOUNCIES.append(pos)
-			"prop": PLACED_PROPS.append([p["prop"], pos, MapData.rot_rad(p)])
+			"prop": PLACED_PROPS.append([PropLib.scaled(p["prop"], p.get("scale", 1.0)), pos, MapData.rot_rad(p)])
 	Models.festive = map_data["weather"] == "snow"   # (before building: trees and buildings get lights)
 	_build_map()
 	graphics.set_time_of_day(map_data["time"])
@@ -878,6 +905,18 @@ func _build_map() -> void:
 				structures.append([Vector2(pos.x, pos.z), 1.6])
 			"bouncy_once", "prop":
 				structures.append([Vector2(pos.x, pos.z), 1.6])   # (made fresh each round)
+			"ground":
+				var gb := GroundBlock.make(GroundBlock.KINDS.keys()[int(p.get("look", 0))], MapData.vec(p["size"]))
+				gb.position = pos
+				gb.rotation = MapData.rot_rad(p)
+				world_root.add_child(gb)
+			"building":
+				var hb := HollowBuildings.make(p["kind"], int(p.get("look", 0)))
+				hb.position = pos
+				hb.rotation = MapData.rot_rad(p)
+				world_root.add_child(hb)
+				var hs := HollowBuildings.size(p["kind"])
+				structures.append([Vector2(pos.x, pos.z), maxf(hs.x, hs.z) * 0.5])
 			"sidewalk":
 				var walk := Decor.make_sidewalk(p)
 				walk.position = pos
@@ -901,6 +940,8 @@ func _build_map() -> void:
 				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
 				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
 				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)))
+				if p.has("color"):
+					Models.recolor(body, Color(p["color"]))   # a rug in its chosen colour
 				if p.get("lights", false):
 					body.add_child(Models.car_lights(p["model"], sc))
 				body.position = pos
@@ -1814,6 +1855,8 @@ func _load_settings() -> void:
 	_splash_pick.set_value_no_signal(hellfire_splashes)
 	set_ui_scale(float(_settings.get_value("options", "ui_scale", 1.0)))
 	_set_shared_dir(str(_settings.get_value("options", "shared_maps", "")))
+	if waiting_game != null:
+		waiting_game.best = int(_settings.get_value("options", "imp_best", 0))
 	var presets = _settings.get_value("wardrobe", "presets", [])
 	wardrobe_presets = []
 	if typeof(presets) == TYPE_ARRAY:
@@ -1857,6 +1900,8 @@ func _save_settings() -> void:
 	_settings.set_value("options", "chat_size", chat_font_size)
 	_settings.set_value("options", "ui_scale", ui_scale)
 	_settings.set_value("options", "shared_maps", MapData.shared_dir)
+	if waiting_game != null:
+		_settings.set_value("options", "imp_best", waiting_game.best)
 	_settings.set_value("wardrobe", "outfits", outfits)
 	_settings.set_value("wardrobe", "presets", wardrobe_presets)
 	_settings.save(SETTINGS_PATH)
@@ -2073,6 +2118,7 @@ func test_map_from_editor(map: Dictionary) -> void:
 	load_map(map, "")
 	_back_to_editor.visible = true
 	start_practice()
+	_refresh_mouse()   # (the editor left the mouse free and the player's input off: you couldn't move until Esc, Resume)
 	_toast("Testing your map. Esc, then \"Back to Creative\" to keep building.", 5.0)
 
 
@@ -2235,6 +2281,7 @@ func _on_bot_caught(bot) -> void:
 
 
 func _process(delta: float) -> void:
+	_tick_waiting_game()
 	if mode == "practice" and state != State.ENDED:
 		time_left -= delta
 		if time_left <= 0.0:
@@ -2705,10 +2752,10 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 					# ...and the shockwave shoves them outward.
 					var out := Vector3(off.x, 0.0, off.z)
 					out = out.normalized() if out.length() > 0.1 else Vector3.FORWARD.rotated(Vector3.UP, randf() * TAU)
-					_affect_demon(d, ground_below(d.global_position + out * STOMP_PUSH + Vector3.UP * 1.0, [d] + props + demon_targets()), 0.0, 0.0, "SHOVED!")
+					_affect_demon(d, ground_below(d.global_position + out * STOMP_PUSH + Vector3.UP * 1.0, [d] + props + demon_targets()), 0.0, STOMP_STUN, "STUNNED!")
 			if hurt > 0 and user.has_method("confirm_hit"):
 				user.confirm_hit()
-			broadcast_fx("stomp", [origin])
+			broadcast_fx("stomp", [origin, drop])
 			print("[decider] cloud stomp hit %d demon(s) (from %.1f m up)" % [hurt, drop])
 		"vacuum":
 			var orb := _spawn_orb(origin, dir, false)   # (it bounces off bouncy pads: see _spawn_orb)
@@ -3498,7 +3545,9 @@ func fx(kind: String, args: Array) -> void:
 			Effects.dust(_fx_parent(), args[0], Skills.STOMP_RADIUS * 0.5, 24)
 			_blast_props(args[0], Skills.STOMP_RADIUS * 1.2, 7.0)
 			_shake_near(args[0], 0.5, 18.0)
-			_play_at(_sounds["timpani"].stream, args[0], 1.0, 3.0)   # a deep timpani hit (it was a thunderclap: too much)
+			# a superhero landing (Sara, Nov 25: the timpani wasn't it): bigger drops land deeper and longer
+			var k := clampf((float(args[1]) if args.size() > 1 else 6.0) / 15.0, 0.0, 1.0)
+			_play_at(StompSounds.landing(k), args[0], 1.0, 3.0 + 2.0 * k)
 		"smite":
 			_smite_fx(args[0])
 		"word":
@@ -3609,6 +3658,8 @@ const PROP_SWAT := 3.0          # a melee swing that hits furniture instead of a
 const PROP_KICK := 7.0          # Holy Kick with no demon in reach (first guess)
 const BLESSING_SHOVE := 0.05    # share of a blessing's speed that shoves a prop (first guess)
 const STOMP_PUSH := 2.0         # m a Cloud Stomp shoves the demons it hurts (first guess)
+const STOMP_STUN := 1.0         # s the demons it hurts can't use skills ("STUNNED!", Sara, Nov 25; first guess)
+const StompSounds = preload("res://scripts/stomp_sounds.gd")
 
 
 # We ran into a loose prop or a disguised demon. Practice: shove it now. Online: ask the host.
@@ -3902,6 +3953,9 @@ func _build_hud() -> void:
 	blind_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
 	blind_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(blind_rect)
+	waiting_game = WaitingGame.new()
+	waiting_game.visible = false
+	hud.add_child(waiting_game)
 
 	hurt_rect = ColorRect.new()
 	hurt_rect.color = Color(0.9, 0.05, 0.05, 0.0)

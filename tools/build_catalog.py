@@ -40,7 +40,7 @@ STRUCTURE = [
     r"kitchencounter", r"kitchencabinet", r"extractorhood", r"countertop", r"banner", r"_mounted",
     r"_hanging", r"sword_shield", r"towelrail", r"shelf", r"pictureframe_(large|medium|small)", r"post",
     r"plaque", r"streetlight", r"trafficlight", r"watertower", r"ladder", r"waterlily", r"waterplant",
-    r"trees_", r"lid$", r"crate_lid",
+    r"trees_", r"lid$", r"crate_lid", r"firehydrant", r"dumpster",   # (Sara, Nov 25: structures, not props)
 ]
 
 ROUND = [r"pumpkin", r"skull$", r"tomato$", r"onion$", r"^medieval/rock", r"coin$"]

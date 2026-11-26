@@ -24,6 +24,8 @@ extends Node
 
 const MapData = preload("res://scripts/map_data.gd")
 const Decor = preload("res://scripts/decor.gd")
+const GroundBlock = preload("res://scripts/ground_block.gd")
+const HollowBuildings = preload("res://scripts/hollow_buildings.gd")
 const Backdrop = preload("res://scripts/backdrop.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const Bouncy = preload("res://scripts/bouncy.gd")
@@ -36,8 +38,8 @@ const PIECES := [
 	["bouncy_super", "Super Bouncy (magic, reusable)"],
 	["light", "Light"], ["window", "Window picture (a room, or lit)"], ["sidewalk", "Sidewalk"], ["ice", "Ice (slippery)"], ["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
 ]
-const ROTATES := ["block", "cylinder", "prop", "model", "light", "ice", "sidewalk", "window"]       # the others always sit upright
-const RESIZES := ["block", "cylinder", "model", "ice", "sidewalk", "window"]       # (a model's "size" is how much it's scaled on each axis)
+const ROTATES := ["block", "cylinder", "prop", "model", "light", "ice", "sidewalk", "window", "ground", "building"]       # the others always sit upright
+const RESIZES := ["block", "cylinder", "model", "ice", "sidewalk", "window", "ground"]       # (a model's "size" is how much it's scaled on each axis)
 const ONLY_ONE := ["shrine", "angel_spawn", "demon_spawn"]
 const GRID_STEPS := [0.05, 0.1, 0.25, 0.5, 1.0, 2.0]
 const NUDGE_KEYS := [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_PAGEUP, KEY_PAGEDOWN]
@@ -321,19 +323,27 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			n.add_child(body)
 		"prop":
 			var body := StaticBody3D.new()
-			body.add_child(PropLib.make_visual(p["prop"]))
+			var pt := PropLib.scaled(p["prop"], p.get("scale", 1.0))
+			body.add_child(PropLib.make_visual(pt))
 			var cs := CollisionShape3D.new()
-			cs.shape = PropLib.make_shape(p["prop"])
-			cs.position.y = PropLib.height(p["prop"]) / 2.0
+			cs.shape = PropLib.make_shape(pt)
+			cs.position.y = PropLib.height(pt) / 2.0
 			body.add_child(cs)
 			n.add_child(body)
 		"model":
 			var msc := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
-			n.add_child(Models.make_row(p["model"], msc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0))))
+			var row := Models.make_row(p["model"], msc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)))
+			if p.has("color"):
+				Models.recolor(row, Color(p["color"]))
+			n.add_child(row)
 			if p.get("lights", false):
 				n.add_child(Models.car_lights(p["model"], msc))
 		"ice":
 			n.add_child(main.make_ice(p))
+		"ground":
+			n.add_child(GroundBlock.make(GroundBlock.KINDS.keys()[int(p.get("look", 0))], MapData.vec(p["size"])))
+		"building":
+			n.add_child(HollowBuildings.make(p["kind"], int(p.get("look", 0))))
 		"sidewalk":
 			n.add_child(Decor.make_sidewalk(p))
 		"window":
@@ -368,7 +378,7 @@ var _looks_for := ""
 
 
 func _fill_looks(t: String) -> void:
-	var kind := t if t in ["window", "bouncy", "bouncy_once", "bouncy_super"] else "model"
+	var kind := t if t in ["window", "bouncy", "bouncy_once", "bouncy_super", "ground", "building"] else "model"
 	if kind == _looks_for:
 		return
 	_looks_for = kind
@@ -379,6 +389,8 @@ func _fill_looks(t: String) -> void:
 		"bouncy": names = Bouncy.skin_names("metal")
 		"bouncy_once": names = Bouncy.skin_names("wood")
 		"bouncy_super": names = Bouncy.skin_names("super")
+		"ground": names = GroundBlock.KINDS.values()
+		"building": names = ["Colours 1", "Colours 2", "Colours 3", "Colours 4"]
 	for ln in names:
 		_look_pick.add_item(ln)
 
@@ -593,6 +605,10 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 	var p := {"type": kind, "pos": [at.x, at.y, at.z]}
 	if kind.begins_with("prop:"):
 		p = {"type": "prop", "prop": kind.substr(5), "pos": [at.x, at.y, at.z]}
+	elif kind.begins_with("ground:"):
+		p = {"type": "ground", "look": GroundBlock.KINDS.keys().find(kind.substr(7)), "size": [4.0, 0.3, 4.0], "pos": [at.x, at.y, at.z]}
+	elif kind.begins_with("building:"):
+		p = {"type": "building", "kind": kind.substr(9), "look": 0, "pos": [at.x, at.y, at.z]}
 	elif kind.begins_with("model:"):
 		p = {"type": "model", "model": kind.substr(6), "pos": [at.x, at.y, at.z]}
 	elif kind == "block":
@@ -2202,7 +2218,7 @@ func wheel_turn(degrees: float) -> void:
 # Ctrl + wheel: the selected structure's look (weathered, clean, mossy, charred...).
 func cycle_look(dir: int) -> void:
 	var t: String = piece(selected)["type"] if selected >= 0 else ""
-	if not t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super"]:
+	if not t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super", "ground", "building"]:
 		_say("Looks are for structures, window pictures and bouncy pads.", 2.5)
 		return
 	_fill_looks(t)
@@ -2221,10 +2237,12 @@ func wheel_size(factor: float) -> void:
 			var s := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
 			s = (s * factor).clamp(Vector3.ONE * 0.1, Vector3.ONE * 10.0)
 			set_value(selected, "size", s, "wheel-size")
-		"block", "cylinder", "ice", "sidewalk", "window":
+		"block", "cylinder", "ice", "sidewalk", "window", "ground":
 			set_value(selected, "size", MapData.vec(p["size"]) * factor, "wheel-size")
-		"prop":
-			_say("Props stay their real size (a demon disguised as one has to match it).", 3.0)
+		"prop":   # evenly only (Sara, Nov 25), and a demon disguised as it matches its size
+			var k := PropLib.snap_scale(float(p.get("scale", 1.0)) + (0.1 if factor > 1.0 else -0.1))
+			set_value(selected, "scale", k, "wheel-size")
+			_say("Prop size: %d%%" % roundi(k * 100.0), 1.5)
 
 
 # Arrow keys: move the selected piece one snap step, along the map's axis nearest to where we're looking.
@@ -2504,6 +2522,9 @@ func _build_ui() -> void:
 		if kind in ["ice", "sidewalk"]:
 			continue   # (in Ground, with the floors and roads)
 		_palette_button(special, p[1], kind)
+	var walk_in := _palette_section(pal, "Walk-in buildings", true)
+	for bk in HollowBuildings.KINDS:
+		_palette_button(walk_in, HollowBuildings.KINDS[bk], "building:" + bk)
 	# Props (demons can be these), then structures (solid scenery), each by category
 	for group in [["Props", PropLib.type_names(), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
 		var glabel := _label(pal, "  " + group[0] + " (%d)" % group[1].size())
@@ -2520,11 +2541,13 @@ func _build_ui() -> void:
 			cats.erase("Ground")
 			cats.push_front("Ground")   # (floors, roads, paths and ice: first, they go down first)
 		for cat in cats:
-			var count: int = by_cat[cat].size() + (2 if cat == "Ground" and group[2] == "model:" else 0)
+			var count: int = by_cat[cat].size() + (2 + GroundBlock.KINDS.size() if cat == "Ground" and group[2] == "model:" else 0)
 			var sec := _palette_section(pal, "%s (%d)" % [cat, count], false)
 			if cat == "Ground" and group[2] == "model:":
 				_palette_button(sec, "Ice (slippery)", "ice", "Ground")
 				_palette_button(sec, "Sidewalk", "sidewalk", "Ground")
+				for gk in GroundBlock.KINDS:
+					_palette_button(sec, GroundBlock.KINDS[gk] + " block", "ground:" + gk, "Ground")
 			for t in by_cat[cat]:
 				var label_text: String = PropLib.label(t) if group[2] == "prop:" else Models.label(t)
 				_palette_button(sec, label_text, group[2] + t, cat)
@@ -2888,7 +2911,7 @@ func _sync_inspector() -> void:
 		if q[0] == t:
 			title = q[1]
 	if t == "prop":
-		title = "Prop: " + PropLib.label(p["prop"])
+		title = "Prop: %s (%d%% size: Alt + mouse wheel)" % [PropLib.label(p["prop"]), roundi(float(p.get("scale", 1.0)) * 100.0)]
 	if t == "model":
 		title = "%s (%s)" % [Models.label(p["model"]), Models.category(p["model"])]
 	_insp_title.text = title
@@ -2900,12 +2923,12 @@ func _sync_inspector() -> void:
 	_rows["size"].visible = t in RESIZES
 	_extend_button.visible = t == "model"
 	_size_title.text = "Scale (× normal)" if t == "model" else "Size (m)"
-	_rows["color"].visible = t in ["block", "cylinder", "light"]
+	_rows["color"].visible = t in ["block", "cylinder", "light"] or (t == "model" and Models.is_rug(p["model"]))
 	if t == "ice":
 		_size_title.text = "Size (m; ice is always thin)"
-	_rows["look"].visible = t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super"]
+	_rows["look"].visible = t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super", "ground", "building"]
 	_fill_looks(t)
-	if t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super"]:
+	if t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super", "ground", "building"]:
 		_look_pick.select(int(p.get("look", 0)))
 		_car_lights.visible = t == "model" and Models.is_car(p["model"])   # (windows and pads have no car lights)
 		_car_lights.set_pressed_no_signal(p.get("lights", false))
@@ -2921,8 +2944,10 @@ func _sync_inspector() -> void:
 		_light_spot.set_pressed_no_signal(p.get("spot", false))
 		_light_angle.set_value_no_signal(p.get("angle", 35.0))
 	_rows["prop"].visible = t == "prop"
-	if t in ["block", "cylinder", "light"]:
+	if t in ["block", "cylinder", "light"] or p.has("color"):
 		_color_pick.color = Color(p["color"])
+	elif t == "model":
+		_color_pick.color = Color(0.75, 0.7, 0.65)   # (a rug still in its own colours)
 	if t == "prop":
 		for idx in _prop_pick.item_count:
 			if _prop_pick.get_item_metadata(idx) == p["prop"]:

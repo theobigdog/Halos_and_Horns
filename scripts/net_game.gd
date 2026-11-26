@@ -401,7 +401,7 @@ func s_lobby(names: Array, host_phase: String) -> void:
 # ---------------- rounds (host) ----------------
 
 func can_start() -> bool:
-	return is_host and phase == "lobby" and peers.size() >= 2
+	return is_host and phase == "lobby" and (peers.size() >= 2 or test_round)   # (a Creative test round works on your own)
 
 
 func start_round() -> void:
@@ -415,6 +415,8 @@ func start_round() -> void:
 	ids.shuffle()
 	# About one angel per three players, at least one.
 	var angel_count := maxi(1, int(round(ids.size() / 3.0)))
+	if ids.size() < 2:
+		angel_count = 0   # testing a map alone: you're a demon, free to roam (Sara, Nov 25)
 	for i in ids.size():
 		var rec: Dictionary = peers[ids[i]]
 		rec["role"] = "angel" if i < angel_count else "demon"
@@ -701,6 +703,8 @@ func _end_round(message: String) -> void:
 func _check_round_over() -> void:
 	if phase != "hiding" and phase != "hunting":
 		return
+	if test_round and peers.size() < 2:
+		return   # testing alone: nothing to win, just look around (Esc, "Back to Creative" ends it)
 	if _demons_left() == 0:
 		_end_round("Every demon was redeemed! Angels win!")
 	elif _angels_left() == 0:
@@ -2303,9 +2307,6 @@ func s_build_end() -> void:
 # Host: try the map out: back to the lobby and straight into a round.
 func build_test_play() -> void:
 	if not is_host or phase != "building":
-		return
-	if peers.size() < 2:
-		main.editor._say("A test round needs at least 2 players. (On your own, use Creative from the main menu.)", 5.0)
 		return
 	build_end()
 	test_round = true

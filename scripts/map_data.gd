@@ -16,6 +16,8 @@
 extends RefCounted
 
 const PropLib = preload("res://scripts/prop_library.gd")
+const GroundBlock = preload("res://scripts/ground_block.gd")
+const HollowBuildings = preload("res://scripts/hollow_buildings.gd")
 const Models = preload("res://scripts/models.gd")
 
 const FORMAT := 1
@@ -39,7 +41,7 @@ const MAX_GRID := 400            # copies in one floor, at most
 #   minutes for a day/night cycle, 0 = off)
 #   bouncy / bouncy_once, shrine, angel_spawn, demon_spawn: special pieces (pos, rot)
 #   sidewalk: a raised concrete slab ("size"); window: a picture for a window ("size" x/y, "look" 0..4)
-const TYPES := ["block", "cylinder", "prop", "model", "light", "ice", "sidewalk", "window", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
+const TYPES := ["block", "cylinder", "prop", "model", "light", "ice", "sidewalk", "window", "ground", "building", "bouncy", "bouncy_once", "bouncy_super", "shrine", "angel_spawn", "demon_spawn"]
 const SHAPED := ["block", "cylinder"]
 
 
@@ -197,6 +199,11 @@ static func clean(raw: Dictionary) -> Dictionary:
 		if typeof(p) != TYPE_DICTIONARY or not p.get("type") in TYPES:
 			continue
 		var t: String = p["type"]
+		if t == "prop" and typeof(p.get("prop")) == TYPE_STRING and not PropLib.TYPES.has(p["prop"]) and Models.has(p["prop"]):
+			p = p.duplicate()   # (a prop that became a structure, like the fire hydrant and dumpster: Nov 25)
+			p["type"] = "model"
+			p["model"] = p["prop"]
+			t = "model"
 		var c := {"type": t, "pos": _arr(_vec(p.get("pos"), -MAX_COORD, MAX_COORD, Vector3.ZERO))}
 		var pid := _id(p.get("id"))
 		if pid != "":
@@ -210,6 +217,14 @@ static func clean(raw: Dictionary) -> Dictionary:
 		if t in SHAPED:
 			c["size"] = _arr(_vec(p.get("size"), 0.05, 400.0, Vector3.ONE))
 			c["color"] = _color(p.get("color"), "#a09080")
+		elif t == "ground":   # (Sara, Nov 25: grass, dirt, gravel, landscaping blocks)
+			c["size"] = _arr(_vec(p.get("size"), 0.1, 200.0, Vector3(4, 0.3, 4)))
+			c["look"] = int(_num(p.get("look"), 0.0, float(GroundBlock.KINDS.size() - 1), 0.0))
+		elif t == "building":   # (Sara, Nov 25: buildings you can walk into)
+			if not p.get("kind") in HollowBuildings.KINDS:
+				continue
+			c["kind"] = p["kind"]
+			c["look"] = int(_num(p.get("look"), 0.0, 3.0, 0.0))
 		elif t == "sidewalk":
 			var ssz := _vec(p.get("size"), 0.3, 100.0, Vector3(2, 0.18, 6))
 			c["size"] = _arr(Vector3(ssz.x, clampf(ssz.y, 0.05, 0.6), ssz.z))
@@ -248,6 +263,8 @@ static func clean(raw: Dictionary) -> Dictionary:
 				c["repeat"] = rep   # copies end to end (a wall dragged longer)
 			if p.get("lights", false) == true and Models.is_car(c["model"]):
 				c["lights"] = true   # headlights and tail lights on
+			if Models.is_rug(c["model"]) and typeof(p.get("color")) == TYPE_STRING:
+				c["color"] = _color(p.get("color"), "#b03030")   # a rug in any colour (Models.recolor)
 			var look := int(_num(p.get("look"), 0, LOOKS - 1, 0))
 			if look > 0:
 				c["look"] = look   # weathered (0), clean, mossy, charred... (models.gd LOOK_NAMES)
@@ -258,6 +275,9 @@ static func clean(raw: Dictionary) -> Dictionary:
 			if not PropLib.TYPES.has(p.get("prop")):
 				continue
 			c["prop"] = p["prop"]
+			var psc := PropLib.snap_scale(_num(p.get("scale"), PropLib.SCALE_MIN, PropLib.SCALE_MAX, 1.0))
+			if not is_equal_approx(psc, 1.0):
+				c["scale"] = psc   # sized evenly (PropLib.scaled)
 		elif t == "shrine":
 			shrines += 1
 			if shrines > 1:

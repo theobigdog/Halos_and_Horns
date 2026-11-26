@@ -310,7 +310,7 @@
 "path": "res://assets/kaykit/city/dumpster.gltf",
 "label": "Dumpster",
 "cat": "Town",
-"kind": "prop",
+"kind": "structure",
 "scale": 4.5,
 "size": [
 2.547,
@@ -328,7 +328,7 @@
 "path": "res://assets/kaykit/city/firehydrant.gltf",
 "label": "Fire hydrant",
 "cat": "Town",
-"kind": "prop",
+"kind": "structure",
 "scale": 4.5,
 "size": [
 0.61,

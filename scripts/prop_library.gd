@@ -12,6 +12,8 @@ const Models = preload("res://scripts/models.gd")
 # mass: how hard it is to shove (knock.gd). round: it rolls instead of tipping.
 # lying: already on its side, so it only slides.
 # The original hand-built props. Random scatter and practice bots still use just these.
+const ClassicLook = preload("res://scripts/classic_look.gd")
+
 const CLASSIC := {
 	"barrel": {"shape": "cylinder", "radius": 0.45, "height": 1.0, "label": "Barrel", "hp": 120, "speed": 5.0, "mass": 2.5},
 	"crate": {"shape": "box", "size": Vector3(0.9, 0.9, 0.9), "label": "Crate", "hp": 110, "speed": 5.5, "mass": 2.0},
@@ -49,12 +51,53 @@ static func _build_types() -> Dictionary:
 	return out
 
 
+# Props sized up or down in Creative (Sara, Nov 25: "only proportionally"): "<type>@<scale>" is the same prop
+# scaled evenly, registered as its own type when a map uses it (on every screen, since everyone loads the map),
+# so a demon disguised as it looks, collides and moves exactly like the real one. Heavier and tougher when bigger.
+const SCALE_MIN := 0.5
+const SCALE_MAX := 2.0
+
+
+static func snap_scale(k: float) -> float:
+	return snappedf(clampf(k, SCALE_MIN, SCALE_MAX), 0.1)
+
+
+static func scaled(type_name: String, k: float) -> String:
+	k = snap_scale(k)
+	var base := base_type(type_name)
+	if is_equal_approx(k, 1.0) or not TYPES.has(base):
+		return base
+	var key := "%s@%s" % [base, str(k)]
+	if not TYPES.has(key):
+		var d: Dictionary = TYPES[base].duplicate(true)
+		if d.has("size"):
+			d["size"] = d["size"] * k
+		if d.has("radius"):
+			d["radius"] = d["radius"] * k
+			d["height"] = d["height"] * k
+		d["hp"] = int(clampf(d["hp"] * pow(k, 1.2), 20.0, 400.0))
+		d["speed"] = snappedf(clampf(d["speed"] - 1.5 * (k - 1.0), 3.5, 8.5), 0.1)
+		d["mass"] = snappedf(clampf(d.get("mass", 1.0) * k * k * k, 0.2, 12.0), 0.1)
+		d["base"] = base
+		d["scale"] = k
+		TYPES[key] = d
+	return key
+
+
+static func base_type(type_name: String) -> String:
+	return type_name.get_slice("@", 0)
+
+
+static func scale_of(type_name: String) -> float:
+	return float(TYPES.get(type_name, {}).get("scale", 1.0))
+
+
 static func scatter_names() -> Array:
 	return CLASSIC.keys()
 
 
 static func category(type_name: String) -> String:
-	return Models.category(type_name) if TYPES.get(type_name, {}).has("model") else "Classic"
+	return Models.category(base_type(type_name)) if TYPES.get(type_name, {}).has("model") else "Classic"
 
 
 # Max health for a demon in this form ("" = demon form).
@@ -67,7 +110,7 @@ static func speed(type_name: String) -> float:
 
 
 static func type_names() -> Array:
-	return TYPES.keys()
+	return TYPES.keys().filter(func(t): return not "@" in t)
 
 
 static func label(type_name: String) -> String:
@@ -186,6 +229,10 @@ static func _box(size: Vector3) -> BoxMesh:
 
 
 static func make_visual(type_name: String) -> Node3D:
+	if "@" in type_name:
+		var v := make_visual(base_type(type_name))
+		v.scale = Vector3.ONE * scale_of(type_name)
+		return v
 	if TYPES.get(type_name, {}).has("model"):
 		return Models.instance(TYPES[type_name]["model"])
 	var root := Node3D.new()
@@ -206,11 +253,7 @@ static func make_visual(type_name: String) -> Node3D:
 			glow.emission = Color(1.0, 0.85, 0.5)
 			glow.emission_energy_multiplier = 0.6
 		"pumpkin":
-			var s := SphereMesh.new()
-			s.radius = 0.4
-			s.height = 0.62
-			_add_mesh(root, s, Color(0.95, 0.5, 0.1), Vector3(0, 0.31, 0), "plant")
-			_add_mesh(root, _cyl(0.04, 0.05, 0.12), Color(0.3, 0.5, 0.15), Vector3(0, 0.66, 0), "plant")
+			ClassicLook.pumpkin(root)   # (Sara, Nov 25: "very basic"; classic_look.gd)
 		"pot":
 			_add_mesh(root, _cyl(0.35, 0.28, 0.6), Color(0.3, 0.3, 0.33), Vector3(0, 0.3, 0), "metal")
 		"bench":
@@ -222,7 +265,7 @@ static func make_visual(type_name: String) -> Node3D:
 			_add_mesh(root, _box(Vector3(0.4, 0.11, 0.28)), Color(0.15, 0.3, 0.6), Vector3(0.02, 0.175, 0), "leather")
 			_add_mesh(root, _box(Vector3(0.42, 0.1, 0.29)), Color(0.2, 0.5, 0.25), Vector3(-0.01, 0.28, 0), "leather")
 		"hay":
-			_add_mesh(root, _box(Vector3(1.2, 0.8, 0.8)), Color(0.9, 0.8, 0.35), Vector3(0, 0.4, 0), "hay")
+			ClassicLook.hay(root)
 		"apple":
 			var a := SphereMesh.new()
 			a.radius = 0.13

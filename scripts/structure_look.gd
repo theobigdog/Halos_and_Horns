@@ -26,6 +26,7 @@ uniform vec4 glass_rect = vec4(-1.0);   // the atlas cell holding window glass (
 varying vec3 lp;      // position in the model's own space, in metres
 varying vec3 ln;      // normal in the model's own space
 varying float win;    // city window panes (Models._mark_windows)
+varying float my;     // height in the mesh's own units (unscaled)
 
 float hash3(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -73,6 +74,7 @@ void vertex() {
 	lp = VERTEX * s;
 	ln = NORMAL;
 	win = CUSTOM0.x;
+	my = VERTEX.y;
 }
 
 void fragment() {
@@ -89,6 +91,16 @@ void fragment() {
 	float grey = 1.0 - smoothstep(0.1, 0.2, h.y);
 	float warm = smoothstep(0.015, 0.03, h.x) * (1.0 - smoothstep(0.11, 0.14, h.x));
 	float wood = warm * smoothstep(0.28, 0.38, h.y) * (1.0 - smoothstep(0.8, 0.86, h.y)) * smoothstep(0.22, 0.32, h.z) * (1.0 - smoothstep(0.9, 0.98, h.z));
+	// City facades: the KayKit city atlas is 8 x 4 colour cells, and a building's plain wall faces all sample
+	// one texel column of a cell (28 or 60 px into it, the gradient running up the wall), so their UV.x is
+	// constant across the face. Doors, shades, posters, frames, signs and awnings spread their UVs over the
+	// cell (or sit at other columns), so brick goes only where all of this holds.
+	float cell_x = fract(UV.x * 8.0) * 128.0;
+	float wall_col = max(step(25.0, cell_x) * step(cell_x, 33.0), step(57.0, cell_x) * step(cell_x, 65.0));
+	// (and the gradient is stretched over a whole storey: an awning's valance squeezes it into a hand's height)
+	// (per KayKit unit, unscaled so stretched pieces judge alike: walls under 0.32, valances 0.63 and up)
+	float v_rate = fwidth(UV.y) / max(fwidth(my), 1e-5);
+	float wall = wall_col * (1.0 - step(2e-5, fwidth(UV.x))) * (1.0 - step(0.45, v_rate));
 	float glass = max(step(0.5, win), (step(glass_rect.x, UV.x) * step(UV.x, glass_rect.z) * step(glass_rect.y, UV.y) * step(UV.y, glass_rect.w)));
 
 	float height = 0.0;       // relief (metres-ish, for the bump)
@@ -108,7 +120,7 @@ void fragment() {
 
 	if (family == 1 || family == 2) {
 		// MASONRY / BUILDING
-		if (family == 2 && h.y > 0.22 && an.y < 0.5 && glass < 0.5) {
+		if (family == 2 && wall > 0.5 && h.y > 0.22 && an.y < 0.5 && glass < 0.5) {
 			// painted brick facade
 			vec2 b = blocks(face, vec2(0.36, 0.13), px * 1.5);
 			float m = b.x * near * (1.0 - smoothstep(0.01, 0.025, px));
