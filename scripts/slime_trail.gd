@@ -107,17 +107,29 @@ func _process(delta: float) -> void:
 				_last[key] = p   # (teleported, fell or flew: start again from here)
 			continue
 		_last[key] = p
-		_lay(from, p)
+		_lay(from, p, w)
 
 
 # A smear between where it was and where it is now, on whatever is under it.
-func _lay(from: Vector3, to: Vector3) -> void:
+# Only while it's actually down on something (Ted, Nov 26: a flying pickle left slime hanging in the air;
+# the ray also used to stop on the pickle's own body): its feet must be within a few cm of what's under it.
+const ON_GROUND := 0.12
+
+
+func _lay(from: Vector3, to: Vector3, w: Node3D) -> void:
+	if w is CharacterBody3D and not (w as CharacterBody3D).is_on_floor():
+		return
 	var mid := (from + to) * 0.5
 	var space := get_world_3d().direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(mid + Vector3.UP * 0.4, mid + Vector3.DOWN * 0.6, 1)
+	var q := PhysicsRayQueryParameters3D.create(mid + Vector3.UP * 0.3, mid + Vector3.DOWN * 0.6, 1)
+	if w is CollisionObject3D:
+		q.exclude = [(w as CollisionObject3D).get_rid()]
 	var hit := space.intersect_ray(q)
 	if hit.is_empty() or (hit["normal"] as Vector3).y < 0.7:
 		return   # in the air (or on a wall): nothing to smear on
+	var gap: float = minf(from.y, to.y) - (hit["position"] as Vector3).y
+	if gap > ON_GROUND or gap < -0.3:
+		return   # off the ground (flying, jumping, or a bump it's passing over)
 	var mi: MeshInstance3D = _quads[_next]
 	_born[_next] = _clock
 	_next = (_next + 1) % POOL

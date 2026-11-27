@@ -24,6 +24,10 @@ uniform sampler2D tex : source_color, filter_linear_mipmap, repeat_enable;
 uniform int family = 0;
 uniform float base_rough = 0.5;
 uniform vec4 glass_rect = vec4(-1.0);   // the atlas cell holding window glass (x0, y0, x1, y1)
+// (the same per-copy seed and look as the grime overlay on this model: Models._add_grime)
+instance uniform float seed : instance_index(0) = 0.0;
+instance uniform int look : instance_index(1) = 0;
+global uniform float grime_amount;
 
 varying vec3 lp;      // position in the model's own space, in metres
 varying vec3 ln;      // normal in the model's own space
@@ -69,6 +73,45 @@ vec2 blocks(vec2 uv, vec2 size, float aa) {
 	float d = min(min(f.x, size.x - f.x), min(f.y, size.y - f.y));
 	float m = 1.0 - smoothstep(0.006, 0.006 + max(aa, 0.012), d);
 	return vec2(m, hash2(cell + row * 7.31));
+}
+
+// distance-ish to the nearest edge between random cells (2D): the crack network
+float cell_edge2(vec2 p) {
+	vec2 i = floor(p);
+	vec2 f = fract(p);
+	float d1 = 8.0;
+	float d2 = 8.0;
+	for (int y = -1; y <= 1; y++)
+	for (int x = -1; x <= 1; x++) {
+		vec2 g = vec2(float(x), float(y));
+		vec2 o = vec2(hash2(i + g), hash2(i + g + 19.1));
+		float d = length(g + o - f);
+		if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+	}
+	return (d2 - d1) * 0.5;
+}
+// Cracks in a wall face (Ted, Nov 26: they looked like shading, and ran over windows and doors). p: the
+// face's own coordinates in metres. Returns (the open crack, 0..1; its broken edges, 0..1). The lines are
+// jagged at two scales, each one thickens, thins and stops along its length, and fine hairlines branch
+// off near the main cracks. Widths are real (millimetres), with a pixel of softening, so they stay
+// sharp up close and fade out at a distance instead of turning into grey smudges.
+vec2 wall_cracks(vec2 p, float px) {
+	vec2 w = p + vec2(fbm(vec3(p * 1.7, 1.0)), fbm(vec3(p * 1.7, 7.0))) * 0.5;
+	w += vec2(noise3(vec3(p * 13.0, 3.0)), noise3(vec3(p * 13.0, 9.0))) * 0.035;
+	float e = cell_edge2(w * 1.1) / 1.1;
+	float along = fbm(vec3(p * 1.3, 21.0));
+	float width = 0.007 * smoothstep(0.4, 0.6, along) * (0.6 + 0.8 * noise3(vec3(p * 4.0, 5.0)));
+	float aa = px * 1.2;
+	float core = 1.0 - smoothstep(width * 0.5, width * 0.5 + aa, e);
+	core *= step(0.0005, width);
+	float edge = (1.0 - smoothstep(width, width * 2.5 + 0.004 + aa, e)) * step(0.0005, width);
+	// hairlines: a finer network, only within a hand's breadth of a main crack
+	vec2 w2 = p * 3.4 + vec2(noise3(vec3(p * 20.0, 11.0)), noise3(vec3(p * 20.0, 17.0))) * 0.12 + 40.0;
+	float e2 = cell_edge2(w2) / 3.4;
+	float near_main = 1.0 - smoothstep(0.015, 0.07, e);
+	float hw = 0.0009 * near_main * smoothstep(0.5, 0.72, noise3(vec3(p * 6.0, 2.0)));
+	float hair = (1.0 - smoothstep(hw, hw + aa, e2)) * step(0.0002, hw);
+	return vec2(max(core, hair * 0.7), edge);
 }
 
 void vertex() {
@@ -129,6 +172,17 @@ void fragment() {
 			tone *= mix(1.0 + (b.y - 0.5) * 0.07, 0.84, m);
 			height += -m * 0.006 + noise3(lp * 40.0) * 0.0012 * fine;
 			rough = 0.82 + (b.y - 0.5) * 0.1;
+			// cracks (the grime overlay leaves these walls to us: own_cracks), only on the plain wall, in
+			// patches, on some buildings and not others, and never with the Clean look
+			float some = step(0.4, fract(sin(seed * 91.37) * 4375.85)) * (look == 1 ? 0.0 : 1.0) * grime_amount;
+			vec3 zp = lp * 2.2 + vec3(seed * 13.7, seed * 7.3, seed * 3.1);
+			float zone = smoothstep(0.42, 0.62, fbm(zp * 0.35 + 40.0));
+			if (some * zone > 0.01) {
+				vec2 ck = wall_cracks(face + seed * 3.7, px) * some * zone;
+				tone *= (1.0 - ck.x * 0.72) * (1.0 - ck.y * 0.14);
+				height -= ck.x * 0.004 + ck.y * 0.0012;
+				rough = mix(rough, 1.0, ck.x);
+			}
 		} else if (h.y < 0.3 && h.z > 0.86 && wood < 0.5) {
 			// whitewash / plaster: soft trowel marks, no courses
 			float trowel = fbm(lp * vec3(4.0, 9.0, 4.0));
@@ -390,3 +444,5 @@ static func apply(id: String, model: Node3D) -> void:
 			if src == null or src.albedo_texture == null or src.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED:
 				continue
 			mi.set_surface_override_material(si, material_for(src, fam, q))
+		if fam == BUILDING:
+			mi.set_instance_shader_parameter("own_cracks", 1.0)   # (the grime overlay leaves cracks to us)

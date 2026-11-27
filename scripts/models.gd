@@ -21,8 +21,9 @@ const GRIME_SHADER := """
 shader_type spatial;
 render_mode blend_mul, unshaded, cull_back, depth_draw_never, shadows_disabled, fog_disabled;
 
-instance uniform float seed = 0.0;
-instance uniform int look = 0;
+instance uniform float seed : instance_index(0) = 0.0;
+instance uniform int look : instance_index(1) = 0;
+instance uniform float own_cracks : instance_index(2) = 0.0;   // 1: the structure's own shader draws them (StructureLook)
 global uniform float grime_amount;
 varying vec3 lp;
 varying float win;   // 1 on a city building's window glass (marked in the mesh: _mark_windows)
@@ -77,16 +78,15 @@ void fragment() {
 	float mottle = fbm(p * 3.5);                                          // fine unevenness everywhere
 	float spots = smoothstep(0.8, 0.92, noise3(p * 6.0)) * 0.7;          // a few soft specks
 	float crack_zone = smoothstep(0.56, 0.76, fbm(p * 0.35 + 40.0));       // cracks only in the odd patch
-	float crack = (1.0 - smoothstep(0.008, 0.03, cell_edge(p * 1.8))) * crack_zone;
-	// Walls and windows crack separately (Wife's notes, Nov 21: the cracks ran straight across the
-	// windows): each building has cracked walls or not, and cracked windows or not, in their own
-	// pattern, so the two never line up.
+	// (Ted, Nov 26: "looks a lot more like shading than cracks"): jagged (the cell edges wander), and each
+	// crack thins out and stops somewhere instead of outlining every cell
+	vec3 wp3 = p * 1.8 + vec3(fbm(p * 2.5), fbm(p * 2.5 + 7.0), fbm(p * 2.5 + 13.0)) * 0.6;
+	float live = smoothstep(0.42, 0.6, fbm(p * 0.9 + 21.0));
+	float crack = (1.0 - smoothstep(0.004 + 0.012 * live, 0.012 + 0.02 * live, cell_edge(wp3))) * crack_zone * live;
+	// Never on windows or doors (Ted, Nov 26, again: they still ran across the glass): no cracks at all on
+	// window glass, and city buildings draw theirs on their plain wall faces only (StructureLook).
 	float wall_cracks = step(0.4, fract(sin(seed * 91.37) * 4375.85));
-	float glass_cracks = step(0.55, fract(sin(seed * 47.13 + 5.0) * 2731.31));
-	vec3 gp = lp * 5.0 + vec3(seed * 3.3 + 50.0, seed * 1.9, 7.0);
-	float glass_zone = smoothstep(0.5, 0.65, fbm(gp * 0.25));
-	float glass_crack = (1.0 - smoothstep(0.01, 0.035, cell_edge(gp))) * glass_zone;
-	crack = mix(crack * wall_cracks, glass_crack * glass_cracks * 1.4, step(0.5, win));
+	crack *= wall_cracks * (1.0 - step(0.5, win)) * (1.0 - own_cracks);
 	vec3 dirt = vec3(0.62, 0.55, 0.47);                                   // brownish grime, not just grey
 	vec3 col = mix(vec3(1.0), dirt, clamp(blotch * 0.55 + (mottle - 0.5) * 0.35, 0.0, 1.0));
 	col *= 1.0 - spots * 0.3;

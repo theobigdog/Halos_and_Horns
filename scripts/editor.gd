@@ -35,8 +35,8 @@ const Characters = preload("res://scripts/characters.gd")
 const HornCrowns = preload("res://scripts/horn_crowns.gd")
 
 const PIECES := [
-	["block", "Block"], ["cylinder", "Cylinder"],
-	["bouncy", "Bouncy (metal, reusable)"], ["bouncy_once", "Bouncy (wooden, 1-use)"],
+	["block", "Block"], ["cylinder", "Cylinder"],   # (old maps only: not in the palette since Ted's Nov 26 notes)
+	["bouncy_once", "Bouncy (wooden, 1-use)"], ["bouncy", "Bouncy (metal, reusable)"],
 	["bouncy_super", "Super Bouncy (magic, reusable)"],
 	["light", "Light"], ["window", "Window picture (a room, or lit)"], ["sidewalk", "Sidewalk"], ["ice", "Ice (slippery)"], ["shrine", "Shrine"], ["angel_spawn", "Angel start"], ["demon_spawn", "Demon start"],
 ]
@@ -111,6 +111,8 @@ var _preview: Node3D           # the see-through copy of the armed piece, under 
 var _preview_kind := ""
 var _ext_axis := 0             # pulling a tab: 0 = along the row, 1 = across (floors)
 var _ext_side := 1
+var _corner_id := ""           # lining: the new run started at a corner while pulling a tab (its piece id)
+const CORNER_ANGLE := 30.0     # swing the mouse further off the row than this (degrees) to turn a corner
 var _tab_balls := []           # the pull tabs you see             # ...from the far end (1) or the near end (-1)
 var place_yaw := 0.0           # degrees: how the next placed piece is turned (Shift + wheel)
 
@@ -1033,6 +1035,7 @@ func begin(kind: String) -> void:
 	if kind == "extend" and drag == "":
 		_ext_axis = 0
 		_ext_side = 1
+	_corner_id = ""
 	if selected < 0:
 		_say("Select a piece first (click it).", 2.0)
 		return
@@ -1062,9 +1065,9 @@ func begin(kind: String) -> void:
 	if kind == "move":
 		_start_move_ray()
 	if kind == "extend":
-		_say("Extending: move the mouse along it to add copies end to end. Click to finish, Esc to cancel.", 999.0)
+		_say("Extending " + piece_name(_drag_piece) + ": move the mouse along it to add copies end to end. Click to finish, Esc to cancel.", 999.0)
 		return
-	_say({"move": "Moving", "rotate": "Rotating", "scale": "Resizing"}[kind] + ": X / Y / Z for one axis, L local/world, Alt no snap. Click to finish, Esc to cancel.", 999.0)
+	_say({"move": "Moving", "rotate": "Rotating", "scale": "Resizing"}[kind] + " " + piece_name(_drag_piece) + ": X / Y / Z for one axis, L local/world, Alt no snap. Click to finish, Esc to cancel.", 999.0)
 
 
 func set_axis(a: String) -> void:
@@ -1191,7 +1194,14 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 			_refresh_piece(selected)
 			var r1 := int(p.get("repeat", 1))
 			var r2 := int(p.get("repeat2", 1))
-			_say(("Extending: %d in a row" % r1 if r2 <= 1 else "Extending: %d x %d" % [r1, r2]) + ". Let go to finish, Esc to cancel.", 999.0)
+			var turned := 0
+			if _ext_axis == 0 and other <= 1 and not Models.is_flat(p["model"]) and not Models.is_stairs(p["model"]):
+				var row_end: Vector3 = flat_start + dir * w * (count - 0.5) if _ext_side > 0 else Vector3(first.x, hit.y, first.z) - dir * w * 0.5
+				turned = _line_corner(row_end, dir * float(_ext_side), w, Vector3(hit.x, 0.0, hit.z) - Vector3(row_end.x, 0.0, row_end.z), start.y, snap)
+			if turned > 0:
+				_say("Lining with %s: %d, then round the corner %d more. Let go to finish (then pull the new end's tab to turn again), Esc to cancel." % [piece_name(p), r1, turned], 999.0)
+			else:
+				_say(("Extending %s: %d in a row" % [piece_name(p), r1] if r2 <= 1 else "Extending %s: %d x %d" % [piece_name(p), r1, r2]) + ". Swing out to the side to turn a corner. Let go to finish, Esc to cancel.", 999.0)
 		"rotate":
 			var amount := (mouse_pos.x - _drag_mouse.x) * 0.5
 			if snap:
@@ -1243,7 +1253,7 @@ func grab(ray_from: Vector3, ray_dir: Vector3) -> void:
 	var start := MapData.vec(_drag_piece["pos"])
 	var on := _surface_point(ray_from, ray_dir)
 	_drag_offset = Vector3(start.x - on.x, 0.0, start.z - on.z)
-	_say("Dragging: let go to drop it. X / Y / Z lock to one axis, Alt no snap, Esc or right-click to cancel.", 999.0)
+	_say("Dragging " + piece_name(_drag_piece) + ": let go to drop it. X / Y / Z lock to one axis, Alt no snap, Esc or right-click to cancel.", 999.0)
 
 
 # Where the cursor ray lands, ignoring the piece being moved (or the ground if it misses everything).
@@ -1283,10 +1293,12 @@ func _end_drag(keep: bool) -> void:
 	var before := _drag_before
 	drag = ""
 	axis = ""
+	var corner := _corner_id
+	_corner_id = ""
 	if keep:
 		var changed := before != JSON.stringify(map)
 		if online:   # (others' edits change the map too: only our own piece counts)
-			changed = selected >= 0 and piece(selected) != _drag_piece
+			changed = (selected >= 0 and piece(selected) != _drag_piece) or corner != ""
 		if changed:
 			_push_undo(before)
 			_redo.clear()
@@ -1302,6 +1314,10 @@ func _end_drag(keep: bool) -> void:
 				map["pieces"][m] = _cleaned_piece(piece(m))
 				_refresh_piece(m)
 		_say("", 0.0)
+		if corner != "":
+			var ck: int = map["pieces"].find(piece_by_id(corner))
+			if ck >= 0:
+				select(ck)
 	elif online:
 		if selected >= 0 and not _drag_piece.is_empty():
 			map["pieces"][selected] = _drag_piece.duplicate(true)
@@ -1310,6 +1326,10 @@ func _end_drag(keep: bool) -> void:
 			if m < map["pieces"].size():
 				map["pieces"][m] = (_member_before[m] as Dictionary).duplicate(true)
 				_refresh_piece(m)
+		if corner != "":   # (the corner run we added goes again)
+			var ck: int = map["pieces"].find(piece_by_id(corner))
+			if ck >= 0:
+				_drop_piece(ck)
 		_say("Cancelled.", 1.5)
 	else:
 		map = JSON.parse_string(before)
@@ -1441,7 +1461,7 @@ func _click(at: Vector2) -> void:
 		place(kind, _place_point(at))
 		if not Input.is_physical_key_pressed(KEY_SHIFT):
 			placing = ""
-			_say("Placed. (Hold Shift while clicking to place several.)", 3.0)
+			_say("Placed%s. (Hold Shift while clicking to place several.)" % ((" " + piece_name(piece(selected))) if selected >= 0 else ""), 3.0)
 		return
 	var tab := _tab_under(at)
 	if not tab.is_empty():
@@ -1453,6 +1473,78 @@ func _click(at: Vector2) -> void:
 	select(_piece_under(at))
 	_press_piece = selected
 	_press_at = at
+
+
+# Lining (Ted, Nov 26: walls, fences and small rocks are used to line areas, so pulling a tab should be able to
+# go round corners). While a row's end tab is pulled, swinging the mouse more than CORNER_ANGLE off the row
+# turns a corner: the row stops at the corner and a new run of the same piece starts there, aimed at the
+# mouse (15-degree steps; Alt for any angle), as long as the mouse is far. Swing back and the corner goes
+# again. On letting go the new run is selected, so pulling its end tab turns the next corner. Returns how
+# many are in the new run (0: no corner).
+func _line_corner(row_end: Vector3, out_dir: Vector3, w: float, off: Vector3, y: float, snap: bool) -> int:
+	var k := -1
+	if _corner_id != "":
+		for i in map["pieces"].size():
+			if str(piece(i).get("id", "")) == _corner_id:
+				k = i
+	var dist := off.length()
+	var turn := dist > w * 0.8 and off.normalized().dot(out_dir) < cos(deg_to_rad(CORNER_ANGLE)) and off.normalized().dot(out_dir) > -0.5
+	if not turn:
+		if k >= 0:
+			_drop_piece(k)
+		return 0
+	var src := _drag_piece
+	var r: Array = src.get("rot", [0.0, 0.0, 0.0])
+	var sc := MapData.vec(src["size"]) if src.has("size") else Vector3.ONE
+	var ls := Basis.from_euler(Vector3(deg_to_rad(r[0]), 0.0, deg_to_rad(r[2]))) * Models.row_step(src["model"], sc)
+	var yaw := rad_to_deg(atan2(off.x, off.z) - atan2(ls.x, ls.z))
+	if snap:
+		yaw = snappedf(yaw, 15.0)
+	yaw = wrapf(yaw, -180.0, 180.0)
+	var step := Basis(Vector3.UP, deg_to_rad(yaw)) * ls
+	var d2 := Vector3(step.x, 0.0, step.z).normalized()
+	var n2 := clampi(roundi(off.dot(d2) / w), 1, MapData.MAX_REPEAT)
+	var q: Dictionary = src.duplicate(true)
+	q.erase("repeat2")
+	q.erase("group")
+	if n2 > 1:
+		q["repeat"] = n2
+	else:
+		q.erase("repeat")
+	q["rot"] = [r[0], snappedf(yaw, 0.01), r[2]]
+	var at := row_end + d2 * w * 0.5
+	q["pos"] = [snappedf(at.x, 0.001), snappedf(y, 0.001), snappedf(at.z, 0.001)]
+	if _corner_id == "":
+		_corner_id = _new_id()
+	q["id"] = _corner_id
+	if k < 0:
+		map["pieces"].append(_cleaned_piece(q))
+		k = map["pieces"].size() - 1
+		nodes.append(_make_node(piece(k), k))
+	else:
+		map["pieces"][k] = _cleaned_piece(q)
+		_refresh_piece(k)
+	return n2
+
+
+# Take one piece out of the map while something else stays selected (the corner run, swung back in).
+func _drop_piece(k: int) -> void:
+	var keep_id := str(piece(selected).get("id", "")) if selected >= 0 and selected < map["pieces"].size() else ""
+	map["pieces"].remove_at(k)
+	if k == nodes.size() - 1:   # (the usual case: it was the last one added)
+		if is_instance_valid(nodes[k]):
+			nodes[k].free()
+		nodes.remove_at(k)
+	else:
+		_rebuild_all()
+	selected = map["pieces"].find(piece_by_id(keep_id)) if keep_id != "" else -1
+
+
+func piece_by_id(id: String) -> Dictionary:
+	for q in map["pieces"]:
+		if str(q.get("id", "")) == id:
+			return q
+	return {}
 
 
 # A selected structure's pull tabs: [axis, side, where] (axis 0 along the row, 1 across, floors only).
@@ -1503,7 +1595,7 @@ func pull_tab(axis_index: int, side: int) -> void:
 	_ext_axis = axis_index
 	_ext_side = side
 	_grabbing = true   # (letting go of the mouse finishes it)
-	_say("Pull it out (or back in). Let go to finish, Esc to cancel.", 999.0)
+	_say("Extending " + piece_name(piece(selected)) + ": pull it out (or back in), or swing out to the side to turn a corner. Let go to finish, Esc to cancel.", 999.0)
 
 
 func _toggle_local() -> void:
@@ -2579,6 +2671,8 @@ func _build_ui() -> void:
 		var kind: String = p[0]
 		if kind in ["ice", "sidewalk"]:
 			continue   # (in Ground, with the floors and roads)
+		if kind in ["block", "cylinder"]:
+			continue   # (Ted, Nov 26: no use any more; old maps' ones still load and can be edited)
 		_palette_button(special, p[1], kind)
 	var walk_in := _palette_section(pal, "Walk-in buildings", true)
 	for bk in HollowBuildings.KINDS:
@@ -2911,6 +3005,10 @@ func _arm(kind: String) -> void:
 		label = PropLib.label(kind.substr(5))
 	if kind.begins_with("model:"):
 		label = Models.label(kind.substr(6))
+	if kind.begins_with("building:"):
+		label = HollowBuildings.KINDS.get(kind.substr(9), label)
+	if kind.begins_with("ground:"):
+		label = GroundBlock.KINDS.get(kind.substr(7), label) + " block"
 	_say("Click in the world to place: %s   (Esc cancels, hold Shift to place several)" % label, 999.0)
 
 
@@ -2948,6 +3046,32 @@ func _sync_settings() -> void:
 	main.graphics.set_day_cycle(map["cycle"])
 
 
+# What a piece is, in words (Ted, Nov 26: a placed Townhouse just said "building"): the inspector's title
+# and the messages while moving, dragging or extending it all use this.
+func piece_name(p: Dictionary) -> String:
+	var t: String = p.get("type", "")
+	match t:
+		"prop":
+			return PropLib.label(p["prop"])
+		"model":
+			return Models.label(p["model"])
+		"building":
+			return HollowBuildings.KINDS.get(p.get("kind", ""), "Walk-in building")
+		"ground":
+			var gk: Array = GroundBlock.KINDS.keys()
+			return GroundBlock.KINDS[gk[clampi(int(p.get("look", 0)), 0, gk.size() - 1)]] + " block"
+	var title := t
+	for q in PIECES:
+		if q[0] == t:
+			title = q[1]
+	if t in ["bouncy", "bouncy_once", "bouncy_super"]:
+		var skins: Array = Bouncy.skin_names({"bouncy": "metal", "bouncy_once": "wood", "bouncy_super": "super"}[t])
+		var look := int(p.get("look", 0))
+		if look > 0 and look < skins.size():
+			title += ": " + str(skins[look])
+	return title
+
+
 func _sync_inspector() -> void:
 	if _inspector == null:
 		return
@@ -2964,14 +3088,11 @@ func _sync_inspector() -> void:
 	_group_label.text = ("%d selected%s" % [members.size() + 1, " (a group)" if grouped else ""]) if not members.is_empty() else "In a group"
 	_group_btn.visible = not members.is_empty()
 	_ungroup_btn.visible = grouped
-	var title := t
-	for q in PIECES:
-		if q[0] == t:
-			title = q[1]
+	var title := piece_name(p)
 	if t == "prop":
-		title = "Prop: %s (%d%% size: Alt + mouse wheel)" % [PropLib.label(p["prop"]), roundi(float(p.get("scale", 1.0)) * 100.0)]
+		title = "Prop: %s (%d%% size: Alt + mouse wheel)" % [title, roundi(float(p.get("scale", 1.0)) * 100.0)]
 	if t == "model":
-		title = "%s (%s)" % [Models.label(p["model"]), Models.category(p["model"])]
+		title = "%s (%s)" % [title, Models.category(p["model"])]
 	_insp_title.text = title
 	var vals := {"pos": p["pos"], "rot": p.get("rot", [0, 0, 0]), "size": p.get("size", [1, 1, 1])}
 	for k in vals:

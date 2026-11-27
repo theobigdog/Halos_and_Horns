@@ -6,6 +6,7 @@ const Models = preload("res://scripts/models.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const MapData = preload("res://scripts/map_data.gd")
 const Bouncy = preload("res://scripts/bouncy.gd")
+const HollowBuildings = preload("res://scripts/hollow_buildings.gd")
 
 var main: Node
 var failures := 0
@@ -504,6 +505,29 @@ func _run() -> void:
 	ed._end_drag(true)
 	fp = ed.map["pieces"][fi]
 	check(int(fp.get("repeat", 1)) == 6 and is_equal_approx(fp["pos"][0], -step * 2.0), "...and pulling the near tab grows it the other way, the far end staying put (%s, from x %.2f)" % [fp.get("repeat", 1), fp["pos"][0]])
+	# Lining (Ted, Nov 26): swinging the mouse out to the side while pulling turns a corner, starting a new run
+	# of the same piece aimed at the mouse; swinging back in takes the corner away again
+	var n_before: int = ed.map["pieces"].size()
+	ed.select(fi)
+	ed.pull_tab(0, 1)
+	ed.drag_update(f0 + Vector3(step * 3.5, 30, step * 3.0), Vector3.DOWN, Vector2.ZERO)
+	ed.drag_update(f0 + Vector3(step * 3.5, 30, step * 3.1), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	var cp: Dictionary = ed.map["pieces"][ed.map["pieces"].size() - 1]
+	check(ed.map["pieces"].size() == n_before + 1 and cp.get("model", "") == "halloween/fence" and int(cp.get("repeat", 1)) == 3
+			and is_equal_approx(float(cp["rot"][1]), -90.0) and ed.selected == ed.map["pieces"].size() - 1,
+			"lining: swinging out sideways turns a corner (a new run of %s, turned %s, selected)" % [cp.get("repeat", 1), cp.get("rot", [])])
+	check(int(ed.map["pieces"][fi].get("repeat", 1)) == 6, "...and the row itself stays as it was (%s)" % ed.map["pieces"][fi].get("repeat", 1))
+	ed.select(fi)
+	ed.pull_tab(0, 1)
+	ed.drag_update(f0 + Vector3(step * 3.5, 30, step * 3.0), Vector3.DOWN, Vector2.ZERO)
+	ed.drag_update(f0 + Vector3(step * 4.6, 30, 0.0), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	check(ed.map["pieces"].size() == n_before + 1 and int(ed.map["pieces"][fi].get("repeat", 1)) == 7,
+			"...and swinging back in takes that corner away again (%d pieces, %s in the row)" % [ed.map["pieces"].size() - n_before, ed.map["pieces"][fi].get("repeat", 1)])
+	ed.undo()
+	ed.undo()
+	check(ed.map["pieces"].size() == n_before and int(ed.map["pieces"][fi].get("repeat", 1)) == 6, "...and undo takes the corner away")
 	# Stairs extend upward: each flight starts at the top of the last
 	var st_step: Vector3 = Models.row_step("dungeon/stairs")
 	check(st_step.y > 2.5 and Vector2(st_step.x, st_step.z).length() > 2.5, "pulling out stairs continues the climb (each flight %s further on and up)" % st_step)
@@ -599,6 +623,14 @@ func _run() -> void:
 	print("  biggest prop: %s, %d triangles" % biggest)
 	check(heavy.is_empty(), "every prop is under %d triangles %s" % [PROP_TRIANGLES, str(heavy)])
 	check(defaults.is_empty(), "no sphere or ring is left at Godot's 4,000-triangle default %s" % str(defaults))
+
+	# Walk-in buildings: no two faces facing the same way lie in one plane and overlap (they flicker as the
+	# camera moves: Ted's Nov 26 notes, three rounds of them)
+	for kind in HollowBuildings.KINDS:
+		for look in 4:
+			var flick: Array = HollowBuildings.coplanar_faces(kind, look)
+			check(flick.is_empty(), "walk-in %s (look %d) has no flickering faces %s" % [kind, look,
+					str(flick.slice(0, 3).map(func(f): return f[0].snapped(Vector3.ONE * 0.01)))])
 
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "SOME FAILED", failures])
 	quit(1 if failures > 0 else 0)

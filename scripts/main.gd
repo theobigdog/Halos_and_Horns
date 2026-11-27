@@ -280,6 +280,7 @@ func _ready() -> void:
 	if DisplayServer.get_name() != "headless":
 		Taunts.warm_up()   # (synthesized in the background, so the first taunt doesn't stall the game)
 		PropAnimSounds.warm_up()
+		FxWarmup.sounds()   # (stomp, Hellfire and Vacuum Orb sounds: Ted, Nov 26, near 1 s freezes)
 	var numbers := Updater.version_numbers(game_version)
 	while numbers.size() < 3:   # "dev" has no numbers and "0.4" has two: the rest count as 0
 		numbers.append(0)
@@ -4035,6 +4036,7 @@ const BLESSING_SHOVE := 0.05    # share of a blessing's speed that shoves a prop
 const STOMP_PUSH := 2.0         # m a Cloud Stomp shoves the demons it hurts (first guess)
 const STOMP_STUN := 1.0         # s the demons it hurts can't use skills ("STUNNED!", Sara, Nov 25; first guess)
 const StompSounds = preload("res://scripts/stomp_sounds.gd")
+const FxWarmup = preload("res://scripts/fx_warmup.gd")
 
 
 # We ran into a loose prop or a disguised demon. Practice: shove it now. Online: ask the host.

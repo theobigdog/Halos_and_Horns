@@ -21,6 +21,7 @@ const PropLib = preload("res://scripts/prop_library.gd")
 const PropAnims = preload("res://scripts/prop_anims.gd")
 const Projectile = preload("res://scripts/projectile.gd")
 const Effects = preload("res://scripts/effects.gd")
+const FxWarmup = preload("res://scripts/fx_warmup.gd")
 const Blessings = preload("res://scripts/blessings.gd")
 const Taunts = preload("res://scripts/taunts.gd")
 const Sfx = preload("res://scripts/sfx.gd")
@@ -205,6 +206,7 @@ func _ready() -> void:
 	spring.add_child(camera)
 	camera.current = true
 	_warm_ghost()
+	FxWarmup.shaders(camera)
 	voice = AudioStreamPlayer3D.new()
 	voice.bus = Sfx.BUS
 	voice.unit_size = 6.0
