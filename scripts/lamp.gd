@@ -50,5 +50,7 @@ func _process(delta: float) -> void:
 		var a := _hash(floorf(ft))
 		var b := _hash(floorf(ft) + 1.0)
 		e *= 0.35 + 0.65 * lerpf(a, b, smoothstep(0.0, 1.0, ft - floorf(ft)))
+		if flicker >= 2.0 and _hash(floorf(ft * 1.7) + 3.0) < 0.22:
+			e *= 0.04   # a bad bulb: it cuts out now and then
 	light.light_energy = e
 	light.visible = e > 0.01

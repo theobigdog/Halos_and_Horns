@@ -212,8 +212,215 @@ static func make(type_name: String, root: Node3D) -> bool:
 		"flowers_daisies": _daisies(root)
 		"flowers_tulips": _tulips(root)
 		"fern": _fern(root)
+		"snowball": _snowball(root, 0.35)
+		"snowball_big": _snowball(root, 0.58)
+		"snowman": _snowman(root)
+		"coconut": _coconut(root)
+		"beehive": _beehive(root)
 		_: return false
 	return true
+
+
+# ---------------------------------------------------------------- Nov 27: snow, a coconut, a beehive
+
+# A packed, rolled snowball: lumpy, with the crust of a roll's spiral and a few bits of grass and leaf rolled up
+# in it, a little flattened where it sits. Lit by the snow shader's soft sparkle (vertex colours, matte).
+static func _snow_ball(st: SurfaceTool, at: Vector3, r: float, seed: int) -> void:
+	var rings := 14
+	var around := 24
+	var lump := func(u: float, a: float) -> float:
+		return 1.0 + 0.045 * sin(a * 5.0 + u * 9.0 + seed) + 0.03 * sin(a * 11.0 - u * 17.0 + seed * 2.0) \
+				+ 0.02 * sin(u * 40.0 + a * 3.0)
+	var pt := func(u: float, a: float) -> Vector3:
+		var th := PI * u
+		var rr: float = r * lump.call(u, a)
+		var p := Vector3(sin(th) * cos(a), -cos(th), sin(th) * sin(a)) * rr
+		if p.y < -r * 0.82:
+			p.y = -r * 0.82 + (p.y + r * 0.82) * 0.25   # sat down: a flattened bottom
+		return at + p + Vector3.UP * r * 0.82
+	var col := func(u: float, a: float) -> Color:
+		var c := Color(0.93, 0.95, 0.99).lerp(Color(0.8, 0.86, 0.95), 0.5 + 0.5 * sin(a * 7.0 + u * 23.0 + seed))
+		if _h(floor(u * 31.0) * 7.0 + floor(a * 9.0) + seed) > 0.993:
+			c = c.lerp(Color(0.45, 0.5, 0.32), 0.6)   # a bit of grass rolled up in it
+		return c
+	for i in rings:
+		for j in around:
+			var u0 := float(i) / rings
+			var u1 := float(i + 1) / rings
+			var a0 := TAU * j / around
+			var a1 := TAU * (j + 1) / around
+			var p00: Vector3 = pt.call(u0, a0)
+			var p01: Vector3 = pt.call(u0, a1)
+			var p10: Vector3 = pt.call(u1, a0)
+			var p11: Vector3 = pt.call(u1, a1)
+			# (a colour per corner, so the smoothing can blend them: no squares)
+			for v in [[p00, u0, a0], [p11, u1, a1], [p10, u1, a0], [p00, u0, a0], [p01, u0, a1], [p11, u1, a1]]:
+				st.set_color(col.call(v[1], fmod(v[2], TAU)))
+				st.add_vertex(v[0])
+
+
+# (collision: a cylinder as wide as the ball)
+static func _snowball(root: Node3D, r: float) -> void:
+	var key := "snowball_%s" % r
+	var parts := _cached(key, func() -> Array:
+		var st := _begin()
+		_snow_ball(st, Vector3.ZERO, r, 3 if r < 0.5 else 8)
+		return [_end(st, true)])
+	_add(root, parts[0], _vmat("plaster", 0.85))
+
+
+# A cute snowman: three snowballs, coal eyes and a coal smile, a carrot nose, a knitted scarf with fringed
+# ends, stick arms with twiggy fingers, three coal buttons and a little top hat. (collision: 0.45 x 1.62)
+static func _snowman(root: Node3D) -> void:
+	var parts := _cached("snowman", func() -> Array:
+		var snow := _begin()
+		_snow_ball(snow, Vector3.ZERO, 0.4, 11)
+		_snow_ball(snow, Vector3(0, 0.6, 0), 0.29, 12)
+		_snow_ball(snow, Vector3(0, 1.02, 0), 0.21, 13)
+		var coal := _begin()
+		var coal_c := Color(0.07, 0.07, 0.08)
+		var head := Vector3(0, 1.02 + 0.21 * 0.82, 0)
+		var face := func(yaw: float, pitch: float, rad: float) -> Vector3:
+			return head + Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * rad
+		for s in [-1.0, 1.0]:   # eyes: shiny round coals
+			_lathe(coal, [[0.0, -0.028], [0.026, -0.012], [0.028, 0.0], [0.022, 0.016], [0.0, 0.024]], 10,
+					func(_i, _a): return coal_c, face.call(s * 0.32, 0.22, 0.2))
+		for k in 7:   # the smile
+			var a := lerpf(-0.55, 0.55, k / 6.0)
+			_lathe(coal, [[0.0, -0.014], [0.016, -0.006], [0.016, 0.006], [0.0, 0.014]], 8,
+					func(_i, _a): return coal_c, face.call(a, -0.28 - 0.12 * cos(a * 2.6), 0.205))
+		var mid_c := Vector3(0, 0.6 + 0.29 * 0.82, 0)   # (the middle snowball's centre)
+		for k in 3:   # buttons, down the front of the middle snowball
+			var y: float = mid_c.y - 0.13 + 0.11 * k
+			var bp := Vector3(0, y, sqrt(maxf(0.0, 0.29 * 0.29 - pow(y - mid_c.y, 2.0))) + 0.005)
+			_lathe(coal, [[0.0, -0.03], [0.03, -0.012], [0.032, 0.0], [0.024, 0.02], [0.0, 0.028]], 10,
+					func(_i, _a): return coal_c, bp + Vector3(0, 0, 0.0))
+		# the hat: brim and a short crown, a red band
+		var hat := _begin()
+		var hat_c := Color(0.08, 0.08, 0.1)
+		_lathe(hat, [[0.0, 0.0], [0.19, 0.0], [0.19, 0.018], [0.12, 0.022], [0.119, 0.06], [0.115, 0.17], [0.0, 0.175]], 20,
+				func(i, _a): return Color(0.62, 0.1, 0.1) if i == 3 else hat_c, head + Vector3(0, 0.15, 0))
+		# the carrot nose (pointing out of the face), with grooves
+		var nose := _begin()
+		var tip: Vector3 = face.call(0.0, 0.03, 0.42)
+		var base: Vector3 = face.call(0.0, 0.03, 0.17)
+		_tube(nose, [base, base.lerp(tip, 0.4), base.lerp(tip, 0.75), tip], [0.035, 0.026, 0.014, 0.002], Color(0.95, 0.45, 0.08), 8)
+		# the scarf: a band round the neck and two ends hanging down the front, with fringes
+		var scarf := _begin()
+		var neck := Vector3(0, 0.6 + 0.29 * 0.82 + 0.25, 0)
+		var red := Color(0.75, 0.12, 0.12)
+		var stripe := Color(0.95, 0.9, 0.8)
+		var n := 18
+		for k in n:
+			var a0 := TAU * k / n
+			var a1 := TAU * (k + 1) / n
+			var r0 := 0.2
+			var cc := red if k % 3 != 0 else stripe
+			for band in [[-0.05, 0.05]]:
+				var q0 := neck + Vector3(cos(a0) * r0, band[0], sin(a0) * r0)
+				var q1 := neck + Vector3(cos(a1) * r0, band[0], sin(a1) * r0)
+				var q2 := neck + Vector3(cos(a1) * r0, band[1], sin(a1) * r0)
+				var q3 := neck + Vector3(cos(a0) * r0, band[1], sin(a0) * r0)
+				_quad(scarf, q0, q1, q2, q3, cc, Vector3(cos((a0 + a1) * 0.5), 0, sin((a0 + a1) * 0.5)))
+		for s in [0.07, -0.05]:   # the two hanging ends
+			var top := neck + Vector3(s, -0.02, 0.21)
+			var len := 0.32 if s > 0.0 else 0.24
+			# (hanging forward over the middle snowball's bulge)
+			_box(scarf, top + Vector3(0, -len * 0.5, 0.11), Vector3(0.09, len, 0.025), red,
+					Basis(Vector3.RIGHT, 0.12) * Basis(Vector3.BACK, s * 1.2))
+			for f in 4:
+				var fp := top + Vector3(-0.03 + f * 0.02, -len - 0.03, 0.13)
+				_box(scarf, fp, Vector3(0.008, 0.05, 0.008), stripe, Basis(Vector3.BACK, s * 1.2))
+		# stick arms with twiggy hands
+		var sticks := _begin()
+		var wood := Color(0.32, 0.21, 0.12)
+		for side in [-1.0, 1.0]:
+			var sh := Vector3(side * 0.24, 0.72, 0.0)
+			var el := Vector3(side * 0.48, 0.86, 0.04)
+			var hand := Vector3(side * 0.66, 1.05, 0.02)
+			_tube(sticks, [sh, el, hand], [0.02, 0.016, 0.011], wood, 6)
+			for f in 3:
+				var fdir := Vector3(side * (0.06 + 0.02 * f), 0.05 + 0.04 * (f - 1), 0.02 * (f - 1))
+				_tube(sticks, [hand, hand + fdir], [0.008, 0.004], wood, 5)
+			_tube(sticks, [el, el + Vector3(side * 0.05, -0.08, 0.02)], [0.009, 0.004], wood, 5)
+		return [_end(snow, true), _end(coal, true), _end(hat, false), _end(nose, true), _end(scarf, false), _end(sticks, true)])
+	_add(root, parts[0], _vmat("plaster", 0.85))
+	_add(root, parts[1], _vmat("stone", 0.35))
+	_add(root, parts[2], _vmat("cloth", 0.7))
+	_add(root, parts[3], _vmat("plant", 0.6))
+	_add(root, parts[4], _vmat("cloth", 0.95))
+	_add(root, parts[5], _vmat("wood", 0.9))
+
+
+# A coconut: a slightly egg-shaped brown nut with coarse fibres streaking it lengthwise, three dark "eyes" at
+# one end and ridges down its sides. (collision: 0.12 x 0.22)
+static func _coconut(root: Node3D) -> void:
+	var parts := _cached("coconut", func() -> Array:
+		var st := _begin()
+		var prof := [[0.0, 0.0], [0.05, 0.006], [0.085, 0.03], [0.108, 0.07], [0.115, 0.11], [0.108, 0.15],
+				[0.085, 0.185], [0.05, 0.208], [0.02, 0.216], [0.0, 0.218]]
+		var col := func(i: int, a: float) -> Color:
+			var fib := 0.5 + 0.5 * sin(a * 41.0 + sin(a * 7.0 + i) * 2.0)
+			var c := Color(0.36, 0.22, 0.12).lerp(Color(0.52, 0.35, 0.19), fib * 0.7)
+			if _h(float(i) * 5.0 + floor(a * 30.0)) > 0.8:
+				c = c.darkened(0.25)
+			if i >= prof.size() - 3:   # the eyes end: three dark dimples
+				for k in 3:
+					var ea := TAU * k / 3.0
+					if absf(wrapf(a - ea, -PI, PI)) < 0.32 and i == prof.size() - 3:
+						c = Color(0.12, 0.07, 0.04)
+			return c
+		var ridge := func(i: int, a: float) -> float:
+			return 1.0 + 0.04 * absf(sin(a * 1.5)) + 0.012 * sin(a * 41.0 + i)
+		_lathe(st, prof, 30, col, Vector3.ZERO, ridge)
+		return [_end(st, true)])
+	_add(root, parts[0], _vmat("wood", 0.92))
+
+
+# A beehive: an old straw skep (a dome of coiled straw rope, stitched), on a little wooden stand, with an
+# entrance hole at the bottom and a landing board. E sets the bees swarming round it (prop_animator "swarm").
+# (collision: 0.33 x 0.95)
+static func _beehive(root: Node3D) -> void:
+	var parts := _cached("beehive", func() -> Array:
+		var straw := _begin()
+		var coils := 13
+		var base_y := 0.36
+		var h := 0.56
+		for k in coils:
+			var t0 := float(k) / coils
+			var t1 := float(k + 1) / coils
+			var r0: float = 0.32 * sqrt(maxf(0.0, 1.0 - pow(t0, 1.6))) + 0.01
+			var r1: float = 0.32 * sqrt(maxf(0.0, 1.0 - pow(t1, 1.6))) + 0.01
+			var y0 := base_y + h * t0
+			var y1 := base_y + h * t1
+			var light := Color(0.86, 0.7, 0.38) if k % 2 == 0 else Color(0.78, 0.62, 0.3)
+			# each coil is a rounded roll: three rings bulging out
+			var prof := [[r0, y0], [lerpf(r0, r1, 0.5) * 1.05 + 0.012, (y0 + y1) * 0.5], [r1, y1]]
+			var coil := k
+			var straw_col := func(_i: int, a: float) -> Color:
+				var c := light.lerp(Color(0.6, 0.45, 0.2), 0.35 * (0.5 + 0.5 * sin(a * 60.0 + coil)))
+				if absf(sin(a * 6.0 + coil * 0.9)) > 0.985:
+					c = Color(0.45, 0.33, 0.16)   # the stitching binding the coils
+				return c
+			var hole := func(_i: int, a: float) -> float:   # the entrance hole, at the front of the bottom coil
+				return 1.0 if absf(wrapf(a - PI * 0.5, -PI, PI)) > 0.28 or coil > 0 else 0.55
+			_lathe(straw, prof, 28, straw_col, Vector3.ZERO, hole)
+		# the hole's dark inside
+		var dark := _begin()
+		_box(dark, Vector3(0, base_y + 0.035, 0.2), Vector3(0.15, 0.06, 0.04), Color(0.05, 0.035, 0.02))
+		# the stand: a round board on four legs, a landing board out the front
+		var stand := _begin()
+		var wood := Color(0.45, 0.3, 0.17)
+		_lathe(stand, [[0.0, base_y - 0.05], [0.36, base_y - 0.05], [0.36, base_y], [0.0, base_y]], 20, func(_i, _a): return wood)
+		for k in 4:
+			var a := TAU * k / 4.0 + PI / 4.0
+			_box(stand, Vector3(cos(a) * 0.25, (base_y - 0.05) * 0.5, sin(a) * 0.25), Vector3(0.05, base_y - 0.05, 0.05), wood.darkened(0.1))
+		_box(stand, Vector3(0, base_y - 0.02, 0.38), Vector3(0.2, 0.02, 0.1), wood.lightened(0.06))
+		return [_end(straw, true), _end(dark, false), _end(stand, false)])
+	_add(root, parts[0], _vmat("cloth", 0.95))
+	_add(root, parts[1], _vmat("wood", 1.0))
+	_add(root, parts[2], _vmat("wood", 0.85))
+	root.set_meta("hive_centre", Vector3(0, 0.62, 0))
 
 
 static func _cached(key: String, build: Callable) -> Array:
@@ -897,9 +1104,9 @@ static func _bush(root: Node3D, flowering: bool) -> void:
 		return [_clumps(spots, Color(0.18, 0.36, 0.12) if not flowering else Color(0.16, 0.32, 0.13), 11 if flowering else 5), _end(stems, true)])
 	_add(root, parts[0], _vmat("plant", 0.9))
 	_add(root, parts[1], _vmat("wood", 0.9))
-	_foliage(root, key, spots, 900 if not flowering else 700, 0.1 * k, [Color(0.17, 0.36, 0.1), Color(0.13, 0.29, 0.08), Color(0.22, 0.42, 0.12)], 21 if flowering else 17)
+	_foliage(root, key, spots, 1300 if not flowering else 1000, 0.085 * k, [Color(0.17, 0.36, 0.1), Color(0.13, 0.29, 0.08), Color(0.22, 0.42, 0.12), Color(0.28, 0.46, 0.14)], 21 if flowering else 17)
 	if flowering:
-		_foliage(root, key + "_bloom", spots, 90, 0.09, [Color(1.0, 0.62, 0.78), Color(1.0, 0.95, 0.96), Color(0.98, 0.45, 0.62)], 33, "petal")
+		_foliage(root, key + "_bloom", spots, 160, 0.08, [Color(1.0, 0.62, 0.78), Color(1.0, 0.95, 0.96), Color(0.98, 0.45, 0.62)], 33, "petal")
 
 
 # A clump of daisies: strappy leaves at the bottom and white daisies on wiry stems. (collision: cyl r 0.35, h 0.4)

@@ -468,6 +468,25 @@
 ]
 },
 {
+"id": "city/streetlight_flicker",
+"path": "res://assets/kaykit/city/streetlight.gltf",
+"label": "Street light (flickering)",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+1.212,
+4.32,
+0.311
+],
+"offset": [
+0.471,
+-0.0,
+0.0
+],
+"extra": "flicker"
+},
+{
 "id": "city/trafficlight_A",
 "path": "res://assets/kaykit/city/trafficlight_A.gltf",
 "label": "Traffic light A",

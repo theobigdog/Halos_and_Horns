@@ -42,8 +42,9 @@ static func get_sound(sound_name: String) -> AudioStreamWAV:
 			"rock": buf = _creak(rng, 0.6, 170.0)
 			"fuse": buf = _fuse(rng)
 			"kaboom": buf = _kaboom(rng)
+			"buzz": buf = _buzz()
 			_: buf = PackedFloat32Array([0.0])
-		have = _wav(buf, 0.8)
+		have = _wav(buf, 0.8, sound_name == "buzz")
 		_lock.lock()
 		_cache[sound_name] = have
 		_lock.unlock()
@@ -60,7 +61,7 @@ static func warm_up() -> void:
 
 static func _make_all() -> void:
 	for s in ["chain", "lighter", "squish", "chew", "gag", "clatter", "pop", "creak", "latch", "tinkle",
-			"glug", "squirt", "scribble", "rush", "ding", "thump", "rustle", "rock", "fuse", "kaboom"]:
+			"glug", "squirt", "scribble", "rush", "ding", "thump", "rustle", "rock", "fuse", "kaboom", "buzz"]:
 		get_sound(s)
 
 
@@ -330,7 +331,25 @@ static func _kaboom(rng: RandomNumberGenerator) -> PackedFloat32Array:
 	return b
 
 
-static func _wav(buf: PackedFloat32Array, peak_to: float) -> AudioStreamWAV:
+# Bees: many slightly different wingbeats (whole numbers of cycles a second, so the 2 s loop joins up), drifting
+# louder and softer.
+static func _buzz() -> PackedFloat32Array:
+	var b := _new(2.0)
+	var bees := [[210.0, 0.0], [224.0, 1.3], [236.0, 2.1], [198.0, 0.7], [251.0, 2.9], [217.0, 4.1], [243.0, 5.3]]
+	for i in b.size():
+		var t := float(i) / RATE
+		var v := 0.0
+		for k in bees.size():
+			var f: float = bees[k][0]
+			var ph: float = bees[k][1]
+			var saw := 2.0 * fmod(t * f + ph, 1.0) - 1.0
+			var amp := 0.55 + 0.45 * sin(TAU * (0.5 + k * 0.5) * t + ph)
+			v += saw * amp
+		b[i] = v / bees.size()
+	return b
+
+
+static func _wav(buf: PackedFloat32Array, peak_to: float, looped := false) -> AudioStreamWAV:
 	var peak := 0.0001
 	for v in buf:
 		peak = maxf(peak, absf(v))
@@ -340,11 +359,15 @@ static func _wav(buf: PackedFloat32Array, peak_to: float) -> AudioStreamWAV:
 	data.resize(n * 2)
 	for i in n:
 		var g := peak_to / peak
-		if i > n - fade:
+		if i > n - fade and not looped:
 			g *= float(n - i) / fade
 		data.encode_s16(i * 2, int(clampf(buf[i] * g, -1.0, 1.0) * 32767.0))
 	var wav := AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
 	wav.mix_rate = RATE
 	wav.data = data
+	if looped:
+		wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		wav.loop_begin = 0
+		wav.loop_end = n
 	return wav

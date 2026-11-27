@@ -87,6 +87,12 @@ func _ready() -> void:
 	add_child(_voice)
 
 
+# Something round lying on its side (a tipped-over barrel, keg, bin, candle...): it rolls across its length,
+# and slides along it (Ted, Nov 27: "everything should roll, especially if it's already tipped over").
+func _lying_roller() -> bool:
+	return tipped and PropLib.TYPES.get(type_name, {}).get("shape", "") == "cylinder" and not _round()
+
+
 func _round() -> bool:
 	return PropLib.TYPES.get(type_name, {}).get("round", false)
 
@@ -185,6 +191,12 @@ func _physics_process(delta: float) -> void:
 		if _round() and rolled > 0.001:
 			var axis := (basis.inverse() * Vector3.UP.cross(flat / rolled)).normalized()
 			_rolling = Basis(axis, rolled * delta / _radius()) * _rolling
+		elif _lying_roller() and rolled > 0.001:
+			# turn about its own length (its local up) by how far it went across it
+			var along := basis.y.normalized()
+			var across := flat - along * flat.dot(along)
+			var spin := signf(along.dot(Vector3.UP.cross(across))) * across.length() * delta / _radius()
+			_rolling = Basis(Vector3.UP, spin) * _rolling
 
 	# Up and down: fall onto whatever is below.
 	var floor_y := _floor_below()
@@ -205,6 +217,17 @@ func _physics_process(delta: float) -> void:
 	# Friction while on the ground.
 	if on_ground and speed > 0.0:
 		var f := ROLL_FRICTION if _round() else (LYING_FRICTION if tipped else FRICTION)
+		if _lying_roller():
+			# rolling across its length, scraping along it
+			var along := basis.y.normalized()
+			var h_vel := Vector3(vel.x, 0.0, vel.z)
+			var a_part := along * h_vel.dot(along)
+			var c_part := h_vel - a_part
+			a_part = a_part.move_toward(Vector3.ZERO, LYING_FRICTION * delta)
+			c_part = c_part.move_toward(Vector3.ZERO, ROLL_FRICTION * delta)
+			vel.x = a_part.x + c_part.x
+			vel.z = a_part.z + c_part.z
+			f = 0.0
 		var slowed := maxf(speed - f * delta, 0.0)
 		vel.x *= slowed / speed
 		vel.z *= slowed / speed
@@ -267,7 +290,7 @@ func _apply() -> void:
 		var r := Basis(Vector3.UP.cross(lean).normalized(), absf(_wobble))
 		xf = Transform3D(r, edge - r * edge) * xf
 	prop.global_transform = xf
-	if _round() and _visual:
+	if (_round() or _lying_roller()) and _visual:
 		# Spin the look around its middle; the collision shape stays put.
 		var c := Vector3(0.0, _height() / 2.0, 0.0)
 		_visual.transform = Transform3D(_rolling, c - _rolling * c)

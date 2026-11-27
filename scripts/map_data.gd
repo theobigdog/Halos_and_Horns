@@ -220,10 +220,16 @@ static func clean(raw: Dictionary) -> Dictionary:
 		elif t == "ground":   # (Sara, Nov 25: grass, dirt, gravel, landscaping blocks)
 			c["size"] = _arr(_vec(p.get("size"), 0.1, 200.0, Vector3(4, 0.3, 4)))
 			c["look"] = int(_num(p.get("look"), 0.0, float(GroundBlock.KINDS.size() - 1), 0.0))
+			if typeof(p.get("color")) == TYPE_STRING:
+				c["color"] = _color(p.get("color"), "#ffffff")   # a tint (Ted's wife, Nov 27)
 		elif t == "building":   # (Sara, Nov 25: buildings you can walk into)
 			if not p.get("kind") in HollowBuildings.KINDS:
 				continue
 			c["kind"] = p["kind"]
+			if HollowBuildings.scalable(p["kind"]) and p.has("size"):
+				var bsc := _vec(p.get("size"), 0.25, 4.0, Vector3.ONE)
+				if not bsc.is_equal_approx(Vector3.ONE):
+					c["size"] = _arr(bsc)   # resized (a scale on each axis)
 			c["look"] = int(_num(p.get("look"), 0.0, 7.0 if p["kind"] == "sign_speed" else 3.0, 0.0))   # (speed limits: 8)
 		elif t == "sidewalk":
 			var ssz := _vec(p.get("size"), 0.3, 100.0, Vector3(2, 0.18, 6))
@@ -236,7 +242,7 @@ static func clean(raw: Dictionary) -> Dictionary:
 			var isz := _vec(p.get("size"), 0.5, 100.0, Vector3(4, 0.06, 4))
 			c["size"] = _arr(Vector3(isz.x, 0.06, isz.z))   # a slippery sheet: always thin
 		elif t in ["bouncy", "bouncy_once", "bouncy_super"]:
-			var pad_look := int(_num(p.get("look"), 0.0, 4.0, 0.0))
+			var pad_look := int(_num(p.get("look"), 0.0, 5.0 if t == "bouncy_super" else 4.0, 0.0))
 			if pad_look > 0:
 				c["look"] = pad_look   # its colour (bouncy.gd SKINS)
 		elif t == "light":
@@ -263,8 +269,8 @@ static func clean(raw: Dictionary) -> Dictionary:
 				c["repeat"] = rep   # copies end to end (a wall dragged longer)
 			if p.get("lights", false) == true and Models.is_car(c["model"]):
 				c["lights"] = true   # headlights and tail lights on
-			if Models.is_rug(c["model"]) and typeof(p.get("color")) == TYPE_STRING:
-				c["color"] = _color(p.get("color"), "#b03030")   # a rug in any colour (Models.recolor)
+			if typeof(p.get("color")) == TYPE_STRING:
+				c["color"] = _color(p.get("color"), "#b03030" if Models.is_rug(c["model"]) else "#ffffff")   # (rugs: recolor; the rest: tint)
 			var look := int(_num(p.get("look"), 0, LOOKS - 1, 0))
 			if look > 0:
 				c["look"] = look   # weathered (0), clean, mossy, charred... (models.gd LOOK_NAMES)

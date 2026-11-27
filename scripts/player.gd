@@ -259,6 +259,9 @@ func _apply_trail() -> void:
 
 func _apply_form() -> void:
 	_rig = null
+	_tumble = Basis()
+	_tip_left = 0.0
+	_pose_lift = 0.0
 	crouched = false
 	anim_presses = PropLib.state_of(possessed_type)   # (a prop placed lit / open: E goes on from there)
 	fuse_lit = false
@@ -595,6 +598,7 @@ func _physics_process(delta: float) -> void:
 		burning -= delta
 		throw_stamina = maxf(throw_stamina - Skills.FIRE_BLESSING_BURN * delta, 0.0)
 
+	_update_prop_pose(delta, (test_input.get("run", false) if not test_input.is_empty() else Input.is_action_pressed("run")) and controls_ok())
 	_update_head_bob(delta, current.length())
 	_update_camera_juice(delta, input_dir)
 	_update_throw_stamina(delta)
@@ -687,6 +691,123 @@ func _pull_step(delta: float) -> void:
 
 
 # Called when the host (or practice game) yanks us somewhere.
+# ---- Props that roll, tumble and get knocked over (Ted, Nov 27) ----
+# As a prop, moving about without Shift: round things (and anything lying on its side) roll the way you go,
+# riding up and down over their own lumps; things standing up slide. Shift (no sneaking in prop form) rights the
+# prop and keeps it upright while you move. Get shoved hard enough and you go over, like the real prop would.
+# Only the look turns: the body underneath is the same, so steps, curbs and stairs still work. The pose goes to
+# everyone else with our position (net_game c_state), so they see the same.
+var _tumble := Basis()          # the prop's turn (about its middle), relative to its standing pose
+var _tip_axis := Vector3.ZERO   # knocked over: turning about this axis...
+var _tip_left := 0.0            # ...this much more
+var _pose_lift := 0.0
+var _last_pose_pos := Vector3.ZERO
+static var _hulls := {}         # prop type -> some of its look's points (for what it rests on)
+
+
+func controls_ok() -> bool:
+	return not test_input.is_empty() or (input_enabled and not frozen and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED)
+
+
+func prop_pose() -> Transform3D:
+	if possessed_type == "" or visual_root.get_child_count() == 0:
+		return Transform3D.IDENTITY
+	return (visual_root.get_child(visual_root.get_child_count() - 1) as Node3D).transform
+
+
+func is_tipped() -> bool:
+	return _tumble.y.dot(Vector3.UP) < 0.7
+
+
+func _prop_visual() -> Node3D:
+	if possessed_type == "" or visual_root.get_child_count() == 0:
+		return null
+	var v := visual_root.get_child(visual_root.get_child_count() - 1) as Node3D
+	return null if v.is_queued_for_deletion() else v
+
+
+func _update_prop_pose(delta: float, steady: bool) -> void:
+	var v := _prop_visual()
+	var moved := global_position - _last_pose_pos
+	_last_pose_pos = global_position
+	if v == null:
+		_tumble = Basis()
+		_tip_left = 0.0
+		return
+	var h := PropLib.height(possessed_type)
+	var centre := Vector3(0.0, h * 0.5, 0.0)
+	if steady:
+		# right it, and keep it upright
+		_tip_left = 0.0
+		_tumble = _tumble.slerp(Basis(), minf(1.0, delta * 7.0)).orthonormalized()
+	elif _tip_left > 0.0:
+		var step := minf(_tip_left, delta * 5.0)
+		_tumble = (Basis(_tip_axis, step) * _tumble).orthonormalized()
+		_tip_left -= step
+	else:
+		var flat := Vector3(moved.x, 0.0, moved.z)
+		var dist := flat.length()
+		var round := bool(PropLib.TYPES.get(possessed_type, {}).get("round", false))
+		if dist > 0.001 and dist < 2.0 and (round or is_tipped()):
+			var local := visual_root.global_transform.basis.inverse() * (flat / dist)
+			var axis := Vector3.UP.cross(Vector3(local.x, 0.0, local.z)).normalized()
+			var r := PropLib.half_width(possessed_type) if round else minf(PropLib.half_width(possessed_type), h * 0.5)
+			_tumble = (Basis(axis, dist / maxf(r, 0.05)) * _tumble).orthonormalized()
+	# rest on whatever part of it is lowest now (bumps and corners lift it as it goes over)
+	var lift := 0.0
+	if not _tumble.is_equal_approx(Basis()):
+		var low := INF
+		for q in _hull(v):
+			low = minf(low, (_tumble * (q - centre) + centre).y)
+		lift = -low if low < INF else 0.0
+	_pose_lift = lerpf(_pose_lift, lift, minf(1.0, delta * 20.0))
+	v.transform = Transform3D(_tumble, centre - _tumble * centre + Vector3.UP * _pose_lift)
+
+
+func _hull(v: Node3D) -> PackedVector3Array:
+	if _hulls.has(possessed_type):
+		return _hulls[possessed_type]
+	var pts := PackedVector3Array()
+	var inv := v.global_transform.affine_inverse()
+	for c in v.find_children("*", "MeshInstance3D", true, false):
+		var mi: MeshInstance3D = c
+		if mi.mesh == null or not mi.visible:
+			continue
+		var xf := inv * mi.global_transform
+		for s in mi.mesh.get_surface_count():
+			var verts: PackedVector3Array = mi.mesh.surface_get_arrays(s)[Mesh.ARRAY_VERTEX]
+			var stride := maxi(1, verts.size() / 120)
+			for i in range(0, verts.size(), stride):
+				pts.append(xf * verts[i])
+	if pts.is_empty():
+		var hw := PropLib.half_width(possessed_type)
+		var hh := PropLib.height(possessed_type)
+		for x in [-hw, hw]:
+			for y in [0.0, hh]:
+				for z in [-hw, hw]:
+					pts.append(Vector3(x, y, z))
+	_hulls[possessed_type] = pts
+	return pts
+
+
+# Shoved (a bump, a kick, a swing, a blast): as a prop, go over if it's hard enough to tip the real one
+# (knock.gd's rule: tall, narrow things go over easily). Round things just roll off.
+func shoved(push: Vector3) -> void:
+	if possessed_type == "" or _prop_visual() == null:
+		return
+	var flat := Vector3(push.x, 0.0, push.z)
+	var slide := flat.length()
+	if slide < 0.05 or is_tipped() or _tip_left > 0.0 or PropLib.TYPES.get(possessed_type, {}).get("round", false):
+		return
+	var speed := sqrt(2.0 * 8.0 * slide)   # (knock.gd FRICTION: how fast it must have been going to slide that far)
+	var tip_speed := clampf(3.0 * (PropLib.half_width(possessed_type) * 2.0) / PropLib.height(possessed_type), 0.9, 6.0)
+	if speed < tip_speed:
+		return
+	var local := visual_root.global_transform.basis.inverse() * flat.normalized()
+	_tip_axis = Vector3.UP.cross(Vector3(local.x, 0.0, local.z)).normalized()
+	_tip_left = PI * 0.5
+
+
 func pull_to(target: Vector3, seconds := 1.0) -> void:
 	_pull_target = target
 	_pull_time = seconds

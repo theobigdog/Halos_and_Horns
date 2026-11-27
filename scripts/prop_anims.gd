@@ -24,7 +24,7 @@ const VERBS := {
 	"scribble": "scribble on it", "unroll": "unroll it", "burners": "light the burners", "drain": "pour some out",
 	"cork": "pop the cork", "bed": "unmake / make the bed", "sofabed": "pull out the bed", "recline": "put your feet up",
 	"picture": "change the picture", "ooze": "ooze", "rock": "rock", "fuse": "LIGHT THE FUSE (you'll blow up!)",
-	"jack": "light / snuff the candle",
+	"jack": "light / snuff the candle", "swarm": "stir up the bees",
 }
 
 # The explosives (Ted, Nov 26: "they result in the possessed demon exploding and dying as well... it could even
@@ -97,6 +97,7 @@ static func _build() -> Dictionary:
 	# (the pickle has no E action: it just leaves its slime trail when it moves, slime_trail.gd; Ted, Nov 27)
 	# New props (extra_props.gd)
 	t["rocking_chair"] = {"kind": "rock"}
+	t["beehive"] = {"kind": "swarm"}   # (Ted's wife, Nov 27)
 	for id in ["tnt_crate", "dynamite_bundle", "powder_keg"]:
 		t[id] = {"kind": "fuse"}
 	for id in ["jack_o_lantern_grin", "jack_o_lantern_scary", "jack_o_lantern_goofy"]:
@@ -119,7 +120,7 @@ static func can_animate(type_name: String) -> bool:
 # Kinds that stay the way they were left (a lit candle, an open oven, a messy table): a prop placed on a map
 # can start the round in either state (Ted, Nov 26), set in Creative. Everything starts "off".
 const STATEFUL := ["light", "lamp", "jack", "oven", "spill", "disarray", "dirty", "blood", "bed", "sofabed",
-		"recline", "picture"]
+		"recline", "picture", "swarm"]
 const PICTURES := 4   # (the pictures "picture" goes through, after the one it came with)
 
 
@@ -139,6 +140,7 @@ static func state_name(type_name: String, n: int) -> String:
 		"oven", "sofabed": return "open" if n % 2 == 1 else "shut"
 		"recline": return "reclined" if n % 2 == 1 else "upright"
 		"bed": return "unmade" if n % 2 == 1 else "made"
+		"swarm": return "swarming" if n % 2 == 1 else "quiet"
 		"spill": return "spilled" if n % 2 == 1 else "stacked"
 		"disarray": return "messy" if n % 2 == 1 else "tidy"
 		"dirty": return "dirty" if n % 2 == 1 else "clean"

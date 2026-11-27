@@ -974,7 +974,7 @@ func _build_map() -> void:
 			"bouncy_once", "prop":
 				structures.append([Vector2(pos.x, pos.z), 1.6])   # (made fresh each round)
 			"ground":
-				var gb := GroundBlock.make(GroundBlock.KINDS.keys()[int(p.get("look", 0))], MapData.vec(p["size"]))
+				var gb := GroundBlock.make(GroundBlock.KINDS.keys()[int(p.get("look", 0))], MapData.vec(p["size"]), Color(p.get("color", "#ffffff")))
 				gb.position = pos
 				gb.rotation = MapData.rot_rad(p)
 				world_root.add_child(gb)
@@ -982,8 +982,10 @@ func _build_map() -> void:
 				var hb := HollowBuildings.make(p["kind"], int(p.get("look", 0)))
 				hb.position = pos
 				hb.rotation = MapData.rot_rad(p)
+				var bscale: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+				hb.scale = bscale
 				world_root.add_child(hb)
-				var hs := HollowBuildings.size(p["kind"])
+				var hs := HollowBuildings.size(p["kind"]) * bscale
 				structures.append([Vector2(pos.x, pos.z), maxf(hs.x, hs.z) * 0.5])
 			"sidewalk":
 				var walk := Decor.make_sidewalk(p)
@@ -1008,9 +1010,12 @@ func _build_map() -> void:
 				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
 				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
 				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)),
-						not p.has("color"))   # (long rows drawn as one batch: Models._batched_row)
+						not p.has("color"), MapData.rot_rad(p).y)   # (long rows drawn as one batch: Models._batched_row)
 				if p.has("color"):
-					Models.recolor(body, Color(p["color"]))   # a rug in its chosen colour
+					if Models.is_rug(p["model"]):
+						Models.recolor(body, Color(p["color"]))   # a rug in its chosen colour
+					else:
+						Models.tint(body, Color(p["color"]), int(p.get("look", 0)))
 				if p.get("lights", false):
 					body.add_child(Models.car_lights(p["model"], sc))
 				body.position = pos
@@ -2845,6 +2850,7 @@ func online_struck() -> void:
 
 # The angels yanked us (vacuum orb, kick).
 func online_affected(target: Vector3, hatred_drain: float, lockout: float, label: String) -> void:
+	player.shoved(target - player.global_position)   # (a disguise may go over: Ted, Nov 27)
 	if label == "":   # bumped into: a short shove, no fuss
 		player.pull_to(target, 0.4)
 		return
@@ -3228,6 +3234,8 @@ func authority_melee(user: Node3D, _user_key: int, origin: Vector3, dir: Vector3
 	var d = _close_demon(user, dir, Skills.MELEE_RANGE)
 	if d and d.take_hit(roundi(Skills.MELEE_DAMAGE * GameRules.f("melee_damage")), user):
 		user.confirm_hit()
+		# (a swing shoves a disguised demon as far as it would the prop: lighter things go further; Ted, Nov 27)
+		bump(d, Vector3(dir.x, 0.0, dir.z).normalized() * PROP_SWAT, null)
 		print("[decider] melee hit a demon")
 	elif d == null:
 		_boot_prop(user, dir, Skills.MELEE_RANGE, PROP_SWAT)
@@ -4847,6 +4855,14 @@ const BLAST_SHOVE := 7.0
 
 
 # A blessing hit a demon: a small burst of fire and sparks there, on every screen.
+# A blessing (or book) hit a disguised demon: it's shoved like the prop it looks like would be (Ted, Nov 27:
+# "props and demons-as-props can be knocked over by... projectiles").
+func shove_hit(thing: Node, shot_velocity: Vector3) -> void:
+	if is_authority() and is_instance_valid(thing) and not thing is BotDemon:   # (players; practice bots stay put)
+		var flat := Vector3(shot_velocity.x, 0.0, shot_velocity.z)
+		bump(thing, flat.normalized() * minf(flat.length() * 0.02, 1.6), null)   # (a blessing is light: a nudge)
+
+
 func demon_hit_fx(pos: Vector3) -> void:
 	if is_authority():
 		broadcast_fx("hit_blast", [pos])

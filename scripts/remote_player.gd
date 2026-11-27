@@ -236,22 +236,33 @@ func _physics_process(delta: float) -> void:
 	if not _has_state or _snaps.is_empty():
 		return
 	var sm := _smoothed()
+	_pose = _pose.interpolate_with(_pose_to, minf(1.0, delta * 15.0))
 	if snap:
 		# Host: only the look is smoothed; the body stays exact for hit checks.
 		if _visual:
 			_visual.top_level = true
-			_visual.global_position = sm[0]
-			_visual.global_rotation = Vector3(0, sm[1], 0)
+			_visual.global_transform = Transform3D(Basis(Vector3.UP, sm[1]), sm[0]) * _pose
 			_nameplate.global_position = sm[0] + Vector3.UP * _plate_h
 		return
 	global_position = sm[0]
 	rotation.y = sm[1]
+	if _visual and not _visual.top_level:
+		_visual.transform = _pose
 
 
 # Their disguise did its thing (E): the n-th press since they became it.
 func play_anim(n: int) -> void:
 	if _visual and form != "":
 		PropLib.PropAnims.press(_visual, form, n)
+
+
+# A disguise's roll or tip (Ted, Nov 27), relative to where it stands: eased toward each new one.
+var _pose := Transform3D.IDENTITY
+var _pose_to := Transform3D.IDENTITY
+
+
+func set_pose(t: Transform3D) -> void:
+	_pose_to = t if form != "" else Transform3D.IDENTITY
 
 
 func play_taunt(taunt_name: String) -> void:

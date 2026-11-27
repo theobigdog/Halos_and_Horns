@@ -41,12 +41,20 @@ const KINDS := {
 	"sign_deadend": "Dead End sign",
 	"sign_railroad": "Railroad crossing sign",
 	"sign_demons": "Demon crossing sign",
+	# (Ted's wife, Nov 27: "a version of dumpster that is open and can be entered by angels and demons")
+	"dumpster_open": "Dumpster (open, climb in)",
 }
 const GATES := ["gate", "gate_open", "arch_gate", "arch_gate_open"]
 const TREES := ["oak", "birch"]
 const SIGNS := ["sign_stop", "sign_yield", "sign_speed", "sign_noentry", "sign_oneway", "sign_noparking",
 		"sign_crossing", "sign_deadend", "sign_railroad", "sign_demons"]
 const RoadSigns = preload("res://scripts/road_signs.gd")
+
+
+# Gates, trees and signs can be resized in Creative (Ted's wife, Nov 27: "make the gates resizable"): "size" is a
+# scale on each axis, like a structure's. (Walk-in buildings keep their size: floors and stairs are made to fit.)
+static func scalable(kind: String) -> bool:
+	return kind in GATES or kind in TREES or kind in SIGNS
 const Trees = preload("res://scripts/trees.gd")
 const ChapelBell = preload("res://scripts/chapel_bell.gd")
 
@@ -308,6 +316,7 @@ static func _built(kind: String, look: int) -> Dictionary:
 		"ruin": _ruin(b, look)
 		"gate", "gate_open", "arch_gate", "arch_gate_open":
 			_gate(b, look, kind.begins_with("arch"), kind.ends_with("open"))
+		"dumpster_open": _dumpster(b, look)
 	var mesh := ArrayMesh.new()
 	var keys: Array = b.sts.keys()
 	keys.sort()
@@ -1031,21 +1040,43 @@ static func _spike(b: Bld, m: int, c: Vector3, hw: float, ht: float, col: Color,
 # with panelled faces and capped tops (or an arch of stones over them), and a pair of wrought-iron gate
 # leaves between: stiles, rails, an arched top rail, spear-topped bars, a band of rings, hinges and a latch.
 # Shut, they close the way; open, they stand swung back. The way through is 2.2 m wide.
-static func _gate(b: Bld, look: int, arched: bool, open: bool) -> void:
+# The graveyard pack's arch (and arch with a gate), rebuilt (refined_graveyard.gd): this gate's stonework, with or
+# without the iron leaves, as one mesh.
+static func gate_mesh(leaves: bool) -> ArrayMesh:
+	var key := "gate_mesh_%s" % leaves
+	if _cache.has(key):
+		return _cache[key]
+	var b := Bld.new()
+	_gate(b, 0, true, false, leaves)
+	var mesh := ArrayMesh.new()
+	var keys: Array = b.sts.keys()
+	keys.sort()
+	for m in keys:
+		var st: SurfaceTool = b.sts[m]
+		st.commit(mesh)
+		mesh.surface_set_material(mesh.get_surface_count() - 1, _mat(m, Graphics.quality <= 0))
+	_cache[key] = mesh
+	return mesh
+
+
+static func _gate(b: Bld, look: int, arched: bool, open: bool, leaves := true) -> void:
 	var iron := _c(GATE_IRON[look])
 	var stone := _c(GATE_STONE[look])
 	var tip := _c(GATE_TIP[look])
-	var gap := 2.2
-	var pw := 0.56
-	var ph := 2.55 if arched else 2.2
+	# (the arched one is the graveyard pack's Arch gate's size exactly, 3.16 x 3.31 x 0.58 m: Ted's wife, Nov 27)
+	var pw := 0.45 if arched else 0.56
+	var gap := 3.164 - pw * 2.0 if arched else 2.2
+	var ph := 1.57 if arched else 2.2
 	var px := gap * 0.5 + pw * 0.5
 	for sx in [-1.0, 1.0]:
 		var c := Vector3(sx * px, 0.0, 0.0)
-		b.ab(STONE, c + Vector3(-pw * 0.5 - 0.06, 0.0, -pw * 0.5 - 0.06), c + Vector3(pw * 0.5 + 0.06, 0.32, pw * 0.5 + 0.06), stone.darkened(0.12))
+		var foot := 0.0 if arched else 0.06
+		b.ab(STONE, c + Vector3(-pw * 0.5 - foot, 0.0, -pw * 0.5 - foot), c + Vector3(pw * 0.5 + foot, 0.32, pw * 0.5 + foot), stone.darkened(0.12))
 		b.ab(STONE, c + Vector3(-pw * 0.5, 0.32, -pw * 0.5), c + Vector3(pw * 0.5, ph, pw * 0.5), stone)
 		for sz in [-1.0, 1.0]:   # a sunken panel on the front and back
 			b.ab(TRIM, c + Vector3(-0.15, 0.72, sz * pw * 0.5), c + Vector3(0.15, ph - 0.42, sz * (pw * 0.5 + 0.022)), stone.darkened(0.2), false)
-		b.ab(STONE, c + Vector3(-0.36, ph, -0.36), c + Vector3(0.36, ph + 0.13, 0.36), stone.lightened(0.07))
+		var cap := pw * 0.5 if arched else 0.36   # (arched: flush, so it stays the graveyard arch's size)
+		b.ab(STONE, c + Vector3(-cap, ph, -cap), c + Vector3(cap, ph + 0.13, cap), stone.lightened(0.07))
 		if not arched:
 			b.ab(STONE, c + Vector3(-0.27, ph + 0.13, -0.27), c + Vector3(0.27, ph + 0.2, 0.27), stone.lightened(0.03), false)
 			_spike(b, STONE, c + Vector3(0, ph + 0.2, 0), 0.27, 0.34, stone.lightened(0.07))
@@ -1053,16 +1084,18 @@ static func _gate(b: Bld, look: int, arched: bool, open: bool) -> void:
 		# an arch of stones from pillar to pillar, a keystone at the top
 		var spring := ph + 0.13
 		var r_in := px - 0.05
-		var ring := 0.4
+		var ring := 0.25
 		var n := 11
 		for i in n:
 			var a := PI * (i + 0.5) / n
 			var mid := (r_in + ring * 0.5)
 			var cc := Vector3(cos(a) * mid, spring + sin(a) * mid, 0.0)
 			var key := i == n / 2
-			var sz := Vector3(ring + (0.12 if key else 0.0), PI * mid / n * 1.03, 0.52 + 0.03 * (i % 2) + (0.06 if key else 0.0))
+			var sz := Vector3(ring + (0.1 if key else 0.0), PI * mid / n * 1.03, 0.5 + 0.03 * (i % 2) + (0.045 if key else 0.0))
 			b.box(STONE, cc, sz, stone.darkened(0.04 * (i % 3)), true, Basis(Vector3.BACK, a))
 	# the leaves, hung on the pillars' inner faces a little behind the middle; open, they swing back 88 degrees
+	if not leaves:
+		return
 	var lw := gap * 0.5 - 0.06
 	for sx in [-1.0, 1.0]:
 		var hinge := Vector3(sx * (gap * 0.5 - 0.04), 0.0, -0.16)
@@ -1119,6 +1152,54 @@ static func _gate(b: Bld, look: int, arched: bool, open: bool) -> void:
 		b.cbox(at.call(mid_s, 0.95), Vector3(lw, 1.9, 0.08), bas)
 
 
+# An open dumpster (the town's green one, the same size), hollow so you can climb in and hide among the bags:
+# steel walls with ribs, the two lids flung back against the hinges, fork pockets, wheels, and trash inside.
+const DUMPSTER_PAINT := ["#2f5a3a", "#2f4a6a", "#6a3a2a", "#4a4a4a"]
+
+
+static func _dumpster(b: Bld, look: int) -> void:
+	var paint := _c(DUMPSTER_PAINT[clampi(look, 0, 3)])
+	var steel := paint.darkened(0.25)
+	var w := 2.4
+	var d := 1.45
+	var y0 := 0.2      # its floor (it stands on wheels)
+	var top := 1.3
+	var t := 0.05
+	# floor and walls (solid: you stand inside), the front sloping in a little at the bottom like the real ones
+	b.ab(IRON, Vector3(-w * 0.5, y0 - 0.06, -d * 0.5), Vector3(w * 0.5, y0, d * 0.5), steel)
+	for sx in [-1.0, 1.0]:
+		b.ab(IRON, Vector3(sx * w * 0.5 - (t if sx > 0.0 else 0.0), y0, -d * 0.5), Vector3(sx * w * 0.5 + (0.0 if sx > 0.0 else t), top, d * 0.5), paint)
+	b.ab(IRON, Vector3(-w * 0.5 + t, y0, -d * 0.5), Vector3(w * 0.5 - t, top + 0.08, -d * 0.5 + t), paint)   # back (taller: the hinges)
+	b.ab(IRON, Vector3(-w * 0.5 + t, y0, d * 0.5 - t), Vector3(w * 0.5 - t, top - 0.1, d * 0.5), paint)      # front
+	# ribs and a rim round the top
+	for k in 5:
+		var x := -w * 0.5 + w * (k + 0.5) / 5.0
+		b.ab(IRON, Vector3(x - 0.04, y0 + 0.05, d * 0.5), Vector3(x + 0.04, top - 0.14, d * 0.5 + 0.035), steel, false)
+		b.ab(IRON, Vector3(x - 0.04, y0 + 0.05, -d * 0.5 - 0.035), Vector3(x + 0.04, top - 0.02, -d * 0.5), steel, false)
+	b.ab(IRON, Vector3(-w * 0.5 - 0.03, top - 0.16, d * 0.5 + 0.035), Vector3(w * 0.5 + 0.03, top - 0.1, d * 0.5 + 0.07), steel, false)
+	for sx in [-1.0, 1.0]:   # fork pockets on the ends
+		for z in [-0.4, 0.4]:
+			b.ab(IRON, Vector3(sx * w * 0.5 + (0.0 if sx > 0.0 else -0.06), 0.55, z - 0.14), Vector3(sx * w * 0.5 + (0.06 if sx > 0.0 else 0.0), 0.68, z + 0.14), steel.darkened(0.2), false)
+	# wheels (casters)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			var c := Vector3(sx * (w * 0.5 - 0.2), 0.0, sz * (d * 0.5 - 0.2))
+			b.ab(IRON, c + Vector3(-0.05, 0.1, -0.05), c + Vector3(0.05, y0 - 0.06, 0.05), _c("#333338"), false)
+			b.box(IRON, c + Vector3(0, 0.07, 0), Vector3(0.05, 0.14, 0.14), _c("#18181a"), false)
+	# the lids, flung open: hanging down the back from the hinges
+	for sx in [-1.0, 1.0]:
+		var lc := Vector3(sx * w * 0.25, top + 0.08 - 0.68, -d * 0.5 - 0.05)
+		b.box(IRON, lc, Vector3(w * 0.5 - 0.04, 1.4, 0.04), paint.darkened(0.4), false, Basis(Vector3.RIGHT, 0.06))
+	# trash: bags and a box or two in the bottom (bags are knee-high: room to crouch in among them)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 33
+	for k in 6:
+		var p := Vector3(rng.randf_range(-0.85, 0.85), y0 + 0.16, rng.randf_range(-0.4, 0.4))
+		var bag := Vector3(rng.randf_range(0.36, 0.5), rng.randf_range(0.28, 0.36), rng.randf_range(0.32, 0.45))
+		b.box(BOARDS, p, bag, _c("#151517").lightened(0.05 * (k % 3)), false, Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.25, 0.25)))
+	b.box(PLANKS, Vector3(0.7, y0 + 0.2, 0.3), Vector3(0.45, 0.4, 0.35), _c("#a07a4a"), false, Basis(Vector3.UP, 0.4))
+
+
 # A pane of stained glass filling an arched window opening (in the wall's middle), the arch made of the same
 # steps the wall's opening is cut in.
 static func _glass_arch(b: Bld, axis: int, c: float, op: Dictionary) -> void:
@@ -1139,6 +1220,58 @@ static func _glass_arch(b: Bld, axis: int, c: float, op: Dictionary) -> void:
 		var yb := spring + r * (k + 1) / steps + 0.012
 		var ext := sqrt(maxf(0.0, r * r - pow(yb - spring, 2.0)))
 		put.call(u - ext - 0.02, u + ext + 0.02, ya, yb + (0.02 if k == steps - 1 else 0.0))
+
+
+# A broken-out chapel window: jagged shards of coloured glass left round the edges (no glass in the way), and
+# rubble heaped under it inside and out, so it's a step up and through for anyone (Ted's wife, Nov 27: "break one
+# or two of the chapel windows so angels and demons can enter the structure through them").
+static func _broken_window(b: Bld, axis: int, c: float, op: Dictionary, wall: Color) -> void:
+	var r: float = op["w"] * 0.5
+	var spring: float = op["t"] - r
+	var u: float = op["u"]
+	var y0: float = op["b"]
+	var out_n := signf(c)
+	var nrm := Vector3(out_n, 0, 0) if axis == 1 else Vector3(0, 0, out_n)
+	var at := func(uu: float, y: float, off := 0.0) -> Vector3:
+		return Vector3(c + off, y, uu) if axis == 1 else Vector3(uu, y, c + off)
+	var cols := [_c("#a8323a"), _c("#2d5aa8"), _c("#d8a828"), _c("#3a8a4a"), _c("#7a3aa0")]
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(u * 100.0) + 7
+	# shards: along the sill, up both sides, and hanging from the arch
+	var edges := []
+	for k in 5:
+		edges.append([at.call(u - r + 2.0 * r * (k + 0.5) / 5.0, y0 + 0.01), Vector3.UP])
+	for s in [-1.0, 1.0]:
+		for k in 4:
+			edges.append([at.call(u + s * r - s * 0.01, y0 + 0.2 + (spring - y0 - 0.2) * k / 3.0), Vector3(0, 0, -s) if axis == 1 else Vector3(-s, 0, 0)])
+	for k in 5:
+		var a := PI * (k + 0.5) / 5.0
+		edges.append([at.call(u + cos(a) * (r - 0.01), spring + sin(a) * (r - 0.01)), -(Vector3(0, sin(a), cos(a)) if axis == 1 else Vector3(cos(a), sin(a), 0))])
+	for ei in edges.size():
+		var e: Array = edges[ei]
+		var lift := 0.003 + 0.0011 * ei   # (each shard a hair in front of the last: none share a plane)
+		var base: Vector3 = e[0]
+		var into: Vector3 = e[1]
+		var along := into.cross(nrm).normalized()
+		var wdt := rng.randf_range(0.06, 0.16)
+		var len := rng.randf_range(0.07, 0.24)
+		var tip := base + into * len + along * rng.randf_range(-0.05, 0.05)
+		var col: Color = cols[rng.randi() % cols.size()]
+		b.tri(STAINED, base - along * wdt * 0.5 + nrm * lift, base + along * wdt * 0.5 + nrm * lift, tip + nrm * lift, nrm, col)
+		b.tri(STAINED, base + along * wdt * 0.5 - nrm * lift, base - along * wdt * 0.5 - nrm * lift, tip - nrm * lift, -nrm, col)
+	# rubble under it, outside (from the ground) and inside (from the floor): a step up to the sill
+	for side in [1.0, -1.0]:
+		var base_y := 0.0 if side > 0.0 else FLOOR
+		# a low slab of broken masonry first (so it's one step, not a scramble), then chunks on it
+		b.box(STONE, at.call(u, base_y + 0.12, out_n * side * 0.55), Vector3(0.85, 0.3, 1.15) if axis == 1 else Vector3(1.15, 0.3, 0.85),
+				wall.darkened(0.18), true, Basis(Vector3.UP, 0.07) * Basis(Vector3.RIGHT, 0.04))
+		for k in 5:
+			var off: float = side * rng.randf_range(0.35, 0.75)
+			var uu := u + rng.randf_range(-0.45, 0.45)
+			var sz := Vector3(rng.randf_range(0.3, 0.55), rng.randf_range(0.18, 0.3), rng.randf_range(0.3, 0.5))
+			var bas := Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, 0.06 + 0.05 * k + rng.randf_range(0.0, 0.1))
+			var p: Vector3 = at.call(uu, base_y + sz.y * 0.45 + 0.013 * k + (0.12 if k >= 3 else 0.0), out_n * off)
+			b.box(STONE, p, sz, wall.darkened(rng.randf_range(0.05, 0.25)), true, bas)
 
 
 # The round window in the chapel's front gable: a rose of stained glass (facing +Z).
@@ -1162,8 +1295,9 @@ static func _chapel(b: Bld, look: int) -> void:
 	var ops := {
 		"front": [_op(0.0, 2.0, FLOOR, 3.4, "arch")],
 		"back": [_op(0.0, 1.2, 1.6, 3.6, "arch")],
-		"left": [_op(-3.5, 0.9, 1.4, 3.4, "arch"), _op(0.0, 0.9, 1.4, 3.4, "arch"), _op(3.5, 0.9, 1.4, 3.4, "arch")],
-		"right": [_op(-3.5, 0.9, 1.4, 3.4, "arch"), _op(0.0, 0.9, 1.4, 3.4, "arch"), _op(3.5, 0.9, 1.4, 3.4, "arch")],
+		# (two are broken out, down to a low sill, so you can climb in: Ted's wife, Nov 27)
+		"left": [_op(-3.5, 0.9, 1.4, 3.4, "arch"), _op(0.0, 0.9, 0.75, 3.4, "arch"), _op(3.5, 0.9, 1.4, 3.4, "arch")],
+		"right": [_op(-3.5, 0.9, 1.4, 3.4, "arch"), _op(0.0, 0.9, 1.4, 3.4, "arch"), _op(3.5, 0.9, 0.75, 3.4, "arch")],
 	}
 	b.shell(STONE, w, d, 0.0, h, ops, wall, trim, null, true, T, true, TRIM)   # (stone frames: no grain)
 	b.shell(STONE, w + 0.14, d + 0.14, 0.0, 0.5, ops, wall.darkened(0.15), trim, null, false, T + 0.14, false)
@@ -1182,7 +1316,10 @@ static func _chapel(b: Bld, look: int) -> void:
 		var axis := 1 if side in ["left", "right"] else 0
 		var c: float = (-1.0 if side in ["left", "back"] else 1.0) * ((w if axis == 1 else d) * 0.5 - T * 0.5)
 		for op in ops[side]:
-			_glass_arch(b, axis, c, op)
+			if op["b"] < 1.0:
+				_broken_window(b, axis, c, op, wall)
+			else:
+				_glass_arch(b, axis, c, op)
 	# buttresses
 	for sx in [-1.0, 1.0]:
 		for z in [-5.2, -1.75, 1.75, 5.2]:

@@ -812,6 +812,7 @@ func _host_tick(delta: float) -> void:
 		me["valid_pos"] = me["pos"]
 		me["yaw"] = main.player.shown_yaw()
 		me["form"] = main.player.possessed_type
+		me["pose"] = main.player.prop_pose()
 		_record_history(1, me["pos"])
 	_check_still_demons()
 	if minions.has(1) and is_instance_valid(main.player.minion):
@@ -837,7 +838,8 @@ func _relay_states() -> void:
 				continue
 			if peers[viewer]["role"] == "angel" and _is_vanished(id):
 				continue   # invisible: angels get nothing about this demon
-			states.append([rec["eid"], rec["pos"], rec["yaw"], rec["form"], rec["role"], _shown_aura(id), _is_flying(id), _is_sneaking(id)])
+			states.append([rec["eid"], rec["pos"], rec["yaw"], rec["form"], rec["role"], _shown_aura(id), _is_flying(id), _is_sneaking(id),
+					rec.get("pose", Transform3D.IDENTITY)])
 		for owner in minions:
 			if owner != viewer:
 				var m: Dictionary = minions[owner]
@@ -850,9 +852,20 @@ func _relay_states() -> void:
 			remotes[rec["eid"]].set_aura(_shown_aura(id))
 			remotes[rec["eid"]].set_flying(_is_flying(id))
 			remotes[rec["eid"]].set_crouch(_is_sneaking(id))
+			remotes[rec["eid"]].set_pose(rec.get("pose", Transform3D.IDENTITY))
 	for owner in minions:
 		if owner != 1 and remotes.has(minions[owner]["eid"]):
 			remotes[minions[owner]["eid"]].set_aura(_minion_aura(owner))
+
+
+# A disguise's roll / tip (player.prop_pose): only a turn and a small lift, nothing else (it's just a look).
+func _clean_pose(v) -> Transform3D:
+	if typeof(v) != TYPE_TRANSFORM3D:
+		return Transform3D.IDENTITY
+	var t: Transform3D = v
+	if not t.basis.is_finite() or not t.origin.is_finite():
+		return Transform3D.IDENTITY
+	return Transform3D(t.basis.orthonormalized(), t.origin.limit_length(2.0))
 
 
 func _is_sneaking(id: int) -> bool:
@@ -940,6 +953,7 @@ func s_states(states: Array) -> void:
 		r.set_aura(st[5] if st.size() > 5 else "")
 		r.set_flying(st.size() > 6 and st[6])
 		r.set_crouch(st.size() > 7 and st[7])
+		r.set_pose(_clean_pose(st[8]) if st.size() > 8 else Transform3D.IDENTITY)
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -954,7 +968,7 @@ func _client_tick(delta: float) -> void:
 	if _send_accum >= 1.0 / SEND_RATE:
 		_send_accum = 0.0
 		var p = main.player
-		c_state.rpc_id(1, p.global_position, p.shown_yaw(), p.possessed_type, p.flying, p.sneaking)
+		c_state.rpc_id(1, p.global_position, p.shown_yaw(), p.possessed_type, p.flying, p.sneaking, p.prop_pose())
 		if is_instance_valid(p.minion):
 			c_minion_state.rpc_id(1, p.minion.global_position, p.minion.rotation.y)
 
@@ -967,7 +981,7 @@ func _in_bounds(pos: Vector3) -> bool:
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
-func c_state(pos: Vector3, yaw: float, form: String, flying: bool, sneaking := false) -> void:
+func c_state(pos: Vector3, yaw: float, form: String, flying: bool, sneaking := false, pose := Transform3D.IDENTITY) -> void:
 	if not is_host:
 		return
 	var id := multiplayer.get_remote_sender_id()
@@ -1016,6 +1030,7 @@ func c_state(pos: Vector3, yaw: float, form: String, flying: bool, sneaking := f
 	rec["valid_pos"] = pos
 	rec["yaw"] = yaw
 	rec["form"] = form
+	rec["pose"] = _clean_pose(pose) if form != "" else Transform3D.IDENTITY
 	rec["last_time"] = t
 	if remotes.has(rec["eid"]):
 		remotes[rec["eid"]].apply_state(pos, yaw, form, rec["role"])

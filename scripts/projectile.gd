@@ -90,6 +90,7 @@ func _physics_process(delta: float) -> void:
 	if not visual_only and allowed and damage > 0 and collider and collider.has_method("take_hit") and collider.take_hit(damage, shooter):
 		hit_demon = true
 		get_tree().call_group("main_game", "demon_hit_fx", hit["position"])
+		get_tree().call_group("main_game", "shove_hit", collider, velocity * (2.0 if book else 1.0))
 		if is_instance_valid(shooter) and shooter.has_method("confirm_hit"):
 			shooter.confirm_hit()
 	if not visual_only and prop_hit.is_valid() and collider is StaticBody3D and collider.is_in_group("prop"):

@@ -24,6 +24,7 @@ render_mode blend_mul, unshaded, cull_back, depth_draw_never, shadows_disabled, 
 instance uniform float seed : instance_index(0) = 0.0;
 instance uniform int look : instance_index(1) = 0;
 instance uniform float own_cracks : instance_index(2) = 0.0;   // 1: the structure's own shader draws them (StructureLook)
+instance uniform vec4 tint : source_color, instance_index(3) = vec4(1.0);   // Creative's Colour (Ted's wife, Nov 27)
 global uniform float grime_amount;
 varying vec3 lp;
 varying float win;   // 1 on a city building's window glass (marked in the mesh: _mark_windows)
@@ -112,7 +113,7 @@ void fragment() {
 		float blood = smoothstep(0.66, 0.74, fbm(p * 1.2 + 77.0)) + smoothstep(0.86, 0.9, noise3(p * 9.0)) * 0.6;
 		col *= mix(vec3(1.0), vec3(0.5, 0.04, 0.04), clamp(blood, 0.0, 1.0));  // bloodstained
 	}
-	ALBEDO = col;
+	ALBEDO = col * tint.rgb;
 }
 """
 static var _grime: ShaderMaterial
@@ -367,6 +368,18 @@ static func _add_grime(node: Node, look := 0) -> void:
 		mi.set_instance_shader_parameter("look", look)
 
 
+# Any structure in a chosen colour (Ted's wife, Nov 27: "give all structure blocks the ability to change their
+# look and/or color"): the grime overlay multiplies it in, per piece, so the shared materials stay shared. Rugs
+# keep their own recolour (recolor(), the pattern turned to the hue). White leaves it as it comes.
+static func tint(node: Node, color: Color, look := 0) -> void:
+	for c in node.find_children("*", "GeometryInstance3D", true, false):
+		var gi: GeometryInstance3D = c
+		if gi.material_overlay == null:
+			gi.material_overlay = grime_material()   # (Low graphics has no grime: this still tints)
+			gi.set_instance_shader_parameter("look", maxi(look, 1))
+		gi.set_instance_shader_parameter("tint", color)
+
+
 static func _load() -> void:
 	if not _order.is_empty():
 		return
@@ -433,6 +446,11 @@ static func _raw(id: String, extra_scale := Vector3.ONE) -> Node3D:
 	var e := entry(id)
 	var holder := Node3D.new()
 	if e.is_empty():
+		return holder
+	if Refined.has(id):   # (rebuilt in code with real detail: refined_models.gd, Ted's wife's Nov 27 list)
+		var built := Refined.build(id)
+		built.scale = extra_scale
+		holder.add_child(built)
 		return holder
 	var scene := _scene(e["path"])
 	if scene == null:
@@ -504,7 +522,9 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 	if e.get("extra", "") == "crosswalk_end":
 		_add_crosswalk(id, holder, size(id) * extra_scale, extra_scale)
 	# finer materials (nature_look.gd / structure_look.gd; Nov 24)
-	if NatureLook.is_nature(id):
+	if Refined.has(id):
+		pass   # (its own materials)
+	elif NatureLook.is_nature(id):
 		NatureLook.apply(id, model, e.get("extra", ""))
 	else:
 		StructureLook.apply(id, model)
@@ -665,6 +685,7 @@ static func _street_signs(id: String, extra_scale: Vector3) -> Node3D:
 # small patches (big green patches are street signs). Each red lamp pairs with the nearest green.
 const TrafficSignal = preload("res://scripts/traffic_signal.gd")
 const Lamp = preload("res://scripts/lamp.gd")
+const Refined = preload("res://scripts/refined_models.gd")
 const NatureLook = preload("res://scripts/nature_look.gd")
 const StructureLook = preload("res://scripts/structure_look.gd")
 static var _lamp_cache := {}
@@ -860,7 +881,8 @@ const LIT := {"torch_lit": Color(1.0, 0.6, 0.25), "candle_lit": Color(1.0, 0.75,
 
 
 static func _add_glow(id: String, holder: Node3D) -> void:
-	var name := id.get_slice("/", 1)
+	var name := id.get_slice("/", 1).trim_suffix("_flicker")
+	var bad_bulb: bool = entry(id).get("extra", "") == "flicker"   # (a street light that flickers: Ted's wife, Nov 27)
 	if not LIT.has(name):
 		return
 	var s := size(id)
@@ -871,7 +893,7 @@ static func _add_glow(id: String, holder: Node3D) -> void:
 	# street lights and lantern posts have a daylight sensor (on at dusk); candles and torches are just lit
 	var lamp := Lamp.new()
 	lamp.position.y = s.y * 0.8
-	lamp.setup(l, name in ["streetlight", "post_lantern", "lantern_standing"], 0.0)
+	lamp.setup(l, name in ["streetlight", "post_lantern", "lantern_standing"], 2.5 if bad_bulb else 0.0)
 	holder.add_child(lamp)
 
 
@@ -926,7 +948,7 @@ static func _flatten_paint(f: PackedVector3Array) -> PackedVector3Array:
 static func _collect(node: Node, xf: Transform3D, out: PackedVector3Array) -> void:
 	if node is Node3D:
 		xf = xf * (node as Node3D).transform
-	if node is MeshInstance3D and (node as MeshInstance3D).mesh:
+	if node is MeshInstance3D and (node as MeshInstance3D).mesh and not node.has_meta("no_collide"):
 		for v in (node as MeshInstance3D).mesh.get_faces():
 			out.append(xf * v)
 	for c in node.get_children():
@@ -1063,11 +1085,33 @@ static func recolor(node: Node, color: Color) -> void:
 				m.set_surface_override_material(si, sm)
 
 
-static func make_row(id: String, extra_scale := Vector3.ONE, count := 1, count2 := 1, look := 0, batched := false) -> Node3D:
+# Square floor tiles whose pattern isn't the same every quarter turn (Ted's wife, Nov 27: "you can tell if the
+# piece was going the same direction as the neighboring ones or if it was rotated 90 degrees"): each tile is
+# turned back by the piece's quarter turns, so its pattern always lines up with the world's. (Square: the
+# collision is the same either way.)
+const WORLD_ALIGNED := ["dungeon/floor_tile_small", "dungeon/floor_tile_small_broken_A", "dungeon/floor_tile_small_broken_B",
+		"dungeon/floor_tile_small_decorated", "dungeon/floor_tile_small_weeds_A", "dungeon/floor_tile_small_weeds_B",
+		"dungeon/floor_tile_large", "dungeon/floor_tile_large_rocks"]
+
+
+static func _align_turn(id: String, extra_scale: Vector3, world_yaw: float) -> float:
+	if not id in WORLD_ALIGNED or not is_equal_approx(extra_scale.x, extra_scale.z):
+		return 0.0
+	return -roundf(world_yaw / (PI * 0.5)) * PI * 0.5
+
+
+static func make_row(id: String, extra_scale := Vector3.ONE, count := 1, count2 := 1, look := 0, batched := false, world_yaw := 0.0) -> Node3D:
+	var turn := _align_turn(id, extra_scale, world_yaw)
 	if count <= 1 and count2 <= 1:
-		return make_structure(id, extra_scale, look)
+		var one := make_structure(id, extra_scale, look)
+		if turn != 0.0:
+			var holder := Node3D.new()   # (the piece keeps its own turn; only the tile inside turns back)
+			one.rotation.y = turn
+			holder.add_child(one)
+			return holder
+		return one
 	if batched and count * count2 >= BATCH_FROM:
-		var b := _batched_row(id, extra_scale, count, count2, look)
+		var b := _batched_row(id, extra_scale, count, count2, look, turn)
 		if b:
 			return b
 	var row := Node3D.new()
@@ -1077,6 +1121,7 @@ static func make_row(id: String, extra_scale := Vector3.ONE, count := 1, count2 
 		for i in maxi(count, 1):
 			var b := make_structure(id, extra_scale, look)
 			b.position = step * i + step2 * j
+			b.rotation.y = turn
 			row.add_child(b)
 	return row
 
@@ -1090,7 +1135,7 @@ const BATCH_FROM := 4
 static var _baked := {}
 
 
-static func _batched_row(id: String, extra_scale: Vector3, count: int, count2: int, look: int) -> Node3D:
+static func _batched_row(id: String, extra_scale: Vector3, count: int, count2: int, look: int, turn := 0.0) -> Node3D:
 	if is_rug(id) or is_stairs(id) or id.begins_with("city/building"):
 		return null
 	var tmpl := instance(id, extra_scale, look)
@@ -1112,7 +1157,7 @@ static func _batched_row(id: String, extra_scale: Vector3, count: int, count2: i
 		mm.mesh = _baked_mesh(mi)
 		mm.instance_count = offsets.size()
 		for k in offsets.size():
-			mm.set_instance_transform(k, Transform3D(Basis.IDENTITY, offsets[k]) * part[1])
+			mm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, turn), offsets[k]) * part[1])
 		var mmi := MultiMeshInstance3D.new()
 		mmi.multimesh = mm
 		mmi.material_override = mi.material_override

@@ -7,6 +7,7 @@ extends Node3D
 const PropAnims = preload("res://scripts/prop_anims.gd")
 const Look = preload("res://scripts/prop_anim_look.gd")
 const Sounds = preload("res://scripts/prop_anim_sounds.gd")
+const Refined = preload("res://scripts/refined_models.gd")
 const Models = preload("res://scripts/models.gd")
 const Surfaces = preload("res://scripts/surfaces.gd")
 const Sfx = preload("res://scripts/sfx.gd")
@@ -71,10 +72,13 @@ func press(n: int) -> void:
 		"ooze": _ooze()
 		"rock": _rock()
 		"fuse": _fuse()
+		"swarm": _swarm(odd)
 
 
 func _process(delta: float) -> void:
 	_clock += delta
+	if _p.has("bees") and (_p["bees"] as Node3D).visible:
+		_step_bees()
 	if _drops != null and _drops.visible:
 		_step_drops(delta)
 
@@ -174,6 +178,8 @@ func _build() -> void:
 
 
 func _hand_built() -> Array:
+	if Refined.has(id):
+		return [id]   # (rebuilt in code: its flames are marked, refined_models.gd)
 	return ["lamp", "pickle", "rocking_chair", "tnt_crate", "dynamite_bundle", "powder_keg",
 			"jack_o_lantern_grin", "jack_o_lantern_scary", "jack_o_lantern_goofy"]
 
@@ -341,8 +347,16 @@ func _build_light(isl: Array) -> void:
 	if natives.is_empty():
 		for d in wicks:
 			spots.append([d["top"], 1.0])
-	for a in e.get("at", []):
-		spots.append([a, float(e.get("flame", 1.0))])
+	var marked := false
+	for n in [holder] + holder.find_children("*", "Node3D", true, false):
+		if n.has_meta("flame_spots"):
+			marked = true
+			var xf := Models._to_holder(n, holder) if n != holder else Transform3D.IDENTITY
+			for sp in n.get_meta("flame_spots"):
+				spots.append([xf * (sp as Vector3), 1.0])
+	if not marked:
+		for a in e.get("at", []):
+			spots.append([a, float(e.get("flame", 1.0))])
 	var flames := []
 	var sum := Vector3.ZERO
 	for s in spots:
@@ -1203,6 +1217,80 @@ func _rock() -> void:
 		var s := create_tween()
 		s.tween_interval(k * 0.72)
 		s.tween_callback(_sound.bind("rock", -14.0 - 3.0 * k))
+
+
+# The beehive (Ted's wife, Nov 27: "pressing e makes the bees swarm around the hive"): a cloud of bees looping
+# round the skep, each on its own wobbly orbit, and a buzz that keeps going until E settles them again.
+const BEE_SHADER := """
+shader_type spatial;
+render_mode cull_disabled;
+void fragment() {
+	float band = step(0.5, fract(UV.y * 3.2));
+	ALBEDO = mix(vec3(0.85, 0.6, 0.05), vec3(0.03, 0.025, 0.02), band);
+	ROUGHNESS = 0.5;
+}
+"""
+const BEES := 34
+
+
+func _swarm(on: bool) -> void:
+	if not _p.has("bees"):
+		var mm := MultiMesh.new()
+		mm.transform_format = MultiMesh.TRANSFORM_3D
+		var body := CapsuleMesh.new()
+		body.radius = 0.011
+		body.height = 0.04
+		body.radial_segments = 6
+		body.rings = 2
+		mm.mesh = body
+		mm.instance_count = BEES
+		var mmi := MultiMeshInstance3D.new()
+		mmi.multimesh = mm
+		var mat := ShaderMaterial.new()
+		var sh := Shader.new()
+		sh.code = BEE_SHADER
+		mat.shader = sh
+		mmi.material_override = mat
+		mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(mmi)
+		_p["bees"] = mmi
+		var orbits := []
+		for i in BEES:
+			orbits.append([_rng.randf_range(0.28, 0.75), _rng.randf_range(1.6, 4.2) * (1.0 if _rng.randf() < 0.6 else -1.0),
+					_rng.randf() * TAU, _rng.randf_range(-0.25, 0.45), _rng.randf_range(2.0, 7.0), _rng.randf() * TAU])
+		_p["orbits"] = orbits
+	(_p["bees"] as Node3D).visible = on
+	if on:
+		_step_bees()
+		if not quiet and is_inside_tree() and DisplayServer.get_name() != "headless" and not _p.has("buzz"):
+			var asp := AudioStreamPlayer3D.new()
+			asp.stream = Sounds.get_sound("buzz")
+			asp.bus = Sfx.BUS
+			asp.volume_db = -14.0
+			asp.unit_size = 4.0
+			asp.max_distance = 30.0
+			asp.position = holder.get_meta("hive_centre", Vector3(0, 0.5, 0))
+			add_child(asp)
+			asp.play()
+			_p["buzz"] = asp
+	elif _p.has("buzz"):
+		(_p["buzz"] as Node).queue_free()
+		_p.erase("buzz")
+
+
+func _step_bees() -> void:
+	var c: Vector3 = holder.get_meta("hive_centre", Vector3(0, 0.5, 0))
+	var mm: MultiMesh = (_p["bees"] as MultiMeshInstance3D).multimesh
+	var orbits: Array = _p["orbits"]
+	for i in BEES:
+		var o: Array = orbits[i]
+		var a: float = o[2] + _clock * o[1]
+		var r: float = o[0] * (1.0 + 0.18 * sin(_clock * o[4] + o[5]))
+		var p := c + Vector3(cos(a) * r, o[3] + 0.08 * sin(_clock * o[4] * 1.7 + o[5]), sin(a) * r)
+		p += Vector3(sin(_clock * 23.0 + i), cos(_clock * 19.0 + i * 1.3), sin(_clock * 21.0 + i * 0.7)) * 0.012   # jitter
+		var fwd := Vector3(-sin(a), 0.0, cos(a)) * signf(o[1])
+		var bas := Basis.looking_at(fwd, Vector3.UP) * Basis(Vector3.RIGHT, PI * 0.5)
+		mm.set_instance_transform(i, Transform3D(bas, p))
 
 
 func _fuse() -> void:

@@ -32,7 +32,10 @@ const SKINS := {
 		["Copper", Color(0.3, 0.15, 0.1), Color(0.8, 0.45, 0.3), Color(0.55, 0.75, 0.65)],
 		["Black iron", Color(0.12, 0.12, 0.13), Color(0.26, 0.26, 0.28), Color(0.6, 0.18, 0.12)],
 		["Painted green", Color(0.12, 0.25, 0.15), Color(0.3, 0.62, 0.36), Color(0.9, 0.9, 0.85)]],
-	"super": [["Amethyst", Color(0.2, 0.12, 0.35), Color(0.35, 0.2, 0.7), Color(1.0, 0.8, 0.35)],
+	# (Ted, Nov 27: "change the pattern on the Super Bouncy to something like" a heaven-and-hell yin-yang: the first
+	# look now, so new pads and old ones on their first look get it; the others follow it)
+	"super": [["Heaven & Hell", Color(0.12, 0.1, 0.16), Color(0.55, 0.55, 0.6), Color(0.85, 0.86, 0.92)],
+		["Amethyst", Color(0.2, 0.12, 0.35), Color(0.35, 0.2, 0.7), Color(1.0, 0.8, 0.35)],
 		["Emerald", Color(0.06, 0.25, 0.15), Color(0.1, 0.65, 0.4), Color(0.85, 1.0, 0.7)],
 		["Ruby", Color(0.3, 0.05, 0.08), Color(0.75, 0.08, 0.2), Color(1.0, 0.8, 0.35)],
 		["Sapphire", Color(0.06, 0.1, 0.3), Color(0.15, 0.35, 0.9), Color(0.75, 0.9, 1.0)],
@@ -149,6 +152,23 @@ func _build_look() -> void:
 				var a := TAU * i / 8.0
 				rivet.position = Vector3(cos(a), 0, sin(a)) * (RADIUS - 0.12) + Vector3.UP * 0.06
 				_top.add_child(rivet)
+		"super" when sk[0] == "Heaven & Hell":
+			_top.material_override = _yin_yang()
+			var rim2 := MeshInstance3D.new()
+			var tr2 := TorusMesh.new()
+			tr2.rings = 32
+			tr2.ring_segments = 12
+			tr2.inner_radius = RADIUS - 0.05
+			tr2.outer_radius = RADIUS + 0.04
+			rim2.mesh = tr2
+			var silver := StandardMaterial3D.new()
+			silver.albedo_color = sk[3]
+			silver.metallic = 0.9
+			silver.roughness = 0.2
+			rim2.material_override = silver
+			rim2.scale.y = 0.6
+			rim2.position.y = 0.05
+			_top.add_child(rim2)
 		"super":
 			# Magic: glassy, glowing, colour slowly shifting, with sparkles rising off it
 			_magic = StandardMaterial3D.new()
@@ -207,6 +227,82 @@ func _build_look() -> void:
 				add_child(mi)
 				var a := TAU * i / 10.0
 				_sparkles.append([mi, Vector3(cos(a), 0, sin(a)) * RADIUS * (0.3 + 0.5 * fmod(i * 0.37, 1.0)), fmod(i * 0.618, 1.0)])
+
+
+# Heaven and hell swirled together as a yin-yang on top of the pad: a starry purple-blue nebula with a bright
+# star on one side, churning fire with flying embers on the other, a dark eye with a glowing rim in each, the
+# whole thing slowly turning. All in the shader (time-driven, no particles), shared by every such pad.
+const YIN_YANG := """
+shader_type spatial;
+render_mode cull_back;
+varying vec3 lp;
+float h(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
+float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int k = 0; k < 5; k++) { v += a * n2(p); p = p * 2.03 + 3.1; a *= 0.5; } return v; }
+void vertex() { lp = VERTEX; }
+void fragment() {
+	vec2 p0 = lp.xz / 1.0;   // (the pad's radius is about 1 m)
+	float r = length(p0);
+	float t = TIME * 0.15;
+	mat2 rot = mat2(vec2(cos(t), sin(t)), vec2(-sin(t), cos(t)));
+	vec2 p = rot * (p0 / 0.9);
+	// which half: heaven on the left, with the swirl of two half-size circles
+	float heaven = step(p.x, 0.0);
+	if (length(p - vec2(0.0, -0.5)) < 0.5) heaven = 1.0;
+	if (length(p - vec2(0.0, 0.5)) < 0.5) heaven = 0.0;
+	// heaven: nebula and stars
+	vec2 q = p0 * 3.0 + vec2(TIME * 0.03, 0.0);
+	vec3 neb = mix(vec3(0.02, 0.01, 0.07), vec3(0.28, 0.12, 0.5), smoothstep(0.3, 0.8, fbm(q)));
+	neb = mix(neb, vec3(0.2, 0.5, 0.75), smoothstep(0.55, 0.85, fbm(q * 1.7 + 4.0)) * 0.6);
+	neb = mix(neb, vec3(0.85, 0.5, 0.85), smoothstep(0.7, 0.95, fbm(q * 0.8 + 9.0)) * 0.4);
+	vec2 sc = floor(p0 * 40.0);
+	float star = step(0.965, h(sc)) * (0.6 + 0.4 * sin(TIME * (2.0 + h(sc + 3.0) * 4.0) + h(sc) * 30.0));
+	star *= smoothstep(0.35, 0.0, length(fract(p0 * 40.0) - 0.5));
+	vec2 bright = rot * vec2(-0.42, 0.05) * 0.9;
+	float flare = 0.02 / (length(p0 - bright) + 0.01) + 0.004 / (abs((p0 - bright).x) + 0.004) * smoothstep(0.25, 0.0, abs((p0 - bright).y))
+			+ 0.004 / (abs((p0 - bright).y) + 0.004) * smoothstep(0.25, 0.0, abs((p0 - bright).x));
+	vec3 heaven_c = neb + vec3(1.0, 0.95, 1.0) * star + vec3(0.9, 0.85, 1.0) * min(flare * 0.25, 2.0);
+	// hell: fire churning upward and round, embers, dark char
+	vec2 fq = p0 * 3.0;
+	fq += vec2(fbm(fq + vec2(0.0, TIME * 0.5)), fbm(fq + vec2(5.2, TIME * 0.4))) * 1.4;   // (warped: licking flames)
+	float f = fbm(fq + vec2(0.0, -TIME * 0.6));
+	vec3 fire = mix(vec3(0.06, 0.01, 0.0), vec3(0.55, 0.06, 0.01), smoothstep(0.3, 0.55, f));
+	fire = mix(fire, vec3(0.95, 0.35, 0.04), smoothstep(0.52, 0.72, f));
+	fire = mix(fire, vec3(1.0, 0.78, 0.3), smoothstep(0.7, 0.85, f) * 0.8);
+	vec2 ec = floor(p0 * 30.0 + vec2(0.0, -TIME * 2.0));
+	float ember = step(0.975, h(ec)) * smoothstep(0.3, 0.0, length(fract(p0 * 30.0 + vec2(0.0, -TIME * 2.0)) - 0.5));
+	vec3 hell_c = fire + vec3(1.0, 0.5, 0.1) * ember * 2.0;
+	vec3 col = mix(hell_c, heaven_c, heaven);
+	// the seam between them glows a little
+	// (the S: the right half of one small circle and the left half of the other)
+	float seam = min(abs(length(p - vec2(0.0, -0.5)) - 0.5) + step(p.x, 0.0) * 9.0, abs(length(p - vec2(0.0, 0.5)) - 0.5) + step(0.0, p.x) * 9.0);
+	col += vec3(0.9, 0.7, 0.9) * smoothstep(0.03, 0.0, seam) * 0.5;
+	// the two eyes: dark, with a hot rim
+	for (int k = 0; k < 2; k++) {
+		vec2 ec2 = vec2(0.0, k == 0 ? 0.5 : -0.5);
+		float d = length(p - ec2);
+		col = mix(col, vec3(0.05, 0.01, 0.01), smoothstep(0.15, 0.13, d));
+		col += vec3(0.9, 0.25, 0.05) * smoothstep(0.03, 0.0, abs(d - 0.15)) * 0.8;
+	}
+	// outside the yin-yang: dark
+	col = mix(col, vec3(0.03, 0.03, 0.05), smoothstep(0.99, 1.01, r / 0.9));
+	ALBEDO = col * 0.4;
+	EMISSION = col * 0.7;
+	ROUGHNESS = 0.25;
+	SPECULAR = 0.6;
+}
+"""
+static var _yy_mat: ShaderMaterial
+
+
+static func _yin_yang() -> ShaderMaterial:
+	if _yy_mat == null:
+		var sh := Shader.new()
+		sh.code = YIN_YANG
+		_yy_mat = ShaderMaterial.new()
+		_yy_mat.shader = sh
+	return _yy_mat
 
 
 func _disc(top_r: float, bottom_r: float, h: float, y: float) -> MeshInstance3D:

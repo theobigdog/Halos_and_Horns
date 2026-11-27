@@ -365,7 +365,7 @@ func _run() -> void:
 	var metal_mat: StandardMaterial3D = kinds["metal"]._top.material_override
 	check(wood_mat.albedo_texture != null and wood_mat.metallic < 0.2, "the one-use pad is textured wood")
 	check(metal_mat.albedo_texture != null and metal_mat.metallic >= 0.4, "the permanent pad is textured metal")
-	check(kinds["super"]._magic != null and kinds["super"]._magic.emission_enabled, "the super pad glows with magic")
+	check(kinds["super"]._top.material_override is ShaderMaterial, "the super pad shows heaven and hell (its first look: Ted, Nov 27)")
 	for b in kinds.values():
 		b.queue_free()
 	var normal := await bounce_peak(Vector3(-6, 0, 18))
@@ -487,6 +487,18 @@ func _run() -> void:
 	check(shown.size() >= 2 and shown.all(func(t): return "coffin" in t.to_lower()), "the palette search finds coffins %s" % [shown])
 	ed._filter_palette("")
 	check(ed._palette_buttons.all(func(e): return e[0].visible), "...and clearing it shows everything again")
+	# Categories (Ted's wife, Nov 27): her list, things in more than one where they fit, "Other" for the rest
+	var titles: Array = ed._palette_sections.map(func(s): return s[2])
+	var PC = load("res://scripts/palette_cats.gd")
+	check(PC.ORDER.all(func(c): return c in titles), "the palette has every category on her list %s" % [PC.ORDER.filter(func(c): return not c in titles)])
+	check(PC.cats("halloween/candle").has("Lighting") and PC.cats("halloween/candle").has("Graveyard")
+			and PC.cats("city/streetlight") == ["Lighting", "Street/Road"], "...and things go in every category they fit")
+	ed._only_switchable = true
+	ed._filter_palette("")
+	var sw: Array = ed._palette_buttons.filter(func(e): return e[0].visible)
+	check(not sw.is_empty() and sw.all(func(e): return e[3]) and sw.any(func(e): return "beehive" in e[1]), "the switchable-props tick shows only props that do something with E")
+	ed._only_switchable = false
+	ed._filter_palette("")
 	# Pull tabs: dragging a fence's end tab adds whole copies end to end (posts and all), either end.
 	var fi: int = ed.place("model:halloween/fence", Vector3(0, 0, 10))
 	ed.select(fi)

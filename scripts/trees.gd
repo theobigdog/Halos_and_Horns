@@ -45,9 +45,9 @@ static func make(kind: String, look: int) -> Node3D:
 		cl.mesh = _clumps(kind, look, spots)
 		cl.material_override = ClassicProps._vmat("plant", 0.9)
 		root.add_child(cl)
-	var per := 200 if kind == "oak" else 170
+	var per := 280 if kind == "oak" else 240   # (Nov 27: fuller, finer crowns)
 	var count: int = spots.size() * (per if look != 3 else per / 4)
-	ClassicProps._foliage(root, "tree_%s_%d" % [kind, look], spots, count, 0.2 if kind == "oak" else 0.15, LEAVES[look], 500 + look * 7 + (0 if kind == "oak" else 50))
+	ClassicProps._foliage(root, "tree_%s_%d" % [kind, look], spots, count, 0.17 if kind == "oak" else 0.13, LEAVES[look], 500 + look * 7 + (0 if kind == "oak" else 50))
 	if look == 1:
 		ClassicProps._foliage(root, "tree_%s_bloom" % kind, spots, spots.size() * 60, 0.24, [Color(1.0, 0.8, 0.88), Color(1.0, 0.97, 0.97)], 909, "petal")
 	var body := StaticBody3D.new()
@@ -108,7 +108,7 @@ static func _grow(kind: String) -> Dictionary:
 			var base: Vector3 = tpts[n - rng.randi_range(0, 2)]
 			var dir := (d * 0.7 + Vector3.UP * rng.randf_range(0.9, 1.2)).normalized()
 			_limb(st, rng, base, dir, 1.9, 0.18, 2, crown, bark_col, oak)
-		_fill(crown, rng, Vector3(0, 4.7, 0), Vector3(2.5, 1.9, 2.5), 22, 0.95, 1.3)
+		_fill(crown, rng, Vector3(0, 4.7, 0), Vector3(2.5, 1.9, 2.5), 30, 0.85, 1.2)
 	else:
 		# short branches up the trunk, angled up, and a narrow crown of clumps along the top half
 		for k in 9:
@@ -117,7 +117,7 @@ static func _grow(kind: String) -> Dictionary:
 			var a := k * 2.4
 			var dir := (Vector3(cos(a), 0, sin(a)) * 0.7 + Vector3.UP * 0.9).normalized()
 			_limb(st, rng, base, dir, lerpf(1.3, 0.7, t), lerpf(0.05, 0.025, t), 1, crown, bark_col, oak)
-		_fill(crown, rng, top + Vector3(0, -0.9, 0), Vector3(1.15, 2.4, 1.15), 16, 0.55, 0.8)
+		_fill(crown, rng, top + Vector3(0, -0.9, 0), Vector3(1.15, 2.4, 1.15), 24, 0.5, 0.72)
 	st.index()
 	st.generate_normals()
 	var out := {"bark": st.commit(), "crown": crown}

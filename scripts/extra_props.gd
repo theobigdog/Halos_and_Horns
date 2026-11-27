@@ -26,6 +26,12 @@ const TYPES := {
 	"flowers_daisies": {"shape": "cylinder", "radius": 0.32, "height": 0.4, "label": "Daisies", "hp": 40, "speed": 7.5, "mass": 0.4, "cat": "Village & nature"},
 	"flowers_tulips": {"shape": "cylinder", "radius": 0.28, "height": 0.5, "label": "Tulips", "hp": 40, "speed": 7.5, "mass": 0.4, "cat": "Village & nature"},
 	"fern": {"shape": "cylinder", "radius": 0.45, "height": 0.55, "label": "Fern", "hp": 50, "speed": 7.0, "mass": 0.5, "cat": "Village & nature"},
+	# (Ted's wife, Nov 27: big snowballs, a cute snowman, a coconut, a beehive whose bees swarm on E)
+	"snowball": {"shape": "cylinder", "radius": 0.36, "height": 0.7, "label": "Snowball", "hp": 70, "speed": 6.5, "mass": 1.2, "round": true, "cat": "Village & nature"},
+	"snowball_big": {"shape": "cylinder", "radius": 0.6, "height": 1.15, "label": "Big snowball", "hp": 130, "speed": 5.0, "mass": 2.6, "round": true, "cat": "Village & nature"},
+	"snowman": {"shape": "cylinder", "radius": 0.45, "height": 1.62, "label": "Snowman", "hp": 130, "speed": 5.0, "mass": 2.2, "cat": "Village & nature"},
+	"coconut": {"shape": "cylinder", "radius": 0.12, "height": 0.22, "label": "Coconut", "hp": 35, "speed": 8.0, "mass": 0.4, "round": true, "cat": "Village & nature"},
+	"beehive": {"shape": "cylinder", "radius": 0.33, "height": 0.95, "label": "Beehive", "hp": 80, "speed": 6.0, "mass": 1.0, "cat": "Village & nature"},
 }
 const ClassicProps = preload("res://scripts/classic_props.gd")
 

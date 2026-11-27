@@ -106,6 +106,11 @@ def main():
             extra = dict(e)
             extra.update({"id": "city/road_crossing_end", "label": "Road crossing (at the end)", "extra": "crosswalk_end"})
             out.append(extra)
+        # a street light with a bad bulb that flickers (Ted's wife, Nov 27)
+        if e["id"] == "city/streetlight":
+            extra = dict(e)
+            extra.update({"id": "city/streetlight_flicker", "label": "Street light (flickering)", "extra": "flicker"})
+            out.append(extra)
         # green versions of the yellow (autumn) pines (Wife's notes, Nov 21)
         if e["id"].startswith("halloween/tree_pine_yellow_"):
             extra = dict(e)

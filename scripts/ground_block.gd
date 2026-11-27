@@ -23,8 +23,19 @@ const KINDS := {
 	"flowerbed": "Flowerbed",
 	"sand": "Sand",
 	"parking": "Parking lot",
+	# Ted's wife, Nov 27: single spots (an accessible one too), and plain road surfaces with no markings
+	"parking_spot": "Parking spot",
+	"parking_accessible": "Accessible parking spot",
+	"asphalt": "Plain asphalt",
+	"concrete": "Plain concrete",
 }
-const _KIND_ID := {"grass": 0, "dirt": 1, "gravel": 2, "landscaping": 3, "flowerbed": 4, "sand": 5, "parking": 6}
+const STREET_KINDS := ["parking", "parking_spot", "parking_accessible", "asphalt", "concrete"]   # (Street/Road too)
+const _KIND_ID := {"grass": 0, "dirt": 1, "gravel": 2, "landscaping": 3, "flowerbed": 4, "sand": 5, "parking": 6,
+		"parking_spot": 7, "parking_accessible": 8, "asphalt": 9, "concrete": 10}
+const END_MARGIN := 0.5   # a lot's plain asphalt past the first and last stalls (Ted's wife, Nov 27)
+# Default sizes for new pieces of these kinds
+const DEFAULT_SIZES := {"parking": Vector3(STALL_W * 5 + END_MARGIN * 2, 0.1, 5.2), "parking_spot": Vector3(STALL_W, 0.1, 5.2),
+		"parking_accessible": Vector3(4.2, 0.1, 5.2), "asphalt": Vector3(6, 0.1, 6), "concrete": Vector3(4, 0.12, 4)}
 # Parking lots (Ted's wife, Nov 26: "a parking lot or parking spaces that are tilable"): asphalt with painted
 # stalls 2.6 m wide and 5 m deep, measured from the block's own back-left corner, so blocks set side by side
 # (or back to back) carry on the same pattern. A block 10.5 m deep or more gets a row of stalls along each side
@@ -38,6 +49,7 @@ render_mode cull_back;
 
 uniform int kind = 0;
 instance uniform vec3 bsize = vec3(4.0, 0.3, 4.0);   // the block's size (parking: where the stalls go)
+instance uniform vec3 tint = vec3(1.0);              // Creative's colour for the block (white: as it comes)
 global uniform float snow_cover;
 
 varying vec3 wp;      // world position (metres)
@@ -197,35 +209,103 @@ void sand_top(vec2 p, out vec3 c, out float h) {
 	c = mix(c, lin(vec3(0.5, 0.45, 0.4)), step(0.985, g) * 0.6);
 }
 
-// asphalt, with stall lines measured from the block's corner (object space)
+// The road pieces' asphalt (KayKit City's road grey, sampled from its texture) and concrete.
+vec3 asphalt_col(vec2 pw) {
+	vec3 c = lin(vec3(0.435, 0.463, 0.482)) * (0.88 + 0.2 * fbm(pw * 0.4));
+	float g = h2(floor(pw * 90.0));
+	c *= 0.9 + 0.18 * g;                                                       // aggregate
+	return mix(c, lin(vec3(0.55, 0.57, 0.58)), step(0.97, g) * 0.5);
+}
+
+// the white (or blue) stall paint; `w` is a line's half width
+float stripe(float d, float w) { return 1.0 - smoothstep(w - 0.008, w + 0.008, d); }
+float seg(vec2 p, vec2 a, vec2 b) {
+	vec2 pa = p - a, ba = b - a;
+	return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0));
+}
+
+// Parking (kinds 6, 7, 8), measured from the block's corner (object space, so it turns with the block):
+//   6 a lot: stalls 2.6 m wide from 0.5 m in at each end, a row at the back (and one at the front too if
+//     it's 10.5 m deep or more); 7 one spot: half a line on each side (two spots side by side make one line);
+//   8 an accessible spot: a 2.6 m stall in blue, a wheelchair sign painted in it, and a striped access aisle.
 void parking_top(out vec3 c, out float h) {
 	vec2 q = op.xz + bsize.xz * 0.5;         // metres from the back-left corner
-	vec3 asph = lin(vec3(0.17, 0.17, 0.18));
 	vec2 pw = q + vec2(bsize.x * 0.37, bsize.z * 0.61) + op.y;
-	c = asph * (0.85 + 0.25 * fbm(pw * 0.4));
-	float g = h2(floor(pw * 90.0));
-	c *= 0.88 + 0.22 * g;                                                      // aggregate
-	c = mix(c, lin(vec3(0.33, 0.32, 0.3)), step(0.97, g) * 0.5);
+	c = asphalt_col(pw);
 	h = n2(pw * 40.0) * 0.003;
 #ifndef LOW
 	vec3 k = cells(pw * 0.5);
-	float crack = smoothstep(0.03, 0.0, k.y) * smoothstep(0.55, 0.75, fbm(pw * 0.8 + 7.0));
-	c *= 1.0 - crack * 0.55;
+	float crack = smoothstep(0.03, 0.0, k.y) * smoothstep(0.6, 0.8, fbm(pw * 0.8 + 7.0));
+	c *= 1.0 - crack * 0.45;
 #endif
-	// the stalls: a row along the back, and along the front too if it's deep enough for an aisle between
-	float rows = bsize.z >= 10.5 ? 2.0 : 1.0;
-	bool in_row = q.y <= 5.0 || (rows > 1.5 && q.y >= bsize.z - 5.0);
-	float u = q.x - round(q.x / 2.6) * 2.6;
-	float line = 1.0 - smoothstep(0.055, 0.07, abs(u));
-	float paint = in_row ? line : 0.0;
+	vec3 white = lin(vec3(0.9, 0.9, 0.86));
+	vec3 blue = lin(vec3(0.08, 0.3, 0.72));
+	float paint = 0.0;
+	float bpaint = 0.0;
+	float in_stall = 0.0;   // where oil drips (and the stall's middle)
+	vec2 sc = vec2(0.0);
+	if (kind == 6) {
+		float m = 0.5;
+		float n = floor((bsize.x - 2.0 * m) / 2.6 + 0.001);
+		float rows = bsize.z >= 10.5 ? 2.0 : 1.0;
+		bool in_row = q.y <= 5.0 || (rows > 1.5 && q.y >= bsize.z - 5.0);
+		float x = q.x - m;
+		float u = x - clamp(round(x / 2.6), 0.0, n) * 2.6;
+		paint = in_row ? stripe(abs(u), 0.07) : 0.0;
+		float stall = floor(x / 2.6);
+		in_stall = (in_row && x > 0.0 && stall < n) ? 1.0 : 0.0;
+		sc = vec2(m + (stall + 0.5) * 2.6, q.y < bsize.z * 0.5 ? 2.6 : bsize.z - 2.6);
+	} else if (kind == 7) {
+		bool in_row = q.y <= 5.0;
+		paint = in_row ? max(stripe(q.x, 0.07), stripe(bsize.x - q.x, 0.07)) : 0.0;
+		in_stall = in_row ? 1.0 : 0.0;
+		sc = vec2(bsize.x * 0.5, 2.6);
+	} else {
+		// the stall (left 2.6 m), then the access aisle beside it, striped diagonally
+		float sw = min(2.6, bsize.x);
+		bool in_row = q.y <= 5.0;
+		float edges = max(max(stripe(q.x, 0.07), stripe(abs(q.x - sw), 0.06)), stripe(bsize.x - q.x, 0.07));
+		bpaint = in_row ? edges : 0.0;
+		if (in_row && q.x > sw && q.x < bsize.x) {
+			float hatch = stripe(abs(fract((q.x + q.y) / 0.6) - 0.5) * 0.6, 0.06);
+			bpaint = max(bpaint, hatch * step(0.2, q.y) * step(q.y, 4.8) * step(sw + 0.15, q.x) * step(q.x, bsize.x - 0.15));
+		}
+		in_stall = (in_row && q.x < sw) ? 1.0 : 0.0;
+		sc = vec2(sw * 0.5, 2.6);
+		// the wheelchair sign, white on a blue square, in the middle of the stall
+		if (in_row && q.x < sw) {
+			vec2 p = (q - vec2(sw * 0.5, 3.1)) / 0.55;   // -1..1 over the square
+			float sq = step(max(abs(p.x), abs(p.y)), 1.0);
+			vec2 s = p * vec2(1.0, -1.0);
+			float wheel = abs(length(s - vec2(-0.05, -0.25)) - 0.42);
+			float fig = min(min(seg(s, vec2(-0.15, 0.55), vec2(-0.1, 0.0)), seg(s, vec2(-0.1, 0.0), vec2(0.35, 0.0))),
+					min(seg(s, vec2(0.35, 0.0), vec2(0.45, -0.55)), seg(s, vec2(-0.12, 0.32), vec2(0.25, 0.3))));
+			float head = length(s - vec2(-0.18, 0.78)) - 0.13;
+			float sign_white = sq * max(max(stripe(wheel, 0.06), stripe(fig, 0.07)), step(head, 0.0));
+			bpaint = max(bpaint, sq * (1.0 - sign_white));
+			paint = max(paint, sign_white);
+		}
+	}
 	// oil stains in the middle of some stalls
-	float stall = floor(q.x / 2.6);
-	vec2 sc = vec2((stall + 0.5) * 2.6, q.y < bsize.z * 0.5 ? 2.6 : bsize.z - 2.6);
-	float oil = smoothstep(0.9, 0.2, length((q - sc) * vec2(1.0, 0.6)) + fbm(q * 3.0) * 0.5) * step(0.45, h2(vec2(stall, q.y < bsize.z * 0.5 ? 1.0 : 2.0)));
-	c = mix(c, lin(vec3(0.06, 0.06, 0.065)), oil * 0.6 * (in_row ? 1.0 : 0.0));
-	float worn = smoothstep(0.25, 0.55, fbm(pw * 2.5));
-	c = mix(c, lin(vec3(0.86, 0.85, 0.8)), paint * (0.55 + 0.45 * worn));
-	h += paint * 0.001;
+	float oil = smoothstep(0.9, 0.2, length((q - sc) * vec2(1.0, 0.6)) + fbm(q * 3.0) * 0.5)
+			* step(0.45, h2(vec2(floor(sc.x / 2.6), sc.y)));
+	c = mix(c, lin(vec3(0.12, 0.12, 0.13)), oil * 0.55 * in_stall);
+	float worn = 0.55 + 0.45 * smoothstep(0.25, 0.55, fbm(pw * 2.5));
+	c = mix(c, blue, bpaint * worn);
+	c = mix(c, white, paint * worn);
+	h += max(paint, bpaint) * 0.001;
+}
+
+// plain asphalt (9) and plain concrete (10): no markings at all
+void plain_top(vec2 p, out vec3 c, out float h) {
+	vec2 pw = op.xz + bsize.xz * 0.5 + vec2(bsize.x * 0.37, bsize.z * 0.61) + op.y;
+	if (kind == 9) {
+		c = asphalt_col(pw);
+		h = n2(pw * 40.0) * 0.003;
+	} else {
+		c = lin(vec3(0.78, 0.78, 0.76)) * (0.9 + 0.12 * fbm(pw * 0.7)) * (0.96 + 0.06 * h2(floor(pw * 60.0)));
+		h = n2(pw * 25.0) * 0.002;
+	}
 }
 
 void top_mat(vec2 p, float ac, out vec3 c, out float h) {
@@ -234,15 +314,21 @@ void top_mat(vec2 p, float ac, out vec3 c, out float h) {
 	else if (kind == 2) gravel_top(p, c, h);
 	else if (kind == 3) mulch_top(p, c, h);
 	else if (kind == 4) bed_top(p, c, h);
-	else if (kind == 6) parking_top(c, h);
+	else if (kind >= 6 && kind <= 8) parking_top(c, h);
+	else if (kind >= 9) plain_top(p, c, h);
 	else sand_top(p, c, h);
 }
 
 // ---- sides: layers going down from the top ----
 void side_mat(vec2 s, out vec3 c, out float h) {      // s = (along the face, depth)
 	float d = s.y + (fbm(vec2(s.x * 1.4, s.y * 2.0)) - 0.5) * 0.14;
-	if (kind == 6) {   // asphalt over a gravel base
-		vec3 asph = lin(vec3(0.16, 0.16, 0.17)) * (0.85 + 0.25 * h2(floor(s * 120.0)));
+	if (kind == 10) {  // concrete all the way down
+		c = lin(vec3(0.72, 0.72, 0.7)) * (0.88 + 0.14 * h2(floor(s * 90.0)));
+		h = 0.0;
+		return;
+	}
+	if (kind >= 6) {   // asphalt over a gravel base
+		vec3 asph = lin(vec3(0.4, 0.43, 0.45)) * (0.85 + 0.25 * h2(floor(s * 120.0)));
 		vec3 base = mix(lin(vec3(0.42, 0.4, 0.37)), lin(vec3(0.3, 0.28, 0.26)), h2(floor(s * 60.0)));
 		c = mix(asph, base, smoothstep(0.07, 0.1, d));
 		h = 0.0;
@@ -297,7 +383,7 @@ void fragment() {
 	} else {
 		float along = (abs(on.x) > abs(on.z) ? op.z : op.x) + wp.x + wp.z - op.x - op.z;
 		// how far the top layer lips over the edge
-		float lip = kind == 0 ? 0.05 : kind == 2 ? 0.1 : kind == 3 ? 0.08 : kind == 4 ? 0.05 : (kind == 5 || kind == 6) ? 0.0 : 0.03;
+		float lip = kind == 0 ? 0.05 : kind == 2 ? 0.1 : kind == 3 ? 0.08 : kind == 4 ? 0.05 : (kind >= 5) ? 0.0 : 0.03;
 		lip += (n2(vec2(along * 7.0, 0.0)) - 0.5) * lip * 0.7;
 		if (kind == 0) { lip += smoothstep(0.75, 1.0, n2(vec2(along * 19.0, 3.0))) * 0.05; }   // grass hanging down
 		float on_top = smoothstep(0.5, 0.8, up);
@@ -319,7 +405,7 @@ void fragment() {
 	// snow lies on top
 	float sn = smoothstep(0.35, 0.75, up + (n2(wp.xz * 2.5) - 0.5) * 0.35 - (1.0 - snow_cover) * 0.4) * clamp(snow_cover * 1.4, 0.0, 1.0);
 	col = mix(col, vec3(0.85, 0.88, 0.95), sn);
-	ALBEDO = col;
+	ALBEDO = col * tint;
 	ROUGHNESS = kind == 2 ? 0.85 : 0.95;
 	SPECULAR = 0.3;
 #ifndef LOW
@@ -391,7 +477,7 @@ static var _tuft_mat: ShaderMaterial
 
 
 # A ground block of `size` (x width, y thickness, z depth), bottom-centre at the origin, top at y = size.y.
-static func make(kind: String, size: Vector3) -> Node3D:
+static func make(kind: String, size: Vector3, color := Color.WHITE) -> Node3D:
 	if not KINDS.has(kind):
 		kind = "grass"
 	size = Vector3(maxf(size.x, 0.1), maxf(size.y, 0.02), maxf(size.z, 0.1))
@@ -404,6 +490,9 @@ static func make(kind: String, size: Vector3) -> Node3D:
 	mi.mesh = _box_mesh(size)
 	mi.material_override = _mat(kind, q)
 	mi.set_instance_shader_parameter("bsize", size)
+	if color != Color.WHITE:
+		var lc := color.srgb_to_linear()
+		mi.set_instance_shader_parameter("tint", Vector3(lc.r, lc.g, lc.b))
 	root.add_child(mi)
 	var body := StaticBody3D.new()
 	body.name = "Body"
@@ -558,15 +647,24 @@ static func _build_extras(kind: String, sz: Vector3, q: int) -> Array:
 			var rows := [[-sz.z * 0.5 + 0.75, 0.0]]
 			if sz.z >= 10.5:
 				rows.append([sz.z * 0.5 - 0.75, PI])
-			var n := int(floor(sz.x / STALL_W + 0.001))
+			var n := int(floor((sz.x - END_MARGIN * 2.0) / STALL_W + 0.001))
 			for row in rows:
 				for i in n:
-					var x := -sz.x * 0.5 + (i + 0.5) * STALL_W
+					var x := -sz.x * 0.5 + END_MARGIN + (i + 0.5) * STALL_W
 					out.append([stop, conc, GeometryInstance3D.SHADOW_CASTING_SETTING_ON,
 							Transform3D(Basis(Vector3.UP, row[1]), Vector3(x, top + 0.06, row[0]))])
+		"parking_spot", "parking_accessible":
+			var stop1 := BoxMesh.new()
+			stop1.size = Vector3(1.7, 0.12, 0.2)
+			var conc1 := StandardMaterial3D.new()
+			conc1.albedo_color = Color(0.72, 0.71, 0.68)
+			Surfaces.apply(conc1, "stone")
+			var sw := minf(STALL_W, sz.x) if kind == "parking_accessible" else sz.x
+			out.append([stop1, conc1, GeometryInstance3D.SHADOW_CASTING_SETTING_ON,
+					Transform3D(Basis(), Vector3(-sz.x * 0.5 + sw * 0.5, top + 0.06, -sz.z * 0.5 + 0.75))])
 		"grass":
 			if q >= 1:
-				var n := clampi(int(area * (7.0 if q >= 2 else 2.5)), 0, 320 if q >= 2 else 110)
+				var n := clampi(int(area * (15.0 if q >= 2 else 5.0)), 0, 900 if q >= 2 else 260)   # (Nov 27: thicker)
 				if n >= 2:
 					var xf := []
 					var cols := []
@@ -577,9 +675,19 @@ static func _build_extras(kind: String, sz: Vector3, q: int) -> Array:
 						var sh := rng.randf_range(0.8, 1.15)
 						cols.append(Color(sh * rng.randf_range(0.95, 1.08), sh, sh * rng.randf_range(0.85, 1.0)))
 					out.append([_multi(NatureLook._tuft(), xf, cols), _tufts_mat(), no_shadow])
+				# clover and tiny wildflowers dotted through it
+				var fn := clampi(int(area * (1.2 if q >= 2 else 0.4)), 0, 80)
+				if fn >= 1:
+					var fxf := []
+					var fcols := []
+					for i in fn:
+						var pos := Vector3(rng.randf_range(-0.5, 0.5) * (sz.x - 0.15), top + 0.06, rng.randf_range(-0.5, 0.5) * (sz.z - 0.15))
+						fxf.append(Transform3D(Basis().scaled(Vector3(1.0, 0.5, 1.0) * rng.randf_range(0.018, 0.03)), pos - Vector3(0, 0.035, 0)))
+						fcols.append([Color(0.98, 0.97, 0.92), Color(0.98, 0.85, 0.2), Color(0.75, 0.55, 0.9)][rng.randi() % 3])
+					out.append([_multi(_head(), fxf, fcols), _flowers_mat(), no_shadow])
 		"dirt":
 			if q >= 1:
-				var n := clampi(int(area * (4.0 if q >= 2 else 1.5)), 0, 140 if q >= 2 else 50)
+				var n := clampi(int(area * (9.0 if q >= 2 else 3.0)), 0, 320 if q >= 2 else 100)   # (Nov 27: more clods)
 				if n >= 1:
 					var xf := []
 					var cols := []
@@ -590,6 +698,26 @@ static func _build_extras(kind: String, sz: Vector3, q: int) -> Array:
 						var v := rng.randf_range(0.8, 1.15)
 						cols.append(Color(0.44 * v, 0.29 * v, 0.18 * v))
 					out.append([_multi(_rock(), xf, cols), _clods_mat(), no_shadow])
+				# pebbles, and the odd weed pushing through
+				var pn := clampi(int(area * 2.0), 0, 80)
+				var pxf := []
+				var pcols := []
+				for i in pn:
+					var s := rng.randf_range(0.025, 0.05)
+					pxf.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * 1.3, s * 0.7, s)), Vector3(rng.randf_range(-0.5, 0.5) * (sz.x - 0.1), top, rng.randf_range(-0.5, 0.5) * (sz.z - 0.1))))
+					var gv := rng.randf_range(0.5, 0.75)
+					pcols.append(Color(gv, gv * 0.96, gv * 0.9))
+				if pn >= 1:
+					out.append([_multi(_rock(), pxf, pcols), _stones_mat(), no_shadow])
+				var wn := clampi(int(area * 0.5), 0, 30)
+				if wn >= 1:
+					var wxf := []
+					var wcols := []
+					for i in wn:
+						var s := rng.randf_range(0.4, 0.8)
+						wxf.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s, s)), Vector3(rng.randf_range(-0.5, 0.5) * (sz.x - 0.15), top, rng.randf_range(-0.5, 0.5) * (sz.z - 0.15))))
+						wcols.append(Color(0.75, 0.8, 0.55))
+					out.append([_multi(NatureLook._tuft(), wxf, wcols), _tufts_mat(), no_shadow])
 		"gravel":
 			if q >= 1:
 				var n := clampi(int(area * (1.6 if q >= 2 else 0.7)), 0, 60 if q >= 2 else 24)
@@ -606,7 +734,18 @@ static func _build_extras(kind: String, sz: Vector3, q: int) -> Array:
 		"landscaping":
 			var edge := 0.16
 			_stone_edging(out, sz, rng, edge)
-			_plants(out, sz, rng, edge + 0.05, clampi(int(area / 2.5), 1, 10), clampi(int(area * 0.7), 1, 14), q)
+			_plants(out, sz, rng, edge + 0.05, clampi(int(area / 1.6), 1, 16), clampi(int(area * 1.2), 1, 26), q)   # (Nov 27: fuller beds)
+			if q >= 1:
+				var rn := clampi(int(area / 3.0), 0, 8)
+				var rxf := []
+				var rcols := []
+				for i in rn:
+					var s := rng.randf_range(0.1, 0.22)
+					rxf.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * 1.3, s * 0.7, s)), Vector3(rng.randf_range(-0.4, 0.4) * sz.x, top, rng.randf_range(-0.4, 0.4) * sz.z)))
+					var gv := rng.randf_range(0.5, 0.7)
+					rcols.append(Color(gv, gv * 0.97, gv * 0.93))
+				if rn >= 1:
+					out.append([_multi(_rock(), rxf, rcols), _stones_mat(), shadow])   # a few landscaping boulders
 		"flowerbed":
 			var edge := 0.08
 			_timber_edging(out, sz, edge)

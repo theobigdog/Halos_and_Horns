@@ -25,6 +25,7 @@ extends Node
 const MapData = preload("res://scripts/map_data.gd")
 const Decor = preload("res://scripts/decor.gd")
 const GroundBlock = preload("res://scripts/ground_block.gd")
+const PaletteCats = preload("res://scripts/palette_cats.gd")
 const HollowBuildings = preload("res://scripts/hollow_buildings.gd")
 const Backdrop = preload("res://scripts/backdrop.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
@@ -173,6 +174,8 @@ var _color_pick: ColorPickerButton
 var _prop_pick: OptionButton
 var _state_button: Button
 var _fixed_check: CheckBox
+var _search_box: LineEdit
+var _only_switchable := false
 var _no_possess_check: CheckBox
 var _snap_check: CheckBox
 var _local_check: CheckBox
@@ -341,18 +344,24 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			n.add_child(body)
 		"model":
 			var msc := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
-			var row := Models.make_row(p["model"], msc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)))
+			var row := Models.make_row(p["model"], msc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)), false, MapData.rot_rad(p).y)
 			if p.has("color"):
-				Models.recolor(row, Color(p["color"]))
+				if Models.is_rug(p["model"]):
+					Models.recolor(row, Color(p["color"]))
+				else:
+					Models.tint(row, Color(p["color"]), int(p.get("look", 0)))
 			n.add_child(row)
 			if p.get("lights", false):
 				n.add_child(Models.car_lights(p["model"], msc))
 		"ice":
 			n.add_child(main.make_ice(p))
 		"ground":
-			n.add_child(GroundBlock.make(GroundBlock.KINDS.keys()[int(p.get("look", 0))], MapData.vec(p["size"])))
+			n.add_child(GroundBlock.make(GroundBlock.KINDS.keys()[int(p.get("look", 0))], MapData.vec(p["size"]), Color(p.get("color", "#ffffff"))))
 		"building":
-			n.add_child(HollowBuildings.make(p["kind"], int(p.get("look", 0))))
+			var hbn := HollowBuildings.make(p["kind"], int(p.get("look", 0)))
+			if p.has("size"):
+				hbn.scale = MapData.vec(p["size"])   # (gates, trees and signs can be resized)
+			n.add_child(hbn)
 		"sidewalk":
 			n.add_child(Decor.make_sidewalk(p))
 		"window":
@@ -668,8 +677,9 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 		p = {"type": "prop", "prop": kind.substr(5), "pos": [at.x, at.y, at.z]}
 	elif kind.begins_with("ground:"):
 		p = {"type": "ground", "look": GroundBlock.KINDS.keys().find(kind.substr(7)), "size": [4.0, 0.3, 4.0], "pos": [at.x, at.y, at.z]}
-		if kind == "ground:parking":   # (five stalls in a row; set more side by side, or resize it)
-			p["size"] = [GroundBlock.STALL_W * 5.0, 0.1, 5.2]
+		if GroundBlock.DEFAULT_SIZES.has(kind.substr(7)):   # (a lot: five stalls; spots: one; plain: a slab)
+			var dsz: Vector3 = GroundBlock.DEFAULT_SIZES[kind.substr(7)]
+			p["size"] = [dsz.x, dsz.y, dsz.z]
 	elif kind.begins_with("building:"):
 		p = {"type": "building", "kind": kind.substr(9), "look": 3 if kind.substr(9) == "sign_speed" else 0, "pos": [at.x, at.y, at.z]}
 	elif kind.begins_with("model:"):
@@ -1059,7 +1069,7 @@ func begin(kind: String) -> void:
 	if kind == "extend" and t != "model":
 		_say("Only structures (walls, fences...) can be extended. Blocks can just be resized (T).", 3.0)
 		return
-	if kind == "scale" and not t in RESIZES and t != "prop":
+	if kind == "scale" and not _resizable(piece(selected)) and t != "prop":
 		_say("That can't be resized.", 2.0)
 		return
 	_end_drag(true)
@@ -1250,7 +1260,7 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 				_say("Resizing %s: %d%%. Click to finish, Esc to cancel." % [piece_name(p), roundi(k * 100.0)], 999.0)
 				_sync_inspector()
 				return
-			var is_model: bool = p["type"] == "model"
+			var is_model: bool = p["type"] == "model" or p["type"] == "building"   # (a scale, not metres)
 			var s0 := MapData.vec(_drag_piece["size"]) if _drag_piece.has("size") else Vector3.ONE
 			var s := s0
 			var which := ["x", "y", "z"] if axis == "" else [axis]
@@ -2406,6 +2416,10 @@ func wheel_size(factor: float) -> void:
 			var s := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
 			s = (s * factor).clamp(Vector3.ONE * 0.1, Vector3.ONE * 10.0)
 			set_value(selected, "size", s, "wheel-size")
+		"building":
+			if HollowBuildings.scalable(str(p.get("kind", ""))):
+				var bs := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+				set_value(selected, "size", (bs * factor).clamp(Vector3.ONE * 0.25, Vector3.ONE * 4.0), "wheel-size")
 		"block", "cylinder", "ice", "sidewalk", "window", "ground":
 			set_value(selected, "size", MapData.vec(p["size"]) * factor, "wheel-size")
 		"prop":   # evenly only (Sara, Nov 25), and a demon disguised as it matches its size
@@ -2690,6 +2704,17 @@ func _build_ui() -> void:
 	search.text_changed.connect(_filter_palette)
 	lcol.add_child(search)   # (above the list, so it's there however far down you've scrolled: Wife, Nov 26)
 	lcol.move_child(search, 1)
+	_search_box = search
+	# Only the props that do something with E (Ted's wife, Nov 27)
+	var only := CheckBox.new()
+	only.text = "Only switchable props (E)"
+	only.tooltip_text = "Show only the props a demon can switch, light, open or set going with E"
+	only.focus_mode = Control.FOCUS_NONE
+	only.toggled.connect(func(on):
+		_only_switchable = on
+		_filter_palette(_search_box.text))
+	lcol.add_child(only)
+	lcol.move_child(only, 2)
 	var special := _palette_section(pal, "Special structures", true)
 	for p in PIECES:
 		var kind: String = p[0]
@@ -2698,45 +2723,50 @@ func _build_ui() -> void:
 		if kind in ["block", "cylinder"]:
 			continue   # (Ted, Nov 26: no use any more; old maps' ones still load and can be edited)
 		_palette_button(special, p[1], kind)
-	var walk_in := _palette_section(pal, "Walk-in buildings", true)
+	# Props (demons can be these), then structures (solid scenery), each in the categories from palette_cats.gd
+	# (Ted's wife, Nov 27); something that fits several categories is listed in each.
+	var built_in := []   # [label, kind, [categories]] of the structures that aren't KayKit models
 	for bk in HollowBuildings.KINDS:
-		if not bk in HollowBuildings.GATES and not bk in HollowBuildings.TREES and not bk in HollowBuildings.SIGNS:
-			_palette_button(walk_in, HollowBuildings.KINDS[bk], "building:" + bk)
-	var gates := _palette_section(pal, "Gates", true)
-	for bk in HollowBuildings.GATES:
-		_palette_button(gates, HollowBuildings.KINDS[bk], "building:" + bk)
-	var trees := _palette_section(pal, "Trees", true)
-	for bk in HollowBuildings.TREES:
-		_palette_button(trees, HollowBuildings.KINDS[bk], "building:" + bk)
-	var signs := _palette_section(pal, "Road signs", true)
-	for bk in HollowBuildings.SIGNS:
-		_palette_button(signs, HollowBuildings.KINDS[bk], "building:" + bk)
-	# Props (demons can be these), then structures (solid scenery), each by category
+		var bcats := ["Buildings"]
+		if bk in HollowBuildings.GATES:
+			bcats = ["Fences/pillars/walls", "Graveyard"]
+		elif bk in HollowBuildings.TREES:
+			bcats = ["Plants/landscaping"]
+		elif bk in HollowBuildings.SIGNS:
+			bcats = ["Signs", "Street/Road"]
+		elif bk == "dumpster_open":
+			bcats = ["Street/Road"]
+		built_in.append([HollowBuildings.KINDS[bk], "building:" + bk, bcats])
+	built_in.append(["Ice (slippery)", "ice", ["Ground"]])
+	built_in.append(["Sidewalk", "sidewalk", ["Ground", "Street/Road"]])
+	for gk in GroundBlock.KINDS:
+		built_in.append([GroundBlock.KINDS[gk] + " block", "ground:" + gk,
+				["Ground", "Street/Road"] if gk in GroundBlock.STREET_KINDS else (["Ground", "Plants/landscaping"] if gk in ["grass", "landscaping", "flowerbed"] else ["Ground"])])
+	built_in.append(["Light", "light", ["Lighting"]])
 	for group in [["Props", PropLib.type_names().filter(PropLib.in_palette), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
-		var glabel := _label(pal, "  " + group[0] + " (%d)" % group[1].size())
+		var entries := []   # [label, kind, cats]
+		for t in group[1]:
+			if group[2] == "prop:":
+				entries.append([PropLib.label(t), "prop:" + t, PaletteCats.cats(t)])
+			else:
+				entries.append([Models.label(t), "model:" + t, PaletteCats.cats(t, Models.is_ground(t))])
+		if group[2] == "model:":
+			entries = built_in + entries
+		var glabel := _label(pal, "  " + group[0] + " (%d)" % entries.size())
 		glabel.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
 		_palette_groups.append([glabel, group[0]])
 		var by_cat := {}
-		for t in group[1]:
-			var cat: String = PropLib.category(t) if group[2] == "prop:" else Models.category(t)
+		for e in entries:
+			for cat in e[2]:
+				if not by_cat.has(cat):
+					by_cat[cat] = []
+				by_cat[cat].append(e)
+		for cat in PaletteCats.ORDER:
 			if not by_cat.has(cat):
-				by_cat[cat] = []
-			by_cat[cat].append(t)
-		var cats: Array = by_cat.keys()
-		if group[2] == "model:" and by_cat.has("Ground"):
-			cats.erase("Ground")
-			cats.push_front("Ground")   # (floors, roads, paths and ice: first, they go down first)
-		for cat in cats:
-			var count: int = by_cat[cat].size() + (2 + GroundBlock.KINDS.size() if cat == "Ground" and group[2] == "model:" else 0)
-			var sec := _palette_section(pal, "%s (%d)" % [cat, count], false)
-			if cat == "Ground" and group[2] == "model:":
-				_palette_button(sec, "Ice (slippery)", "ice", "Ground")
-				_palette_button(sec, "Sidewalk", "sidewalk", "Ground")
-				for gk in GroundBlock.KINDS:
-					_palette_button(sec, GroundBlock.KINDS[gk] + " block", "ground:" + gk, "Ground")
-			for t in by_cat[cat]:
-				var label_text: String = PropLib.label(t) if group[2] == "prop:" else Models.label(t)
-				_palette_button(sec, label_text, group[2] + t, cat)
+				continue
+			var sec := _palette_section(pal, "%s (%d)" % [cat, by_cat[cat].size()], false)
+			for e in by_cat[cat]:
+				_palette_button(sec, e[0], e[1], cat)
 
 	# Right: the selected piece
 	var right := PanelContainer.new()
@@ -3012,7 +3042,8 @@ func _palette_button(sec: VBoxContainer, text: String, kind: String, cat := "") 
 		b.add_theme_constant_override("icon_max_width", 48)
 		b.custom_minimum_size.y = 52
 	b.tooltip_text = text
-	_palette_buttons.append([b, (text + " " + cat + " " + kind).to_lower(), sec])
+	var switchable := kind.begins_with("prop:") and not PropLib.PropAnims.entry(kind.substr(5)).is_empty()
+	_palette_buttons.append([b, (text + " " + cat + " " + kind).to_lower(), sec, switchable])
 
 
 # Typing in the search box shows only what matches (every word has to match), with their lists opened.
@@ -3025,11 +3056,13 @@ func _filter_palette(text: String) -> void:
 			if not w in e[1]:
 				ok = false
 				break
+		if _only_switchable and not e[3]:
+			ok = false
 		e[0].visible = ok
 		if ok:
 			shown[e[2]] = true
 	for sec in _palette_sections:
-		if words.is_empty():
+		if words.is_empty() and not _only_switchable:
 			sec[0].visible = true
 			continue
 		sec[0].visible = shown.has(sec[1])
@@ -3157,10 +3190,10 @@ func _sync_inspector() -> void:
 		for a in 3:
 			_spins[k + str(a)].set_value_no_signal(vals[k][a])
 	_rows["rot"].visible = t in ROTATES
-	_rows["size"].visible = t in RESIZES
+	_rows["size"].visible = _resizable(p)
 	_extend_button.visible = t == "model"
-	_size_title.text = "Scale (× normal)" if t == "model" else "Size (m)"
-	_rows["color"].visible = t in ["block", "cylinder", "light"] or (t == "model" and Models.is_rug(p["model"]))
+	_size_title.text = "Scale (× normal)" if t in ["model", "building"] else "Size (m)"
+	_rows["color"].visible = t in ["block", "cylinder", "light", "model", "ground"]
 	if t == "ice":
 		_size_title.text = "Size (m; ice is always thin)"
 	_rows["look"].visible = t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super", "ground", "building"]
@@ -3183,8 +3216,10 @@ func _sync_inspector() -> void:
 	_rows["prop"].visible = t == "prop"
 	if t in ["block", "cylinder", "light"] or p.has("color"):
 		_color_pick.color = Color(p["color"])
-	elif t == "model":
+	elif t == "model" and Models.is_rug(p["model"]):
 		_color_pick.color = Color(0.75, 0.7, 0.65)   # (a rug still in its own colours)
+	elif t in ["model", "ground"]:
+		_color_pick.color = Color.WHITE   # (white: as it comes)
 	_rows["state"].visible = t == "prop" and PropLib.PropAnims.has_state(p.get("prop", ""))
 	_rows["prop_flags"].visible = t == "prop"
 	if t == "prop":
@@ -3196,6 +3231,12 @@ func _sync_inspector() -> void:
 		for idx in _prop_pick.item_count:
 			if _prop_pick.get_item_metadata(idx) == p["prop"]:
 				_prop_pick.select(idx)
+
+
+func _resizable(p: Dictionary) -> bool:
+	if p.is_empty():
+		return false
+	return p["type"] in RESIZES or (p["type"] == "building" and HollowBuildings.scalable(str(p.get("kind", ""))))
 
 
 func _on_spin(key: String) -> void:

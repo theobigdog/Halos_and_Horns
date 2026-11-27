@@ -79,6 +79,10 @@ func _run() -> void:
 		check(lined_up, "found a clear shot at a %s demon" % bot.prop_type)
 		var shots := 0
 		while is_instance_valid(bot) and shots < 12:
+			if shots > 0:
+				await aim_at(player, bot, 0.3)   # (hits nudge a disguise, like the prop it looks like: aim again)
+			if not is_instance_valid(bot):
+				break
 			player._shoot()
 			shots += 1
 			await frames(25)
@@ -244,6 +248,36 @@ func _run() -> void:
 	check(player.crouched and player.velocity.y != 0.0, "you can crouch while jumping")
 	player.test_input = {}
 	await frames(60)
+
+	# ---- Props roll, tumble, go over and right themselves (Ted, Nov 27) ----
+	player.global_position = Vector3(0, 0.1, 20)
+	player.force_possess("apple")
+	await frames(3)
+	player.test_input = {"dir": Vector2(1, 0)}
+	await frames(30)
+	var rolled: Basis = player.prop_pose().basis
+	check(not rolled.is_equal_approx(Basis()), "a demon moving as an apple rolls along")
+	player.test_input = {"dir": Vector2(1, 0), "run": true}
+	await frames(40)
+	check(player.prop_pose().basis.y.dot(Vector3.UP) > 0.98, "...and holding Shift rights it and keeps it upright")
+	player.test_input = {}
+	player.force_possess("dungeon/table_medium")
+	await frames(3)
+	player.test_input = {"dir": Vector2(-1, 0)}
+	await frames(20)
+	check(player.prop_pose().basis.is_equal_approx(Basis()), "an upright table slides instead of rolling")
+	player.test_input = {}
+	player.force_possess("lamp")
+	await frames(3)
+	player.shoved(Vector3(1.5, 0, 0))
+	await frames(30)
+	check(player.is_tipped(), "a disguise shoved hard enough goes over, like the real prop")
+	player.test_input = {"run": true}
+	await frames(40)
+	check(not player.is_tipped(), "...and Shift stands it back up")
+	player.test_input = {}
+	player.unpossess()
+	await frames(10)
 
 	# ---- Jumping ----
 	player.global_position = Vector3(0, 0.05, 20)
