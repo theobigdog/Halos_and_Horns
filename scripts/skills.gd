@@ -4,6 +4,8 @@
 # Numbers here are first guesses, meant to be tuned in playtests.
 extends RefCounted
 
+const GameRules = preload("res://scripts/game_rules.gd")   # (Custom rules scale most of these: Nov 27)
+
 const SKILLS := {
 	# ---- angels ----
 	"dash": {"team": "angel", "label": "Flying Dash", "cooldown": 4.0,
@@ -117,11 +119,61 @@ const MELEE_COOLDOWN := 0.6
 # Cloud Stomp: how much it hurts a demon this far (sideways) from where it landed,
 # after coming down from this high up.
 static func stomp_damage(dist: float, drop: float) -> int:
-	if dist > STOMP_RADIUS:
+	var radius := stomp_radius()
+	if dist > radius:
 		return 0
-	var near := 1.0 - dist / STOMP_RADIUS
+	var near := 1.0 - dist / radius
 	var high := 1.0 + clampf((drop - STOMP_BASE_HEIGHT) / (STOMP_FULL_HEIGHT - STOMP_BASE_HEIGHT), 0.0, 1.0)
-	return maxi(STOMP_MIN_DAMAGE, roundi(STOMP_DAMAGE * near * high))
+	return roundi(maxi(STOMP_MIN_DAMAGE, roundi(STOMP_DAMAGE * near * high)) * GameRules.f("stomp_damage"))
+
+
+# The numbers the Custom rules change (each is the constant above as standard).
+static func stomp_radius() -> float:
+	return STOMP_RADIUS * GameRules.f("stomp_radius")
+
+
+static func teleport_range() -> float:
+	return TELEPORT_RANGE * GameRules.f("teleport_range")
+
+
+static func cherub_radius() -> float:
+	return CHERUB_RADIUS * GameRules.f("cherub_radius")
+
+
+static func cherub_lifetime() -> float:
+	return CHERUB_LIFETIME * GameRules.f("cherub_time")
+
+
+static func smite_radius() -> float:
+	return SMITE_RADIUS * GameRules.f("smite_radius")
+
+
+static func fear_radius() -> float:
+	return FEAR_RADIUS * GameRules.f("fear_radius")
+
+
+static func fear_time() -> float:
+	return FEAR_TIME * GameRules.f("fear_time")
+
+
+static func fire_linger() -> float:
+	return FIRE_LINGER * GameRules.f("fire_linger")
+
+
+static func vacuum_radius() -> float:
+	return VACUUM_RADIUS * GameRules.f("vacuum_radius")
+
+
+static func vacuum_radius_end() -> float:
+	return VACUUM_RADIUS_END * GameRules.f("vacuum_radius")
+
+
+static func minion_lifetime() -> float:
+	return MINION_LIFETIME * GameRules.f("minion_time")
+
+
+static func minion_health() -> float:
+	return MINION_HEALTH * GameRules.f("minion_health")
 
 
 static func label(id: String) -> String:
@@ -129,11 +181,11 @@ static func label(id: String) -> String:
 
 
 static func hatred_cost(id: String) -> float:
-	return SKILLS[id].get("hatred", 0.0) if SKILLS.has(id) else 0.0
+	return SKILLS[id].get("hatred", 0.0) * GameRules.hatred_mult(id) if SKILLS.has(id) else 0.0
 
 
 static func cooldown(id: String) -> float:
-	return SKILLS[id]["cooldown"] if SKILLS.has(id) else 0.0
+	return SKILLS[id]["cooldown"] * GameRules.cooldown_mult(id) if SKILLS.has(id) else 0.0
 
 
 static func for_team(team: String) -> Array:

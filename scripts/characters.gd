@@ -10,6 +10,7 @@
 # Angels also get feathered wings and demons bat wings, so the teams always read at a glance.
 extends RefCounted
 
+const DemonWings = preload("res://scripts/demon_wings.gd")
 const HornCrowns = preload("res://scripts/horn_crowns.gd")
 const Graphics = preload("res://scripts/graphics.gd")
 const DIR := "res://assets/kaykit_characters/"
@@ -259,7 +260,21 @@ static func build(role: String, outfit: Dictionary, height: float) -> Node3D:
 	var hatted := head_c.begins_with("Skeleton") and not head.ends_with(":bare") and not _hat(head_c).is_empty()
 	head_att.add_child(_crown(outfit["crown"], role, hatted, head_hull(head_c, hatted)))
 	var wings := _wings(role, outfit["skin"])
-	base.add_child(wings)   # (model space: the back is -Z, the chest about 1.1 up)
+	# On the chest bone, so the wings go wherever the body does: bending over in a crouch, leaning while
+	# running (Ted, Nov 27: they floated in place while the demon crouched). They're built in model space
+	# (the back is -Z, the chest about 1.1 up), so the holder undoes the chest's rest pose.
+	var chest := sk.find_bone("chest")
+	if chest >= 0:
+		var att := BoneAttachment3D.new()
+		att.name = "WingMount"
+		att.bone_name = "chest"
+		sk.add_child(att)
+		var holder := Node3D.new()
+		holder.transform = (_to_root(sk, base) * sk.get_bone_global_rest(chest)).affine_inverse()
+		att.add_child(holder)
+		holder.add_child(wings)
+	else:
+		base.add_child(wings)
 	rig.setup(base.find_children("*", "AnimationPlayer", true, false)[0], wings, role)
 	return rig
 
@@ -851,127 +866,24 @@ static func _angel_wing(wing: Node3D, side: float, skin: String) -> void:
 	wing.add_child(mi)
 
 
-const SCALE_SHADER := """
-shader_type spatial;
-render_mode cull_disabled;
-uniform vec3 base_color = vec3(0.22, 0.03, 0.05);
-uniform vec3 dark_color = vec3(0.05, 0.01, 0.02);
-uniform vec3 vein_color = vec3(0.9, 0.25, 0.05);
-varying vec3 lp;
-float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-void vertex() { lp = VERTEX; }
-void fragment() {
-	// overlapping scales: offset rows of rounded cells, darker at each scale's lower rim
-	vec2 uv = lp.xy * vec2(5.5, 6.5);
-	float row = floor(uv.y);
-	uv.x += mod(row, 2.0) * 0.5;
-	vec2 cell = fract(uv) - vec2(0.5, 0.0);
-	float d = length(cell * vec2(1.0, 0.8));
-	float rim = smoothstep(0.35, 0.55, d);
-	float tint = h(floor(uv)) * 0.25;
-	vec3 col = mix(base_color * (0.85 + tint), dark_color, rim);
-	// faint glowing veins running out along the wing
-	float vein = 1.0 - smoothstep(0.0, 0.04, abs(fract(atan(lp.y, abs(lp.x) + 0.0001) * 2.2) - 0.5));
-	ALBEDO = col;
-	EMISSION = vein_color * vein * 0.35;
-	ROUGHNESS = 0.45;
-	METALLIC = 0.15;
-	SPECULAR = 0.6;
-}
-"""
+# The transform from `n`'s space to `root`'s (n a descendant of root).
+static func _to_root(n: Node, root: Node) -> Transform3D:
+	var xf := Transform3D.IDENTITY
+	var at := n
+	while at != null and at != root:
+		if at is Node3D:
+			xf = (at as Node3D).transform * xf
+		at = at.get_parent()
+	return xf
 
 
-static func _demon_mats() -> Array:
-	if not _wing_mats.has("demon"):
-		var skin := ShaderMaterial.new()
-		var sh := Shader.new()
-		sh.code = SCALE_SHADER
-		skin.shader = sh
-		var bone := StandardMaterial3D.new()
-		bone.albedo_color = Color(0.16, 0.06, 0.06)
-		bone.roughness = 0.5
-		var claw := StandardMaterial3D.new()
-		claw.albedo_color = Color(0.85, 0.8, 0.7)
-		claw.roughness = 0.35
-		_wing_mats["demon"] = [skin, bone, claw]
-	return _wing_mats["demon"]
-
-
-# A demon wing, dragon-style: an arm (shoulder, elbow, wrist with a claw) and long finger bones
-# spreading from the wrist, with a scaly membrane stretched between them, scalloped between the tips.
+# A demon wing: a bat / dragon wing grown from the back (demon_wings.gd; Ted, Nov 27: the old one was
+# "kite material and bike-spokes").
 static func _demon_wing(wing: Node3D, side: float) -> void:
-	var mats := _demon_mats()
-	var shoulder := Vector3.ZERO
-	var elbow := Vector3(0.38 * side, 0.32, 0)
-	var wrist := Vector3(0.78 * side, 0.52, 0)
-	var tips := [
-		wrist + Vector3(0.55 * side, 0.18, 0),
-		wrist + Vector3(0.62 * side, -0.22, 0),
-		wrist + Vector3(0.45 * side, -0.62, 0),
-		wrist + Vector3(0.16 * side, -0.85, 0),
-	]
-	var body := Vector3(0.06 * side, -0.42, 0)
-	# The membrane: a fan from the wrist over the outline elbow -> tips (scalloped) -> body -> shoulder
-	var outline := [elbow, tips[0]]
-	for i in tips.size():
-		var a: Vector3 = tips[i]
-		var b: Vector3 = tips[i + 1] if i + 1 < tips.size() else body
-		var mid := (a + b) * 0.5
-		outline.append(mid.lerp(wrist, 0.28))   # the scallop: the edge sags in between the fingers
-		outline.append(b)
-	outline.append(shoulder)
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	for i in outline.size() - 1:
-		var p1: Vector3 = outline[i]
-		var p2: Vector3 = outline[i + 1]
-		# subdivide each fan slice a little so it bends (a slight cup) instead of being dead flat
-		var m1 := wrist.lerp(p1, 0.5) + Vector3(0, 0, -0.04)
-		var m2 := wrist.lerp(p2, 0.5) + Vector3(0, 0, -0.04)
-		for tri in [[wrist, m1, m2], [m1, p1, p2], [m1, p2, m2]]:
-			for v in tri:
-				st.add_vertex(v)
-	st.generate_normals()
-	var mem := MeshInstance3D.new()
-	mem.mesh = st.commit()
-	mem.material_override = mats[0]
-	wing.add_child(mem)
-	# Bones: the arm and the fingers, tapering, with a hooked claw at the wrist
-	var bones := [[shoulder, elbow, 0.045], [elbow, wrist, 0.04]]
-	for t in tips:
-		bones.append([wrist, t, 0.025])
-	for b in bones:
-		var a: Vector3 = b[0]
-		var c: Vector3 = b[1]
-		var mi := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.bottom_radius = b[2]
-		cm.top_radius = b[2] * 0.45
-		cm.height = a.distance_to(c)
-		cm.radial_segments = 6
-		mi.mesh = cm
-		mi.material_override = mats[1]
-		mi.position = (a + c) * 0.5 + Vector3(0, 0, 0.01)
-		mi.basis = _align_y(c - a)
-		wing.add_child(mi)
-	for t in tips + [wrist]:   # little knuckles
-		var k := MeshInstance3D.new()
-		var sm := SphereMesh.new()
-		sm.radius = 0.035
-		sm.height = 0.07
-		sm.radial_segments = 6
-		sm.rings = 3
-		k.mesh = sm
-		k.material_override = mats[1]
-		k.position = t
-		wing.add_child(k)
-	var claw := MeshInstance3D.new()
-	var cc := CylinderMesh.new()
-	cc.top_radius = 0.0
-	cc.bottom_radius = 0.03
-	cc.height = 0.16
-	claw.mesh = cc
-	claw.material_override = mats[2]
-	claw.position = wrist + Vector3(0.02 * side, 0.09, 0.02)
-	claw.rotation.z = -0.5 * side
-	wing.add_child(claw)
+	var mi := MeshInstance3D.new()
+	mi.name = "Wing"
+	mi.mesh = DemonWings.mesh(side)
+	var mats := DemonWings.materials()
+	mi.set_surface_override_material(0, mats[0])
+	mi.set_surface_override_material(1, mats[1])
+	wing.add_child(mi)

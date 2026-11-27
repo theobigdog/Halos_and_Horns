@@ -27,6 +27,19 @@ const LABELS := {
 	"quick_run": "Endless Sprint", "fast_hatred": "Hatred Surge", "fire_burst": "Fire Burst",
 	"heal": "Unholy Mending", "vanish": "Invisibility",
 }
+# What the Custom rules change (standard: the constants here).
+static func surge_mult() -> float:
+	return FAST_HATRED_MULT * GameRules.f("surge_strength")
+
+
+static func burst_radius() -> float:
+	return FIRE_BURST_RADIUS * GameRules.f("burst_radius") * GameRules.f("blast")
+
+
+static func duration(kind: String) -> float:
+	return DURATION.get(kind, 0.0) * GameRules.f("pu_time")
+
+
 const DURATION := {"sense": 15.0, "quick_throw": 12.0, "quick_skills": 15.0, "quick_run": 15.0, "fast_hatred": 15.0}
 
 const FAST_HATRED_MULT := 8.0     # Hatred Surge: Hatred refills 8x as fast, 32/s, beating flying's 22/s drain (Ted, Nov 18)
@@ -112,7 +125,7 @@ func decider_tick(delta: float) -> void:
 
 	# Demon power-ups, dropped by the angels.
 	if not angels.is_empty() and not demons.is_empty():
-		_demon_timer -= 0.2
+		_demon_timer -= 0.2 * GameRules.f("pu_rate")
 		var demon_kinds := GameRules.allowed(DEMON_KINDS)
 		if _demon_timer <= 0.0 and _count("demon") < MAX_EACH_TEAM and not demon_kinds.is_empty():
 			var a = angels.pick_random()[1]
@@ -123,7 +136,7 @@ func decider_tick(delta: float) -> void:
 
 	# Struggling angels get a hand.
 	var angel_kinds := GameRules.allowed(ANGEL_KINDS)
-	if not angels.is_empty() and t - _last_angel_help > ANGEL_HELP_AFTER and _count("angel") < MAX_ANGEL_PICKUPS \
+	if not angels.is_empty() and t - _last_angel_help > ANGEL_HELP_AFTER / GameRules.f("pu_rate") and _count("angel") < MAX_ANGEL_PICKUPS \
 			and not angel_kinds.is_empty():
 		var a = angels.pick_random()[1]
 		var ang := randf() * TAU
@@ -182,8 +195,9 @@ func _drop(team: String, kind: String, near: Vector3) -> void:
 	var from := near + Vector3.UP * 1.0
 	if from.y < pos.y:
 		from = pos
-	_auth[_counter] = {"kind": kind, "team": team, "pos": pos, "until": _now() + LIFETIME}
-	main.team_fx(team, "powerup", [_counter, kind, pos, from, LIFETIME])
+	var life := LIFETIME * GameRules.f("pu_life")
+	_auth[_counter] = {"kind": kind, "team": team, "pos": pos, "until": _now() + life}
+	main.team_fx(team, "powerup", [_counter, kind, pos, from, life])
 	print("[decider] %s power-up dropped: %s" % [team, kind])
 
 
@@ -229,7 +243,7 @@ func show_item(id: int, kind: String, pos: Vector3, from: Vector3 = pos, left :=
 	n.add_child(tag)
 	n.set_meta("t", randf() * 10.0)
 	n.set_meta("kind", kind)
-	n.set_meta("expires", _now() + clampf(left, 0.0, LIFETIME))
+	n.set_meta("expires", _now() + clampf(left, 0.0, LIFETIME * 3.0))
 	n.set_meta("tag", tag)
 	main.fx_parent().add_child(n)
 	n.global_position = Vector3(pos.x, maxf(from.y, pos.y), pos.z)

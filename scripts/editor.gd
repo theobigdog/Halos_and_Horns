@@ -91,7 +91,7 @@ var _group_btn: Button
 var _ungroup_btn: Button
 var _member_start := {}       # index -> [position, basis] when a move/turn began
 var _member_before := {}      # index -> piece copy (to undo a cancelled drag online)
-const SHARE_KEYS := ["look", "color", "lights", "always", "flicker", "energy", "range", "spot", "angle"]
+const SHARE_KEYS := ["look", "color", "lights", "always", "flicker", "energy", "range", "spot", "angle", "fixed", "no_possess"]
 var _drag_mouse := Vector2.ZERO
 var _drag_offset := Vector3.ZERO
 var _drag_t0 := 0.0
@@ -172,6 +172,8 @@ var _rows := {}                # "pos" / "rot" / "size" -> row container
 var _color_pick: ColorPickerButton
 var _prop_pick: OptionButton
 var _state_button: Button
+var _fixed_check: CheckBox
+var _no_possess_check: CheckBox
 var _snap_check: CheckBox
 var _local_check: CheckBox
 
@@ -388,6 +390,8 @@ func _fill_looks(t: String) -> void:
 	var kind := t if t in ["window", "bouncy", "bouncy_once", "bouncy_super", "ground", "building"] else "model"
 	if kind == "building" and str(piece(selected).get("kind", "")) in HollowBuildings.TREES:
 		kind = "tree"   # (seasons, not colour schemes)
+	if kind == "building" and str(piece(selected).get("kind", "")) in HollowBuildings.SIGNS:
+		kind = "sign:" + str(piece(selected).get("kind", ""))   # (wear, or a speed limit's speed)
 	if kind == _looks_for:
 		return
 	_looks_for = kind
@@ -401,6 +405,9 @@ func _fill_looks(t: String) -> void:
 		"ground": names = GroundBlock.KINDS.values()
 		"building": names = ["Colours 1", "Colours 2", "Colours 3", "Colours 4"]
 		"tree": names = HollowBuildings.Trees.LOOKS
+		_:
+			if kind.begins_with("sign:"):
+				names = HollowBuildings.RoadSigns.looks(kind.substr(5))
 	for ln in names:
 		_look_pick.add_item(ln)
 
@@ -664,7 +671,7 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 		if kind == "ground:parking":   # (five stalls in a row; set more side by side, or resize it)
 			p["size"] = [GroundBlock.STALL_W * 5.0, 0.1, 5.2]
 	elif kind.begins_with("building:"):
-		p = {"type": "building", "kind": kind.substr(9), "look": 0, "pos": [at.x, at.y, at.z]}
+		p = {"type": "building", "kind": kind.substr(9), "look": 3 if kind.substr(9) == "sign_speed" else 0, "pos": [at.x, at.y, at.z]}
 	elif kind.begins_with("model:"):
 		p = {"type": "model", "model": kind.substr(6), "pos": [at.x, at.y, at.z]}
 	elif kind == "block":
@@ -2693,7 +2700,7 @@ func _build_ui() -> void:
 		_palette_button(special, p[1], kind)
 	var walk_in := _palette_section(pal, "Walk-in buildings", true)
 	for bk in HollowBuildings.KINDS:
-		if not bk in HollowBuildings.GATES and not bk in HollowBuildings.TREES:
+		if not bk in HollowBuildings.GATES and not bk in HollowBuildings.TREES and not bk in HollowBuildings.SIGNS:
 			_palette_button(walk_in, HollowBuildings.KINDS[bk], "building:" + bk)
 	var gates := _palette_section(pal, "Gates", true)
 	for bk in HollowBuildings.GATES:
@@ -2701,6 +2708,9 @@ func _build_ui() -> void:
 	var trees := _palette_section(pal, "Trees", true)
 	for bk in HollowBuildings.TREES:
 		_palette_button(trees, HollowBuildings.KINDS[bk], "building:" + bk)
+	var signs := _palette_section(pal, "Road signs", true)
+	for bk in HollowBuildings.SIGNS:
+		_palette_button(signs, HollowBuildings.KINDS[bk], "building:" + bk)
 	# Props (demons can be these), then structures (solid scenery), each by category
 	for group in [["Props", PropLib.type_names().filter(PropLib.in_palette), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
 		var glabel := _label(pal, "  " + group[0] + " (%d)" % group[1].size())
@@ -2904,6 +2914,20 @@ func _build_ui() -> void:
 	_state_button.tooltip_text = "How it starts each round (demons can still change it with E)"
 	_inspector.add_child(st_row)
 	_rows["state"] = st_row
+	# Fixed in place / can't be possessed (Ted, Nov 27)
+	var fx_row := HBoxContainer.new()
+	_fixed_check = CheckBox.new()
+	_fixed_check.text = "Fixed in place"
+	_fixed_check.tooltip_text = "Nothing shoves, knocks over, blasts or sucks it away (and a demon copying it can't be shoved either)"
+	_fixed_check.toggled.connect(func(on): set_value(selected, "fixed", on))
+	fx_row.add_child(_fixed_check)
+	_no_possess_check = CheckBox.new()
+	_no_possess_check.text = "Can't be possessed"
+	_no_possess_check.tooltip_text = "Demons can't possess this one, but they can still copy its look"
+	_no_possess_check.toggled.connect(func(on): set_value(selected, "no_possess", on))
+	fx_row.add_child(_no_possess_check)
+	_inspector.add_child(fx_row)
+	_rows["prop_flags"] = fx_row
 	var brow := HBoxContainer.new()
 	_small_button(brow, "Move (G)", func(): begin("move"))
 	_small_button(brow, "Turn (R)", func(): begin("rotate"))
@@ -3162,6 +3186,10 @@ func _sync_inspector() -> void:
 	elif t == "model":
 		_color_pick.color = Color(0.75, 0.7, 0.65)   # (a rug still in its own colours)
 	_rows["state"].visible = t == "prop" and PropLib.PropAnims.has_state(p.get("prop", ""))
+	_rows["prop_flags"].visible = t == "prop"
+	if t == "prop":
+		_fixed_check.set_pressed_no_signal(typeof(p.get("fixed")) == TYPE_BOOL and p["fixed"])
+		_no_possess_check.set_pressed_no_signal(typeof(p.get("no_possess")) == TYPE_BOOL and p["no_possess"])
 	if _rows["state"].visible:
 		_state_button.text = PropLib.PropAnims.state_name(p["prop"], int(p.get("state", 0))).capitalize() + " (click to change)"
 	if t == "prop":

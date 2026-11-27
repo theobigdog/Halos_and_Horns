@@ -224,7 +224,7 @@ static func clean(raw: Dictionary) -> Dictionary:
 			if not p.get("kind") in HollowBuildings.KINDS:
 				continue
 			c["kind"] = p["kind"]
-			c["look"] = int(_num(p.get("look"), 0.0, 3.0, 0.0))
+			c["look"] = int(_num(p.get("look"), 0.0, 7.0 if p["kind"] == "sign_speed" else 3.0, 0.0))   # (speed limits: 8)
 		elif t == "sidewalk":
 			var ssz := _vec(p.get("size"), 0.3, 100.0, Vector3(2, 0.18, 6))
 			c["size"] = _arr(Vector3(ssz.x, clampf(ssz.y, 0.05, 0.6), ssz.z))
@@ -281,6 +281,10 @@ static func clean(raw: Dictionary) -> Dictionary:
 			var st := int(_num(p.get("state"), 0.0, float(PropLib.PropAnims.state_count(c["prop"]) - 1), 0.0))
 			if st > 0:
 				c["state"] = st   # how an animated prop starts the round (lit, open...)
+			if typeof(p.get("fixed")) == TYPE_BOOL and p["fixed"]:
+				c["fixed"] = true        # nothing shoves it (Ted, Nov 27)
+			if typeof(p.get("no_possess")) == TYPE_BOOL and p["no_possess"]:
+				c["no_possess"] = true   # demons can copy its look but not possess it
 		elif t == "shrine":
 			shrines += 1
 			if shrines > 1:

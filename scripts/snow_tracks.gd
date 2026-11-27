@@ -128,7 +128,7 @@ func _process(delta: float) -> void:
 		stamp(p, PRINT_RADIUS)
 	for f in get_tree().get_nodes_in_group("hellfire"):
 		if f.has_method("is_lit") and f.is_lit() and (f as Node3D).global_position.y < 0.8:
-			stamp((f as Node3D).global_position, 1.8, FIRE_HOLD)   # (Skills.FIRE_RADIUS)
+			stamp((f as Node3D).global_position, float(f.get("radius")) if f.get("radius") != null else 1.8, FIRE_HOLD)
 	if _dirty:
 		_dirty = false
 		_tex.update(_img)

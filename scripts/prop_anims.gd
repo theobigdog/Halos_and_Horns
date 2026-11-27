@@ -94,7 +94,7 @@ static func _build() -> Dictionary:
 	t["furniture/armchair_pillows"] = {"kind": "recline"}
 	for id in ["furniture/pictureframe_standing_A", "furniture/pictureframe_standing_B"]:
 		t[id] = {"kind": "picture"}
-	t["pickle"] = {"kind": "ooze"}
+	# (the pickle has no E action: it just leaves its slime trail when it moves, slime_trail.gd; Ted, Nov 27)
 	# New props (extra_props.gd)
 	t["rocking_chair"] = {"kind": "rock"}
 	for id in ["tnt_crate", "dynamite_bundle", "powder_keg"]:
@@ -105,7 +105,7 @@ static func _build() -> Dictionary:
 
 
 static func entry(type_name: String) -> Dictionary:
-	return TABLE.get(type_name.get_slice("#", 0).get_slice("@", 0), {})
+	return TABLE.get(type_name.get_slice("!", 0).get_slice("#", 0).get_slice("@", 0), {})
 
 
 static func kind(type_name: String) -> String:
@@ -187,7 +187,7 @@ static func _animator(visual: Node3D, type_name: String) -> Node3D:
 	if a == null:
 		a = Animator.new()
 		a.name = "PropAnim"
-		a.setup(type_name.get_slice("#", 0).get_slice("@", 0), entry(type_name), visual)
+		a.setup(type_name.get_slice("!", 0).get_slice("#", 0).get_slice("@", 0), entry(type_name), visual)
 		visual.add_child(a)
 	return a
 

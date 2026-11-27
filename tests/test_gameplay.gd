@@ -127,7 +127,11 @@ func _run() -> void:
 				"own demon doesn't block the crosshair (pitch %.1f)" % pitch)
 	var prop: Node3D = get_nodes_in_group("prop")[0]
 	var lined: bool = false
+	var pads: Array = main.BOUNCIES + main.ONE_USE_BOUNCIES + main.SUPER_BOUNCIES
 	for p in get_nodes_in_group("prop"):
+		# (not one lying next to a bouncy pad: turning into a long bench there flings you into the air)
+		if pads.any(func(b): return Vector2(b.x - p.global_position.x, b.z - p.global_position.z).length() < 3.0):
+			continue
 		prop = p
 		lined = await aim_at(player, prop, 0.2)
 		if lined:
@@ -145,7 +149,7 @@ func _run() -> void:
 	check(ok and player.possessed_type == prop.get_meta("prop_type"),
 			"demon possessed a %s" % prop.get_meta("prop_type"))
 	await frames(30)
-	check(player.is_on_floor(), "possessed demon lands on the floor")
+	check(player.is_on_floor(), "possessed demon lands on the floor (at %s, moving %s)" % [player.global_position, player.velocity])
 	# Holding the click returns to demon form. (Headless can't capture the mouse,
 	# so start the hold the way a click on a possessed demon does.)
 	player._holding = true
@@ -156,7 +160,7 @@ func _run() -> void:
 	check(player.possessed_type == "", "holding click returns to demon form")
 	check(player.hold_fraction == 0.0, "hold progress resets")
 	await frames(30)
-	check(player.is_on_floor(), "demon form lands on the floor")
+	check(player.is_on_floor(), "demon form lands on the floor (at %s, moving %s)" % [player.global_position, player.velocity])
 	player.toggle_view()
 	check(player.spring.spring_length == 0.0 and not player.visual_root.visible, "T switches demon to first person")
 
@@ -208,6 +212,38 @@ func _run() -> void:
 	await frames(85)   # long enough to reach the top, not long enough to walk off the far side
 	check(player.global_position.y > 1.9, "small demon walks up the ramp onto the platform (y %.2f)" % player.global_position.y)
 	player.test_input = {}
+
+	# ---- Crouching (Ted, Nov 27): a shorter body, and you stay down under something low ----
+	player.global_position = Vector3(0, 0.05, 20)
+	player.velocity = Vector3.ZERO
+	await frames(5)
+	var stand_h: float = player.shape_node.shape.height
+	player.test_input = {"sneak": true}
+	await frames(3)
+	var crouch_h: float = player.shape_node.shape.height
+	check(player.crouched and crouch_h < stand_h * 0.7, "crouching makes your body shorter (%.2f -> %.2f m)" % [stand_h, crouch_h])
+	var lid := StaticBody3D.new()
+	var lid_shape := CollisionShape3D.new()
+	var lid_box := BoxShape3D.new()
+	lid_box.size = Vector3(3, 0.2, 3)
+	lid_shape.shape = lid_box
+	lid.add_child(lid_shape)
+	main.world_root.add_child(lid)
+	lid.global_position = Vector3(0, crouch_h + 0.2 + 0.1, 20)   # just over a crouched head, under a standing one
+	await frames(3)
+	player.test_input = {}
+	await frames(5)
+	check(player.crouched, "...and stays crouched while there's no room to stand")
+	lid.queue_free()
+	await frames(5)
+	check(not player.crouched and absf(player.shape_node.shape.height - stand_h) < 0.01, "...then stands up once there is")
+	player.test_input = {"sneak": true, "jump": true}
+	await frames(2)
+	player.test_input = {"sneak": true}
+	await frames(10)
+	check(player.crouched and player.velocity.y != 0.0, "you can crouch while jumping")
+	player.test_input = {}
+	await frames(60)
 
 	# ---- Jumping ----
 	player.global_position = Vector3(0, 0.05, 20)
@@ -512,6 +548,26 @@ func _run() -> void:
 	GR.current = keep_rules
 	main.rules_use_custom = false
 	check(GR.is_standard(main.active_rules()), "the game plays Standard unless Custom is picked")
+	# Nov 27: tabs, and every rule has its control and does something
+	var Skills = load("res://scripts/skills.gd")
+	var odd: Dictionary = GR.clean({"weather": 99, "still_taunt": 1, "cd_fire": 2.0, "stamina": 3.0})
+	check(odd["weather"] == GR.CHOICES["weather"].size() - 1 and odd["still_taunt"] == 10.0 and odd["cd_fire"] == 2.0
+			and not odd.has("stamina"), "choice rules and new rules are cleaned too (the old combined stamina rule is gone)")
+	main._open_rules()
+	await frames(2)
+	var tab_box: TabContainer = main.rules_panel.find_children("*", "TabContainer", true, false)[0]
+	var missing: Array = GR.RULES.keys().filter(func(k): return not main._rules_inputs.has(k))
+	check(tab_box.get_tab_count() == GR.TABS.size() and missing.is_empty(),
+			"the Custom rules window has %d tabs and a control for every rule (missing: %s)" % [tab_box.get_tab_count(), missing])
+	var bg = main.rules_panel.get_theme_stylebox("panel")
+	check(bg is StyleBoxFlat and (bg as StyleBoxFlat).bg_color.a > 0.95, "...on a solid background")
+	main._close_rules()
+	GR.current = GR.clean({"cd_fire": 2.0, "hc_fear": 0.5, "teleport_range": 1.5, "fire_radius": 2.0})
+	check(is_equal_approx(Skills.cooldown("fire"), Skills.SKILLS["fire"]["cooldown"] * 2.0)
+			and is_equal_approx(Skills.hatred_cost("fear"), Skills.SKILLS["fear"]["hatred"] * 0.5)
+			and is_equal_approx(Skills.teleport_range(), Skills.TELEPORT_RANGE * 1.5), "custom rules change skill cooldowns, costs and reach")
+	GR.current = keep_rules
+	main.rules_use_custom = false
 
 	print("\n%s: %d failure(s)" % ["ALL PASSED" if failures == 0 else "FAILED", failures])
 	quit(1 if failures else 0)

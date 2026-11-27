@@ -17,6 +17,12 @@ const TAUNTS := {"angel": AngelTaunts.TAUNTS, "demon": DemonTaunts.TAUNTS}
 const SIGNATURES := {"angel": {"label": AngelTaunts.SIGNATURE_LABEL}, "demon": {"label": DemonTaunts.SIGNATURE_LABEL}}
 
 static var _cache := {}
+const GameRules = preload("res://scripts/game_rules.gd")
+
+
+# The side's voice pitch from the Custom rules ("angel:..." / "demon:...": the taunt says whose it is).
+static func pitch(full_name: String) -> float:
+	return GameRules.f("demon_pitch") if full_name.begins_with("demon") else GameRules.f("angel_pitch")
 
 
 static func signature(role: String) -> String:

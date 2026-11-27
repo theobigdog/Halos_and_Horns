@@ -24,7 +24,7 @@ const CLASSIC := {
 	"pumpkin": {"shape": "cylinder", "radius": 0.4, "height": 0.66, "label": "Pumpkin", "hp": 70, "speed": 6.5, "mass": 1.0, "round": true},
 	"pot": {"shape": "cylinder", "radius": 0.35, "height": 0.6, "label": "Pot", "hp": 60, "speed": 7.0, "mass": 0.9},
 	"bench": {"shape": "box", "size": Vector3(1.6, 0.5, 0.5), "label": "Bench", "hp": 120, "speed": 5.0, "mass": 2.5},
-	"books": {"shape": "box", "size": Vector3(0.45, 0.35, 0.3), "label": "Stack of books", "hp": 50, "speed": 7.5, "mass": 0.6},
+	"books": {"shape": "box", "size": Vector3(0.44, 0.28, 0.3), "label": "Stack of books", "hp": 50, "speed": 7.5, "mass": 0.6},
 	"hay": {"shape": "box", "size": Vector3(1.2, 0.8, 0.8), "label": "Hay bale", "hp": 150, "speed": 4.5, "mass": 3.0},
 	"apple": {"shape": "box", "size": Vector3(0.26, 0.28, 0.26), "label": "Apple", "hp": 30, "speed": 8.0, "mass": 0.3, "round": true},
 	"pickle": {"shape": "box", "size": Vector3(0.5, 0.42, 1.5), "label": "Big floppy pickle", "hp": 90, "speed": 5.5, "mass": 1.4, "lying": true},
@@ -91,14 +91,35 @@ static func scaled(type_name: String, k: float) -> String:
 
 
 static func base_type(type_name: String) -> String:
-	return type_name.get_slice("#", 0).get_slice("@", 0)
+	return type_name.get_slice("!", 0).get_slice("#", 0).get_slice("@", 0)
+
+
+# A prop placed in Creative as "Fixed in place" (Ted, Nov 27): nothing shoves, knocks, blasts or sucks it
+# anywhere. Its own type, "<type>!" (after any @scale / #state), registered when the map loads on every screen,
+# so a demon who copies or possesses it can't be shoved either: bumping into it gives nothing away.
+static func with_fixed(type_name: String, on: bool) -> String:
+	var plain := type_name.get_slice("!", 0)
+	if not on or not TYPES.has(plain):
+		return plain
+	var key := plain + "!"
+	if not TYPES.has(key):
+		var d: Dictionary = TYPES[plain].duplicate(true)
+		d["fixed"] = true
+		if not d.has("base"):
+			d["base"] = plain
+		TYPES[key] = d
+	return key
+
+
+static func is_fixed(type_name: String) -> bool:
+	return bool(TYPES.get(type_name, {}).get("fixed", false))
 
 
 # An animated prop placed in Creative lit, open, messy... ("state": PropAnims.set_state) is its own type too,
 # "<type>#<n>", registered when the map loads (on every screen), so a demon who possesses or copies it starts
 # out the same way, everywhere, with nothing extra sent.
 static func with_state(type_name: String, n: int) -> String:
-	var plain := type_name.get_slice("#", 0)
+	var plain := type_name.get_slice("!", 0).get_slice("#", 0)
 	if n <= 0 or not TYPES.has(plain) or not PropAnims.has_state(plain):
 		return plain
 	n = mini(n, PropAnims.state_count(plain) - 1)
@@ -151,7 +172,7 @@ static func speed(type_name: String) -> float:
 
 
 static func type_names() -> Array:
-	return TYPES.keys().filter(func(t): return not "@" in t)
+	return TYPES.keys().filter(func(t): return not "@" in t and not "!" in t)
 
 
 static func label(type_name: String) -> String:
@@ -270,6 +291,8 @@ static func _box(size: Vector3) -> BoxMesh:
 
 
 static func make_visual(type_name: String) -> Node3D:
+	if type_name.ends_with("!"):
+		return make_visual(type_name.left(-1))   # (fixed in place: looks the same)
 	if "#" in type_name:
 		var sv := make_visual(type_name.get_slice("#", 0))
 		PropAnims.set_state(sv, type_name, state_of(type_name))

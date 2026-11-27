@@ -25,6 +25,8 @@ var to := Vector3.ZERO            # ...and lights here after `flight_time` secon
 var flight_time := 0.3
 var _travel := 0.0
 var _travel_time := 0.3
+var radius := Skills.FIRE_RADIUS   # (Custom rules: pool size, and splash pools their own size)
+var life_time := Skills.FIRE_LIFETIME
 var _life := Skills.FIRE_LIFETIME
 var _age := 0.0                   # seconds since it lit
 var _seed := 0.0
@@ -325,6 +327,7 @@ func _mesh(mesh: Mesh, mat: Material) -> MeshInstance3D:
 # --- life ------------------------------------------------------------------------------------
 
 func _ready() -> void:
+	_life = life_time
 	_travel_time = maxf(flight_time, 0.05)
 	global_position = from
 	_seed = _hash(to + from * 0.37) * 10.0
@@ -417,7 +420,7 @@ func _light_up() -> void:
 	_up = _surface_normal()
 	var q := Effects.quality
 	var seg: int = [16, 24, 32][clampi(q, 0, 2)]
-	var center := Vector3.ZERO + _up * Skills.FIRE_RADIUS * SINK
+	var center := Vector3.ZERO + _up * radius * SINK
 
 	_dome = _mesh(_sphere(seg), _shader("dome", DOME_SHADER))
 	_dome.position = center
@@ -444,7 +447,7 @@ func _light_up() -> void:
 	# Scorched ground with a glowing rim at exactly the burn radius, on whatever it landed on.
 	var tex := _scorch_textures()
 	_scorch = Decal.new()
-	var r := Skills.FIRE_RADIUS
+	var r := radius
 	_scorch.size = Vector3(r * 2.0 * 128.0 / 124.0, 1.6, r * 2.0 * 128.0 / 124.0)
 	_scorch.texture_albedo = tex[0]
 	_scorch.texture_emission = tex[1]
@@ -473,7 +476,7 @@ static func _basis_up(up: Vector3) -> Basis:
 
 
 func _update_fire() -> void:
-	var r := Skills.FIRE_RADIUS
+	var r := radius
 	# Swell from small to a little too big, then settle (ease out with an overshoot).
 	var g := clampf(_age / 0.4, 0.0, 1.0)
 	var swell := 1.0 + 2.2 * pow(g - 1.0, 3.0) + 1.2 * pow(g - 1.0, 2.0)

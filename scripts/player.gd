@@ -14,6 +14,7 @@ signal melee_used(origin, dir)
 signal released_possessed                 # we left a real (possessed) prop behind
 signal bumped(thing, impulse)             # we ran into a loose prop, or a disguised demon: shove it (host decides)
 signal no_room                            # tried to change into something that doesn't fit here
+signal cant_possess                       # that placed prop is marked "can't be possessed" (copying it is fine)
 signal animate_pressed(n)                 # E: our disguise does its thing (the n-th press since we became it)
 
 const GameRules = preload("res://scripts/game_rules.gd")
@@ -258,6 +259,7 @@ func _apply_trail() -> void:
 
 func _apply_form() -> void:
 	_rig = null
+	crouched = false
 	anim_presses = PropLib.state_of(possessed_type)   # (a prop placed lit / open: E goes on from there)
 	fuse_lit = false
 	for child in visual_root.get_children():
@@ -464,12 +466,14 @@ func _physics_process(delta: float) -> void:
 	_steer_minion()
 	_settle_view(delta, input_dir)
 
+	_update_crouch()
+
 	# Hatred always refills; flying spends it faster than it refills (unless boosted).
 	if role == "demon":
 		flying = want_fly and "fly" in loadout["demon"] and not frozen and hatred > 0.5 and skill_lock <= 0.0 and not _struck_down
-		hatred += HATRED_REGEN * hatred_regen_multiplier * delta
+		hatred += HATRED_REGEN * hatred_regen_multiplier * GameRules.f("hatred_regen") * delta
 		if flying:
-			hatred -= HATRED_FLY_DRAIN * delta
+			hatred -= HATRED_FLY_DRAIN * GameRules.f("fly_drain") * delta
 		hatred = clampf(hatred, 0.0, HATRED_MAX)
 	else:
 		flying = false
@@ -492,8 +496,8 @@ func _physics_process(delta: float) -> void:
 			var g_fly: float = gravity * tuning["gravity_scale"] * GameRules.f("gravity") * GameRules.f("gravity")
 			# Already falling? Catch yourself much harder, so the fall stops quickly
 			# (taking off from the ground or a jump feels the same as before).
-			var thrust := FLY_THRUST * (FLY_CATCH_BOOST if velocity.y < 0.0 else 1.0)
-			velocity.y = minf(velocity.y + (thrust - g_fly) * delta, FLY_MAX_RISE)
+			var thrust := FLY_THRUST * GameRules.f("fly_lift") * (FLY_CATCH_BOOST if velocity.y < 0.0 else 1.0)
+			velocity.y = minf(velocity.y + (thrust - g_fly) * delta, FLY_MAX_RISE * GameRules.f("fly_rise"))
 			_fall_speed = 0.0
 		elif not on_floor:
 			var g: float = gravity * tuning["gravity_scale"] * GameRules.f("gravity")
@@ -506,7 +510,9 @@ func _physics_process(delta: float) -> void:
 		_coyote = tuning["coyote_time"] if on_floor else _coyote - delta
 		_jump_buffer = tuning["jump_buffer"] if want_jump else _jump_buffer - delta
 		if _jump_buffer > 0.0 and (on_floor or (_coyote > 0.0 and velocity.y <= 0.0)) and not flying:
-			velocity.y = Skills.LEAPER_JUMP if _is_leaper() else tuning["jump_velocity"]
+			# (a rule's "jump height" x2 means twice as high: the take-off speed goes up by its square root)
+			var jump_rule := sqrt(GameRules.f("angel_jump" if role == "angel" else "demon_jump"))
+			velocity.y = (Skills.LEAPER_JUMP * sqrt(GameRules.f("leap_jump")) if _is_leaper() else tuning["jump_velocity"]) * jump_rule
 			_leaping = _is_leaper()
 			_jump_buffer = 0.0
 			_coyote = 0.0
@@ -516,9 +522,9 @@ func _physics_process(delta: float) -> void:
 		var direction := move_basis() * Vector3(input_dir.x, 0.0, input_dir.y)
 		direction.y = 0.0
 		direction = direction.normalized()
-		var speed := ANGEL_SPEED if role == "angel" else PropLib.speed(possessed_type)
+		var speed := ANGEL_SPEED * GameRules.f("angel_speed") if role == "angel" else PropLib.speed(possessed_type) * GameRules.f("demon_speed")
 		if burning > 0.0:
-			speed *= Skills.FIRE_SLOW
+			speed *= maxf(1.0 - (1.0 - Skills.FIRE_SLOW) * GameRules.f("fire_slow"), 0.1)
 		if running:
 			speed *= RUN_MULTIPLIER
 		elif sneaking:
@@ -627,7 +633,7 @@ func _hold_key_down(id: String) -> bool:
 # Gravity waits until it's over. What's left afterwards is momentum.
 func _dash_step(delta: float) -> void:
 	_dash_time -= delta
-	velocity = _dash_dir * tuning["dash_speed"]
+	velocity = _dash_dir * tuning["dash_speed"] * GameRules.f("dash_speed")
 	if _dash_time > 0.0:
 		return
 	var carry: float = tuning["dash_carry"]
@@ -803,8 +809,8 @@ func use_skill(slot: int) -> bool:
 			# Where to: the spot under the crosshair, or as far as allowed that way.
 			var spot := _aim_ray(150.0)
 			var aimed: Vector3 = spot["position"] - dir * 0.5 if not spot.is_empty() else origin + dir * 150.0
-			var reach := Vector3(aimed.x - global_position.x, 0.0, aimed.z - global_position.z).limit_length(Skills.TELEPORT_RANGE)
-			point = Vector3(global_position.x + reach.x, aimed.y if reach.length() < Skills.TELEPORT_RANGE - 0.01 else 20.0, global_position.z + reach.z)
+			var reach := Vector3(aimed.x - global_position.x, 0.0, aimed.z - global_position.z).limit_length(Skills.teleport_range())
+			point = Vector3(global_position.x + reach.x, aimed.y if reach.length() < Skills.teleport_range() - 0.01 else 20.0, global_position.z + reach.z)
 			hatred -= Skills.hatred_cost(id)
 		"minion":
 			if is_instance_valid(minion):
@@ -819,6 +825,9 @@ func use_skill(slot: int) -> bool:
 			hatred -= Skills.hatred_cost(id)
 		"possess":
 			if not is_instance_valid(_hover_prop) or not _hover_prop.has_meta("prop_index"):
+				return false
+			if _hover_prop.get_meta("no_possess", false):
+				cant_possess.emit()
 				return false
 			index = _hover_prop.get_meta("prop_index")
 			point = _hover_prop.global_position
@@ -835,7 +844,7 @@ func use_skill(slot: int) -> bool:
 			_leaping = false
 			_fall_speed = 0.0
 			dir = _dash_dir
-			point = global_position + _dash_dir * tuning["dash_speed"] * tuning["dash_time"]
+			point = global_position + _dash_dir * tuning["dash_speed"] * GameRules.f("dash_speed") * tuning["dash_time"]
 		"vacuum":
 			point = origin + dir
 		"leap":
@@ -893,10 +902,10 @@ signal powerup_taken(kind)
 
 func apply_powerup(kind: String) -> void:
 	if kind == "vanish":
-		vanish_time = Skills.VANISH_TIME
+		vanish_time = Skills.VANISH_TIME * GameRules.f("vanish_time")
 	if kind == "quick_skills":
 		skill_cd.clear()   # all your skills ready right now, so none of the power-up is wasted on a cooldown
-	powerups[kind] = PowerUps.DURATION.get(kind, 0.0)
+	powerups[kind] = PowerUps.duration(kind)
 	powerup_taken.emit(kind)
 
 
@@ -1025,7 +1034,7 @@ func strike_down(seconds: float) -> void:
 func scare(from: Vector3, seconds: float) -> void:
 	if role != "angel":
 		return
-	feared = maxf(feared, clampf(seconds, 0.0, Skills.FEAR_TIME))
+	feared = maxf(feared, clampf(seconds, 0.0, Skills.FEAR_TIME * GameRules.f("fear_time")))
 	_fear_from = from
 	_fear_dir = Vector3.ZERO
 	_fear_phase = Vector2(randf() * TAU, randf() * TAU)
@@ -1093,7 +1102,7 @@ func _tick_powerups(delta: float) -> void:
 			if k == "sense":
 				sense_alarm = false
 	throw_regen_multiplier = 6.0 if powerup_left("quick_throw") > 0.0 else 1.0
-	hatred_regen_multiplier = PowerUps.FAST_HATRED_MULT if powerup_left("fast_hatred") > 0.0 else 1.0
+	hatred_regen_multiplier = PowerUps.surge_mult() if powerup_left("fast_hatred") > 0.0 else 1.0
 	if powerup_left("quick_run") > 0.0:
 		sprint_stamina = SPRINT_MAX
 		_sprint_exhausted = false
@@ -1111,14 +1120,14 @@ func _update_sprint(delta: float, wants_to_run: bool) -> void:
 	elif _sprint_regen_wait > 0.0:
 		_sprint_regen_wait -= delta
 	else:
-		sprint_stamina = minf(sprint_stamina + SPRINT_REGEN * GameRules.f("stamina") * delta, SPRINT_MAX)
+		sprint_stamina = minf(sprint_stamina + SPRINT_REGEN * GameRules.f("angel_sprint" if role == "angel" else "demon_sprint") * delta, SPRINT_MAX)
 
 
 func _update_throw_stamina(delta: float) -> void:
 	if _throw_regen_wait > 0.0:
 		_throw_regen_wait -= delta
 	elif burning <= 0.0:   # no refilling while standing in demon fire
-		throw_stamina = minf(throw_stamina + THROW_REGEN * throw_regen_multiplier * GameRules.f("stamina") * delta, THROW_STAMINA_MAX)
+		throw_stamina = minf(throw_stamina + THROW_REGEN * throw_regen_multiplier * GameRules.f("throw_regen") * delta, THROW_STAMINA_MAX)
 
 
 # Subtle first-person bob while moving, plus a small dip when landing.
@@ -1295,6 +1304,39 @@ func _make_room(shape: Shape3D, height: float, props_block := true) -> bool:
 	return false
 
 
+# Crouching (the sneak key) makes your own body shorter, on the ground and in the air, so you can jump
+# under a low overhang or duck through a low gap (Ted, Nov 27: "a crouch while jumping"). Only out of
+# disguise: props keep their size. You stand back up as soon as there's room over your head.
+const CROUCH_SHARE := 0.62
+var crouched := false
+
+
+func _update_crouch() -> void:
+	var want := sneaking and possessed_type == ""
+	if want == crouched:
+		return
+	if not want and not _fits(Bodies.make_shape(role), Bodies.height_for(role), true, global_position):
+		sneaking = true   # no room to stand: stay down (and sneaking-slow) until there is
+		return
+	_set_crouched(want)
+
+
+func _set_crouched(on: bool) -> void:
+	crouched = on
+	if possessed_type != "":
+		return
+	var cap := Bodies.make_shape(role)
+	var full := cap.height
+	if on:
+		cap.height = maxf(full * CROUCH_SHARE, cap.radius * 2.0 + 0.05)
+	shape_node.shape = cap
+	shape_node.position.y = cap.height / 2.0
+	_form_height = cap.height
+	if first_person[role]:
+		_pivot_base = _form_height * 0.9   # (eyes come down with you)
+		pivot.position.y = _pivot_base
+
+
 func _fits(shape: Shape3D, height: float, props_block := true, at := Vector3.ZERO) -> bool:
 	if not is_inside_tree():
 		return true
@@ -1336,7 +1378,7 @@ func taunt(signature: bool) -> bool:
 	if not signature:
 		last_taunt = taunt_name
 	voice.stream = Taunts.stream(taunt_name)
-	voice.pitch_scale = randf_range(0.96, 1.04)
+	voice.pitch_scale = randf_range(0.96, 1.04) * Taunts.pitch(taunt_name)
 	voice.play()
 	_taunt_cooldown = TAUNT_COOLDOWN
 	taunted.emit(taunt_name)
@@ -1347,7 +1389,7 @@ func taunt(signature: bool) -> bool:
 func forced_taunt(taunt_name: String) -> void:
 	last_taunt = taunt_name
 	voice.stream = Taunts.stream(taunt_name)
-	voice.pitch_scale = randf_range(0.96, 1.04)
+	voice.pitch_scale = randf_range(0.96, 1.04) * Taunts.pitch(taunt_name)
 	voice.play()
 	_taunt_cooldown = TAUNT_COOLDOWN
 
@@ -1386,13 +1428,17 @@ func daze(seconds: float) -> void:
 	print("[player] dazed by an explosion")
 
 
+static func throw_cost() -> float:
+	return THROW_COST * GameRules.f("throw_cost")
+
+
 func try_throw() -> bool:
 	if stunned > 0.0:
 		return false
-	if _throw_cooldown > 0.0 or throw_stamina < THROW_COST:
+	if _throw_cooldown > 0.0 or throw_stamina < throw_cost():
 		return false
 	_throw_strength = clampf(throw_stamina / (THROW_STAMINA_MAX * WEAK_THROW_BELOW), 0.0, 1.0)
-	throw_stamina -= THROW_COST
+	throw_stamina -= throw_cost()
 	_throw_regen_wait = THROW_REGEN_DELAY
 	_shoot()
 	return true
@@ -1416,8 +1462,8 @@ func _shoot() -> void:
 		direction = (aim_point - start).normalized()
 	p.global_position = start
 	# Running low on stamina: the throw gets weaker (slower, droops sooner).
-	p.velocity = direction * PROJECTILE_SPEED * lerpf(0.35, 1.0, _throw_strength) + Vector3.UP * 0.6
-	p.gravity = lerpf(16.0, PROJECTILE_GRAVITY, _throw_strength)
+	p.velocity = direction * PROJECTILE_SPEED * GameRules.f("throw_speed") * lerpf(0.35, 1.0, _throw_strength) + Vector3.UP * 0.6
+	p.gravity = lerpf(16.0, PROJECTILE_GRAVITY * GameRules.f("throw_drop"), _throw_strength)
 	p.shooter = self
 	throw_seq += 1
 	if p.visual_only and on_claim.is_valid():

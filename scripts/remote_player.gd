@@ -256,7 +256,7 @@ func play_anim(n: int) -> void:
 
 func play_taunt(taunt_name: String) -> void:
 	_voice.stream = Taunts.stream(taunt_name)
-	_voice.pitch_scale = randf_range(0.96, 1.04)
+	_voice.pitch_scale = randf_range(0.96, 1.04) * Taunts.pitch(taunt_name)
 	_voice.play()
 
 

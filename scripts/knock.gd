@@ -13,6 +13,7 @@ extends Node
 const PropLib = preload("res://scripts/prop_library.gd")
 const Effects = preload("res://scripts/effects.gd")
 const Sfx = preload("res://scripts/sfx.gd")
+const GameRules = preload("res://scripts/game_rules.gd")
 
 # All first guesses, for the group to test.
 const GRAVITY := 16.0
@@ -39,6 +40,7 @@ var basis := Basis.IDENTITY
 var ground_offset := 0.0        # how far the origin sits above the floor (more once tipped over)
 var tipped := false
 var _tip_dir := Vector3.ZERO    # which way it's falling over
+var _tip_reach := 0.0           # how far from the middle the edge it falls over on is
 var _tilt := 0.0
 var _tilt_vel := 0.0
 var _pivot := Vector3.ZERO
@@ -93,14 +95,41 @@ func _radius() -> float:
 	return PropLib.half_width(type_name) if PropLib.TYPES.has(type_name) else 0.4
 
 
+# A box goes over (or rocks) on one of its four bottom edges, never a corner: the way it was pushed, turned to
+# the nearest side of the box, and how far that side is from the middle. Pushed at a slant, it used to tip about
+# a slanted axis and end up balanced on a corner, floating (Ted, Nov 27: a stack of books). Round things go any way.
+func _edge_toward(flat_dir: Vector3) -> Array:
+	var d: Dictionary = PropLib.TYPES.get(type_name, {})
+	if d.get("shape", "") != "box":
+		return [flat_dir, _radius()]
+	var size: Vector3 = d["size"]
+	var best := flat_dir
+	var reach := _radius()
+	var best_dot := -2.0
+	for ax in [[basis.x, size.x], [basis.z, size.z]]:
+		var v: Vector3 = ax[0]
+		v.y = 0.0
+		if v.length() < 0.01:
+			continue
+		v = v.normalized()
+		for s in [-1.0, 1.0]:
+			if (v * s).dot(flat_dir) > best_dot:
+				best_dot = (v * s).dot(flat_dir)
+				best = v * s
+				reach = float(ax[1]) * 0.5
+	return [best, reach]
+
+
 func _height() -> float:
 	return PropLib.height(type_name) if PropLib.TYPES.has(type_name) else 1.0
 
 
 # A shove: `impulse` is a velocity change for a prop of mass 1 (heavier props move less).
 func hit(impulse: Vector3) -> void:
+	if PropLib.is_fixed(type_name):
+		return   # fixed in place (Creative)
 	set_physics_process(true)
-	var dv := impulse / PropLib.mass(type_name)
+	var dv := impulse * GameRules.f("knock") / PropLib.mass(type_name)
 	vel += dv
 	_still = 0.0
 	_life = 0.0
@@ -111,12 +140,16 @@ func hit(impulse: Vector3) -> void:
 	# Tall, narrow things go over easily; squat, wide ones mostly wobble.
 	var tip_speed := clampf(TIP_BASE * (_radius() * 2.0) / _height(), 0.9, 6.0)
 	if speed >= tip_speed:
-		_tip_dir = flat / speed
+		var edge := _edge_toward(flat / speed)
+		_tip_dir = edge[0]
+		_tip_reach = edge[1]
 		_tilt_vel = 2.0 + (speed - tip_speed) * 0.7
 		_wobble = 0.0
 		_wobble_vel = 0.0
 	else:
-		_wobble_dir = flat / speed
+		var edge := _edge_toward(flat / speed)
+		_wobble_dir = edge[0]
+		_tip_reach = edge[1]
 		_wobble_vel += speed / tip_speed * 5.0
 
 
@@ -203,7 +236,7 @@ func _physics_process(delta: float) -> void:
 
 # The bottom edge it's falling over on (it moves along with the prop if it slides).
 func _update_pivot() -> void:
-	_pivot = Vector3(pos.x, pos.y - ground_offset, pos.z) + _tip_dir * _radius()
+	_pivot = Vector3(pos.x, pos.y - ground_offset, pos.z) + _tip_dir * (_tip_reach if _tip_reach > 0.0 else _radius())
 
 
 func _finish_tipping() -> void:
@@ -230,7 +263,7 @@ func _apply() -> void:
 	elif _wobble != 0.0:
 		# rock on the bottom edge it's leaning toward
 		var lean := _wobble_dir if _wobble > 0.0 else -_wobble_dir
-		var edge := Vector3(pos.x, pos.y - ground_offset, pos.z) + lean * _radius()
+		var edge := Vector3(pos.x, pos.y - ground_offset, pos.z) + lean * (_tip_reach if _tip_reach > 0.0 else _radius())
 		var r := Basis(Vector3.UP.cross(lean).normalized(), absf(_wobble))
 		xf = Transform3D(r, edge - r * edge) * xf
 	prop.global_transform = xf

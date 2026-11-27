@@ -20,7 +20,7 @@ var alarmed := false
 var creep := Vector3.ZERO    # the slow drift toward a noticed demon (flat, m/s); zero when calm
 var on_kick: Callable        # set only where kicks are decided (host / practice)
 var on_bounce: Callable      # the same, for landing on a bouncy pad
-var _life := Skills.CHERUB_LIFETIME
+var _life := Skills.cherub_lifetime()
 var _phase := 0.0
 var _bubble: MeshInstance3D
 var _bubble_mat: StandardMaterial3D
@@ -142,7 +142,7 @@ func _process(delta: float) -> void:
 	# Swell out to the radius and back: 1.6 s per cycle, twice as fast when alarmed.
 	_phase += delta * (1.25 if alarmed else 0.625)
 	var t := 1.0 - absf(fmod(_phase, 1.0) * 2.0 - 1.0)   # 0 -> 1 -> 0
-	var r := maxf(Skills.CHERUB_RADIUS * t, 0.05)
+	var r := maxf(Skills.cherub_radius() * t, 0.05)
 	_bubble.scale = Vector3.ONE * r
 	_bubble.visible = alarmed           # no bubble unless a demon is close
 	_bubble_mat.albedo_color = Color(1.0, 0.15, 0.1, 0.22)

@@ -5,14 +5,16 @@ extends RefCounted
 
 const PropLib = preload("res://scripts/prop_library.gd")
 const Characters = preload("res://scripts/characters.gd")
+const GameRules = preload("res://scripts/game_rules.gd")
 
 const BODY_HEIGHT := 1.7       # angel height
 const BODY_RADIUS := 0.35
 const DEMON_SCALE := 0.6       # demons are 60% of angel size
 
 
+# (Custom rules: each side's size; Nov 27)
 static func scale_for(role: String) -> float:
-	return 1.0 if role == "angel" else DEMON_SCALE
+	return GameRules.f("angel_size") if role == "angel" else DEMON_SCALE * GameRules.f("demon_size")
 
 
 static func height_for(role: String) -> float:
@@ -30,8 +32,8 @@ static func make_shape(role: String) -> CapsuleShape3D:
 static func make(role: String, outfit := {}) -> Node3D:
 	var c := Characters.build(role, outfit, BODY_HEIGHT)
 	if c != null and c.get_child_count() > 0:
-		if role != "angel":
-			c.scale = Vector3.ONE * DEMON_SCALE
+		if scale_for(role) != 1.0:
+			c.scale = Vector3.ONE * scale_for(role)
 		return c
 	return make_capsule(role)
 
@@ -87,5 +89,5 @@ static func make_capsule(role: String) -> Node3D:
 			eye.material_override = yellow
 			eye.position = Vector3(0.12 * side, 1.45, -0.31)   # -Z is forward
 			root.add_child(eye)
-		root.scale = Vector3.ONE * DEMON_SCALE
+		root.scale = Vector3.ONE * scale_for(role)
 	return root

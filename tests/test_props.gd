@@ -85,6 +85,35 @@ func _run() -> void:
 			entry = m
 	check(entry != null and entry.size() == 4, "the host's prop state includes its tipped-over pose")
 
+	# ---- Fixed in place / can't be possessed (Ted, Nov 27) ----
+	var fixed_type := PropLib.with_fixed("barrel", true)
+	var stuck := place(fixed_type, Vector3(-12, 0, -6))
+	var stuck_at := stuck.global_position
+	main.knock_prop(stuck.get_meta("prop_index"), Vector3(20.0, 0.0, 0.0))
+	main._blast_props(stuck_at + Vector3(1, 0, 0), 4.0, 12.0)
+	await frames(40)
+	check(fixed_type == "barrel!" and PropLib.is_fixed(fixed_type) and stuck.global_position.distance_to(stuck_at) < 0.01
+			and upright(stuck), "a fixed-in-place prop doesn't budge for shoves or blasts")
+	check(PropLib.base_type(PropLib.with_fixed(PropLib.with_state(PropLib.scaled("dungeon/candle_lit", 1.5), 1), true)) == "dungeon/candle_lit"
+			and not "barrel!" in PropLib.type_names(), "...its type is its own (scale and state kept), never a random pick")
+	var kept := MapData.clean({"pieces": [{"type": "prop", "prop": "barrel", "pos": [0, 0, 0], "fixed": true, "no_possess": true},
+			{"type": "prop", "prop": "barrel", "pos": [1, 0, 0], "fixed": "yes"}]})
+	check(kept["pieces"][0].get("fixed") == true and kept["pieces"][0].get("no_possess") == true and not kept["pieces"][1].has("fixed"),
+			"a map keeps the fixed / can't-be-possessed ticks (and nothing else)")
+	var keep_type: String = player.possessed_type
+	stuck.set_meta("no_possess", true)
+	main._authority_possess(player, 0, stuck.get_meta("prop_index"))
+	await frames(2)
+	check(stuck.is_in_group("prop") and player.possessed_type == keep_type, "a can't-be-possessed prop can't be possessed")
+	stuck.global_position += Vector3(0, -50, 0)
+	# A stack of books shoved at a slant tips onto a side, not a corner (Ted, Nov 27)
+	var stack := place("books", Vector3(-12, 0, -12))
+	main.knock_prop(stack.get_meta("prop_index"), Vector3(9.0, 0.0, 9.0))
+	await wait_rest(stack)
+	var tilt: Vector3 = stack.global_transform.basis.y.normalized()
+	check(absf(tilt.y) < 0.05 or absf(tilt.y) > 0.99, "a stack of books knocked at a slant lies flat on a side (up %.2f)" % tilt.y)
+	stack.global_position += Vector3(0, -50, 0)
+
 	# ---- A squat crate with a small nudge only wobbles ----
 	var crate := place("crate", Vector3(-12, 0, 6))
 	main.knock_prop(crate.get_meta("prop_index"), Vector3(0.0, 0.0, 2.0))

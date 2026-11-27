@@ -305,7 +305,7 @@ func _ready() -> void:
 	player.hit_confirmed.connect(_on_hit_confirmed)
 	player.taunted.connect(_on_taunted)
 	player.bounced.connect(func(): _play("bounce"))
-	player.scared.connect(func(): _toast("FEAR! You run for your life!", Skills.FEAR_TIME))
+	player.scared.connect(func(): _toast("FEAR! You run for your life!", Skills.fear_time()))
 	player.powerup_taken.connect(func(kind):
 		_play("powerup")
 		_toast(PowerUps.LABELS.get(kind, kind) + "!", 1.5))
@@ -315,6 +315,7 @@ func _ready() -> void:
 	player.launched.connect(_on_player_launched)
 	player.bumped.connect(_on_player_bumped)
 	player.no_room.connect(func(): _toast("No room to change here!", 1.5))
+	player.cant_possess.connect(func(): _toast("That one can't be possessed. You can still copy it!", 2.0))
 	player.hit_taken.connect(_on_player_hit_taken)
 	player.skill_used.connect(_on_player_skill)
 	player.pick_minion_form = random_map_prop_type
@@ -836,7 +837,8 @@ func load_map(map: Dictionary, path := "") -> void:
 				ONE_USE_BOUNCIES.append(pos)
 				ONE_USE_LOOKS.append(int(p.get("look", 0)))
 			"bouncy_super": SUPER_BOUNCIES.append(pos)
-			"prop": PLACED_PROPS.append([PropLib.with_state(PropLib.scaled(p["prop"], p.get("scale", 1.0)), int(p.get("state", 0))), pos, MapData.rot_rad(p)])
+			"prop": PLACED_PROPS.append([PropLib.with_fixed(PropLib.with_state(PropLib.scaled(p["prop"], p.get("scale", 1.0)), int(p.get("state", 0))),
+					bool(p.get("fixed", false))), pos, MapData.rot_rad(p), bool(p.get("no_possess", false))])
 	Models.festive = map_data["weather"] == "snow"   # (before building: trees and buildings get lights)
 	_build_map()
 	graphics.set_time_of_day(map_data["time"])
@@ -1274,6 +1276,8 @@ func _reset_round_props(seed_value: int) -> void:
 	# Props placed by hand on the map, then the random ones.
 	for pp in PLACED_PROPS:
 		_spawn_prop(pp[0], pp[1], pp[2])
+		if pp.size() > 3 and pp[3]:
+			props[props.size() - 1].set_meta("no_possess", true)   # (Creative: copy it, but can't possess it)
 	var types := PropLib.scatter_names()
 	for i in PROP_COUNT:
 		_spawn_prop(types[rng.randi() % types.size()], _random_spot())
@@ -1950,6 +1954,8 @@ func _sync_rules_ui() -> void:
 		var w: Control = _rules_inputs[k]
 		if w is SpinBox:
 			(w as SpinBox).set_value_no_signal(rules_custom[k])
+		elif w is OptionButton:
+			(w as OptionButton).select(int(rules_custom[k]))
 		elif w is CheckBox:
 			(w as CheckBox).set_pressed_no_signal(rules_custom["powerups"][k])
 
@@ -1970,49 +1976,46 @@ func _close_rules() -> void:
 
 
 # The Custom rules (Ted, Nov 26). Changing anything here switches the game to Custom.
+# Nov 27: tabs (General, Demons, Angels, Skills, Power-ups), built from GameRules.RULES, each rule under its
+# section heading, and a solid background (the menu behind showed through and made it hard to read).
 func _build_rules_panel() -> void:
-	var parts := _panel(460)
+	var parts := _panel(560)
 	rules_panel = parts[0]
+	var solid := StyleBoxFlat.new()
+	solid.bg_color = Color(0.07, 0.075, 0.11, 0.985)
+	solid.border_color = Color(0.55, 0.5, 0.75, 0.9)
+	solid.set_border_width_all(2)
+	solid.set_corner_radius_all(10)
+	solid.shadow_color = Color(0, 0, 0, 0.55)
+	solid.shadow_size = 14
+	rules_panel.add_theme_stylebox_override("panel", solid)
 	var box: VBoxContainer = parts[1]
 	var title := Label.new()
 	title.text = "Custom game rules"
 	title.add_theme_font_size_override("font_size", 22)
 	box.add_child(title)
 	var note := Label.new()
-	note.text = "Used when the rules are set to Custom (in the lobby, or for practice). Online, the host's rules count."
+	note.text = "Used when the rules are set to Custom (in the lobby, or for practice). Online, the host's rules count. " 			+ "Hover over a rule to see what it does. x1 is the game as standard."
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	note.custom_minimum_size.x = 440
+	note.custom_minimum_size.x = 540
 	box.add_child(note)
-	var grid := GridContainer.new()
-	grid.columns = 2
-	box.add_child(grid)
-	for k in GameRules.NUMBERS:
-		var r: Array = GameRules.NUMBERS[k]
-		var lbl := Label.new()
-		lbl.text = r[0]
-		lbl.tooltip_text = r[5]
-		lbl.mouse_filter = Control.MOUSE_FILTER_PASS
-		lbl.custom_minimum_size.x = 220
-		grid.add_child(lbl)
-		var sb := SpinBox.new()
-		sb.min_value = r[1]
-		sb.max_value = r[2]
-		sb.step = r[3]
-		sb.tooltip_text = r[5]
-		if k != "splashes":
-			sb.prefix = "x"
-		sb.value_changed.connect(func(v):
-			rules_custom[k] = int(v) if k == "splashes" else v
-			rules_use_custom = true
-			_sync_rules_ui())
-		grid.add_child(sb)
-		_rules_inputs[k] = sb
+	var tabs := TabContainer.new()
+	box.add_child(tabs)
+	var pages := {}
+	for t in GameRules.TABS:
+		var page := VBoxContainer.new()
+		page.name = t[1]
+		page.add_theme_constant_override("separation", 6)
+		tabs.add_child(page)
+		pages[t[0]] = page
+	# Power-ups first on their tab: which ones can turn up at all
 	var pl := Label.new()
 	pl.text = "Power-ups that can turn up"
-	box.add_child(pl)
+	pl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+	pages["powerups"].add_child(pl)
 	var pgrid := GridContainer.new()
 	pgrid.columns = 2
-	box.add_child(pgrid)
+	pages["powerups"].add_child(pgrid)
 	for k in GameRules.POWERUP_KINDS:
 		var cb := CheckBox.new()
 		cb.text = "%s (%s)" % [PowerUps.LABELS[k], "angels" if k in PowerUps.ANGEL_KINDS else "demons"]
@@ -2022,7 +2025,69 @@ func _build_rules_panel() -> void:
 			_sync_rules_ui())
 		pgrid.add_child(cb)
 		_rules_inputs[k] = cb
-	_button(box, "Reset to standard", func():
+	# Every rule, under its section's heading
+	var grids := {}
+	for k in GameRules.RULES:
+		var r: Array = GameRules.RULES[k]
+		var gkey: String = r[0] + "/" + r[1]
+		if not grids.has(gkey):
+			var head := Label.new()
+			head.text = r[1]
+			head.add_theme_color_override("font_color", Color(1.0, 0.85, 0.45))
+			pages[r[0]].add_child(head)
+			var grid := GridContainer.new()
+			grid.columns = 2
+			grid.add_theme_constant_override("h_separation", 14)
+			pages[r[0]].add_child(grid)
+			grids[gkey] = grid
+		var lbl := Label.new()
+		lbl.text = "    " + r[2]
+		lbl.tooltip_text = r[8]
+		lbl.mouse_filter = Control.MOUSE_FILTER_PASS
+		lbl.custom_minimum_size.x = 300
+		grids[gkey].add_child(lbl)
+		if GameRules.is_choice(k):
+			var ob := OptionButton.new()
+			for c in GameRules.CHOICES[k]:
+				ob.add_item(c[1])
+			ob.tooltip_text = r[8]
+			ob.custom_minimum_size.x = 190
+			ob.item_selected.connect(func(i):
+				rules_custom[k] = i
+				rules_use_custom = true
+				_sync_rules_ui())
+			grids[gkey].add_child(ob)
+			_rules_inputs[k] = ob
+			continue
+		var sb := SpinBox.new()
+		sb.min_value = r[3]
+		sb.max_value = r[4]
+		sb.step = r[5]
+		sb.tooltip_text = r[8]
+		sb.custom_minimum_size.x = 190
+		match r[7]:
+			"x": sb.prefix = "x"
+			"s": sb.suffix = "s"
+			"m": sb.suffix = "m"
+		sb.value_changed.connect(func(v):
+			rules_custom[k] = int(v) if GameRules.is_count(k) else v
+			rules_use_custom = true
+			_sync_rules_ui())
+		grids[gkey].add_child(sb)
+		_rules_inputs[k] = sb
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	box.add_child(row)
+	_button(row, "Reset this tab", func():
+		var tab: String = GameRules.TABS[tabs.current_tab][0]
+		var std := GameRules.standard()
+		for k in GameRules.RULES:
+			if GameRules.RULES[k][0] == tab:
+				rules_custom[k] = std[k]
+		if tab == "powerups":
+			rules_custom["powerups"] = std["powerups"]
+		_sync_rules_ui())
+	_button(row, "Reset everything", func():
 		rules_custom = GameRules.standard()
 		_sync_rules_ui())
 	_button(box, "Done", _close_rules)
@@ -2495,8 +2560,25 @@ func start_practice() -> void:
 	start_round()
 
 
+# The rules can force the weather, time of day or day/night cycle for every map (Custom rules, General tab).
+# Only the sky, light and falling weather change: the map's ground (snow cover, puddles) stays as built.
+func _apply_round_environment() -> void:
+	if map_data.is_empty():
+		return
+	var w := GameRules.weather_for(str(map_data["weather"]))
+	var t := GameRules.time_for(str(map_data["time"]))
+	var c := GameRules.cycle_for(int(map_data["cycle"]))
+	if w != graphics.weather:
+		graphics.set_weather(w)
+	if t != graphics.time_of_day:
+		graphics.set_time_of_day(t)
+	if float(c) != graphics.day_cycle:
+		graphics.set_day_cycle(c)
+
+
 func start_round() -> void:
 	_reset_round_props(randi())
+	_apply_round_environment()
 	var types := PropLib.scatter_names()
 	bots_left = 0
 	if role == "angel":
@@ -2549,6 +2631,7 @@ func _start_hunting() -> void:
 
 func _end_round(message: String) -> void:
 	state = State.ENDED
+	_hush_cherubs()
 	_round_sting(message)
 	_toast(message + "\nR to play again   Tab to switch sides", 9999.0)
 
@@ -2709,6 +2792,7 @@ func online_scoreboard(rows: Array) -> void:
 
 func online_round_start(seed_value: int, new_role: String, pos: Vector3, phase: String, seconds: float) -> void:
 	_reset_round_props(seed_value)
+	_apply_round_environment()
 	role = new_role
 	my_health = 1.0
 	player.set_role(new_role)
@@ -2794,6 +2878,7 @@ func online_caught_fx(pos: Vector3) -> void:
 
 func online_round_end(message: String) -> void:
 	state = State.ENDED
+	_hush_cherubs()
 	_round_sting(message)
 	player.frozen = true
 	if is_instance_valid(player.minion):
@@ -2932,7 +3017,7 @@ func _spawn_my_minion(at: Vector3, form_index: int) -> void:
 	player.minion = m
 	if mode == "practice":
 		# Practice: hits come straight here; it has the health of the form it copies.
-		var hp := [PropLib.max_hp(m.form) * Skills.MINION_HEALTH]
+		var hp := [PropLib.max_hp(m.form) * Skills.minion_health()]
 		m.on_hit = func(_by, damage):
 			hp[0] -= damage
 			award_hatred(0, Skills.NAUGHTY_MINION_HIT, "your minion fooled an angel")
@@ -2994,7 +3079,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 				net.minion_spawned(user_key, point, index)
 		"teleport":
 			var from: Vector3 = user.global_position
-			if Vector2(point.x - from.x, point.z - from.z).length() > Skills.TELEPORT_RANGE + 3.0:
+			if Vector2(point.x - from.x, point.z - from.z).length() > Skills.teleport_range() + 3.0:
 				return
 			# (Too far: the point is set high up, so you land on top of whatever is there.)
 			var dest := ground_below(point + Vector3.UP * 0.5)
@@ -3012,7 +3097,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 			var flat := Vector3(dir.x, 0.0, dir.z).normalized()
 			var pos: Vector3 = user.global_position + Vector3.UP * 1.1 + flat * 1.2   # clear of the thrower
 			var vel: Vector3 = dir * Skills.CHERUB_THROW_SPEED + Vector3.UP * Skills.CHERUB_THROW_UP
-			_auth_cherubs[_cherub_counter] = {"pos": pos, "until": Time.get_ticks_msec() / 1000.0 + Skills.CHERUB_LIFETIME,
+			_auth_cherubs[_cherub_counter] = {"pos": pos, "until": Time.get_ticks_msec() / 1000.0 + Skills.cherub_lifetime(),
 					"alarmed": false, "rested": false}
 			broadcast_fx("cherub", [_cherub_counter, pos, vel])
 			print("[decider] cherub dropped")
@@ -3024,9 +3109,11 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 			var vel: Vector3 = dir * Skills.FIRE_THROW_SPEED + Vector3.UP * Skills.FIRE_THROW_UP
 			var flight := _fly_until_hit(from, vel, Skills.FIRE_GRAVITY, [user])
 			var spot := ground_below(flight[0] - vel.normalized() * 0.3)
-			broadcast_fx("fire", [_fire_counter, from, vel, spot, flight[1]])
+			var fr := Skills.FIRE_RADIUS * GameRules.f("fire_radius")
+			var fl := Skills.FIRE_LIFETIME * GameRules.f("fire_time")
+			broadcast_fx("fire", [_fire_counter, from, vel, spot, flight[1], fr, fl])
 			_auth_fires[_fire_counter] = {"owner": user_key, "pos": spot, "lit_at": _now() + flight[1],
-				"until": _now() + flight[1] + Skills.FIRE_LIFETIME}
+				"until": _now() + flight[1] + fl, "r": fr}
 			print("[decider] hellfire lit")
 			if GameRules.splashes() > 0:
 				get_tree().create_timer(flight[1]).timeout.connect(func(): _fire_splash(user_key, spot))
@@ -3039,18 +3126,18 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 				if e[2] != "angel" or e[1] == user:
 					continue
 				var a: Node3D = e[1]
-				if a.global_position.distance_to(from) > Skills.FEAR_RADIUS or not _can_see(user, a):
+				if a.global_position.distance_to(from) > Skills.fear_radius() or not _can_see(user, a):
 					continue
 				n += 1
 				if a == player:
-					player.scare(from, Skills.FEAR_TIME)
+					player.scare(from, Skills.fear_time())
 				elif net:
-					net.scare_player(e[0], from, Skills.FEAR_TIME)
+					net.scare_player(e[0], from, Skills.fear_time())
 			print("[decider] fear: %d angel(s) scattered" % n)
 		"word":
 			# Holy Word: a shout down the crosshair. Fliers it catches high enough up are struck out of the sky.
 			var aim := dir.normalized()
-			var reach := Skills.WORD_RANGE
+			var reach := Skills.WORD_RANGE * GameRules.f("word_range")
 			var q := PhysicsRayQueryParameters3D.create(origin, origin + aim * reach)
 			q.collision_mask = WORLD_LAYER
 			if user is CollisionObject3D:
@@ -3073,10 +3160,10 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 					continue
 				n += 1
 				if d == player:
-					player.strike_down(Skills.WORD_STUN)
+					player.strike_down(Skills.WORD_STUN * GameRules.f("word_stun"))
 					online_struck()
 				elif net:
-					net.strike_down(e[0], Skills.WORD_STUN)
+					net.strike_down(e[0], Skills.WORD_STUN * GameRules.f("word_stun"))
 				broadcast_fx("struck", [d.global_position])
 			if n > 0 and user.has_method("confirm_hit"):
 				user.confirm_hit()
@@ -3095,10 +3182,10 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 			if c == null:
 				_boot_prop(user, dir, Skills.KICK_RANGE, PROP_KICK)   # nothing to kick but the furniture
 				return
-			if c.take_hit(Skills.KICK_DAMAGE, user):
+			if c.take_hit(roundi(Skills.KICK_DAMAGE * GameRules.f("kick_damage")), user):
 				user.confirm_hit()
 				var away := Vector3(dir.x, 0.0, dir.z).normalized()
-				var land := ground_below(c.global_position + away * Skills.KICK_PUSH + Vector3.UP * 1.0, [c] + props + demon_targets())
+				var land := ground_below(c.global_position + away * Skills.KICK_PUSH * GameRules.f("kick_push") + Vector3.UP * 1.0, [c] + props + demon_targets())
 				_affect_demon(c, land, 0.0, 0.0, "KICKED!")
 				broadcast_fx("kick", [c.global_position + Vector3.UP * 0.6])
 				print("[decider] holy kick sent a demon flying")
@@ -3139,7 +3226,7 @@ func authority_skill(user: Node3D, user_key: int, id: String, origin: Vector3, d
 
 func authority_melee(user: Node3D, _user_key: int, origin: Vector3, dir: Vector3) -> void:
 	var d = _close_demon(user, dir, Skills.MELEE_RANGE)
-	if d and d.take_hit(Skills.MELEE_DAMAGE, user):
+	if d and d.take_hit(roundi(Skills.MELEE_DAMAGE * GameRules.f("melee_damage")), user):
 		user.confirm_hit()
 		print("[decider] melee hit a demon")
 	elif d == null:
@@ -3230,9 +3317,9 @@ func _smite(user: Node3D, at: Vector3) -> void:
 			continue
 		var off: Vector3 = d.global_position - at
 		var dist := Vector2(off.x, off.z).length()
-		if dist > Skills.SMITE_RADIUS or absf(off.y) > 3.0:
+		if dist > Skills.smite_radius() or absf(off.y) > 3.0:
 			continue
-		var dmg := roundi(lerpf(Skills.SMITE_DAMAGE, Skills.SMITE_MIN_DAMAGE, dist / Skills.SMITE_RADIUS))
+		var dmg := roundi(lerpf(Skills.SMITE_DAMAGE, Skills.SMITE_MIN_DAMAGE, dist / Skills.smite_radius()) * GameRules.f("smite_damage"))
 		if d.has_method("take_hit") and d.take_hit(dmg, user):
 			hurt += 1
 			var out := Vector3(off.x, 0.0, off.z)
@@ -3274,9 +3361,9 @@ func _smite_fx(at: Vector3) -> void:
 	tw.chain().tween_callback(pillar.queue_free)
 	for i in 12:   # a golden ring out to the edge of where it hurts
 		var a := TAU * i / 12.0
-		Effects.puff(parent, at + Vector3(cos(a), 0.3, sin(a)) * Skills.SMITE_RADIUS * 0.8, Color(1.0, 0.9, 0.5, 0.7), 1.4)
+		Effects.puff(parent, at + Vector3(cos(a), 0.3, sin(a)) * Skills.smite_radius() * 0.8, Color(1.0, 0.9, 0.5, 0.7), 1.4)
 	Effects.burst(parent, at + Vector3.UP * 0.5, Color(1.0, 0.95, 0.6), 40, 9.0, 0.8)
-	_blast_props(at, Skills.SMITE_RADIUS * 1.2, 6.0)
+	_blast_props(at, Skills.smite_radius() * 1.2, 6.0)
 	_shake_near(at, 0.4, 16.0)
 	if _smite_bell == null:
 		_smite_bell = Sfx.tone([[131.0, 1.0], [262.0, 0.7], [330.0, 0.35], [392.0, 0.45], [523.0, 0.3], [698.0, 0.15]],
@@ -3321,7 +3408,7 @@ func _spawn_scripture(origin: Vector3, dir: Vector3, visual_only: bool) -> Proje
 	var book := Projectile.new()
 	book.kind = "book"
 	book.book = true
-	book.damage = Skills.SCRIPTURE_DAMAGE
+	book.damage = roundi(Skills.SCRIPTURE_DAMAGE * GameRules.f("scripture_damage"))
 	book.gravity = Skills.SCRIPTURE_GRAVITY
 	book.visual_only = visual_only
 	_fx_parent().add_child(book)
@@ -3350,7 +3437,9 @@ func _spawn_orb(origin: Vector3, dir: Vector3, visual_only: bool) -> Projectile:
 
 
 # The vortex evaporates any Minion in reach, whatever it looks like (Ted, Nov 18).
-func _vacuum_minions(center: Vector3, reach := Skills.VACUUM_RADIUS) -> void:
+func _vacuum_minions(center: Vector3, reach := -1.0) -> void:
+	if reach < 0.0:
+		reach = Skills.vacuum_radius()
 	if mode == "practice":
 		if is_instance_valid(player.minion) and player.minion.global_position.distance_to(center) <= reach:
 			player.minion.pop()
@@ -3378,9 +3467,11 @@ func _fire_splash(owner: int, spot: Vector3) -> void:
 		var hop := Skills.FIRE_SPLASH_HOP
 		var vel := (to - from) / hop + Vector3.UP * 0.5 * Skills.FIRE_GRAVITY * hop
 		_fire_counter += 1
-		broadcast_fx("fire", [_fire_counter, from, vel, to, hop])
+		var fr := Skills.FIRE_RADIUS * GameRules.f("fire_radius") * GameRules.f("splash_size")
+		var fl := Skills.FIRE_LIFETIME * GameRules.f("fire_time") * GameRules.f("splash_time")
+		broadcast_fx("fire", [_fire_counter, from, vel, to, hop, fr, fl])
 		_auth_fires[_fire_counter] = {"owner": owner, "pos": to, "lit_at": _now() + hop,
-			"until": _now() + hop + Skills.FIRE_LIFETIME}
+			"until": _now() + hop + fl, "r": fr}
 
 
 var _vortex_count := 0      # ids, so "vortex_caught" fx find the right vortex
@@ -3417,8 +3508,8 @@ func _vacuum_pulse(center: Vector3, seen: Dictionary, n: int, id: int, was: bool
 					[d] + props + demon_targets())   # (onto the ground or structures, not onto the props piling in)
 			var first := not seen.has(d)
 			seen[d] = true
-			_affect_demon(d, to, Skills.VACUUM_HATRED_DRAIN if first else Skills.VACUUM_PULSE_DRAIN,
-				Skills.VACUUM_TIME - t + Skills.VACUUM_LOCKOUT, "VACUUMED!")
+			_affect_demon(d, to, (Skills.VACUUM_HATRED_DRAIN if first else Skills.VACUUM_PULSE_DRAIN) * GameRules.f("vacuum_drain"),
+				Skills.VACUUM_TIME - t + Skills.VACUUM_LOCKOUT * GameRules.f("vacuum_lock"), "VACUUMED!")
 		i += 1
 	_vacuum_minions(center, reach)
 	if n > 0 and caught != was:
@@ -3479,6 +3570,8 @@ func _authority_possess(user: Node3D, user_key: int, index: int) -> void:
 	var prop = props[index]
 	if not is_instance_valid(prop) or not prop.is_in_group("prop"):
 		return   # already possessed by someone, or dissolving
+	if prop.get_meta("no_possess", false):
+		return   # placed as "can't be possessed" (copying its look is fine)
 	if user.global_position.distance_to(prop.global_position) > 12.0:
 		return
 	var from: Vector3 = user.global_position
@@ -3595,12 +3688,12 @@ func give_powerup(user_key: int, kind: String, where: Vector3) -> void:
 		broadcast_fx("fire_burst", [where])
 		var burned := 0
 		for e in team_entries():
-			if e[2] == "angel" and e[1].global_position.distance_to(where) <= PowerUps.FIRE_BURST_RADIUS * GameRules.f("blast"):
+			if e[2] == "angel" and e[1].global_position.distance_to(where) <= PowerUps.burst_radius():
 				burned += 1
 				if mode == "practice":
-					e[1].burning = maxf(e[1].burning, Skills.FIRE_LINGER * 2.0)
+					e[1].burning = maxf(e[1].burning, Skills.fire_linger() * 2.0)
 				elif net:
-					net.burn_player(e[0], Skills.FIRE_LINGER * 2.0)
+					net.burn_player(e[0], Skills.fire_linger() * 2.0)
 		if burned > 0:
 			award_hatred(user_key, Skills.NAUGHTY_FIRE_PER_SEC * burned, "your fire burst caught an angel")
 		return
@@ -3609,7 +3702,7 @@ func give_powerup(user_key: int, kind: String, where: Vector3) -> void:
 			net.heal_player(user_key)
 		return
 	if kind == "vanish" and net and net.is_host:
-		net.set_vanished(user_key, Skills.VANISH_TIME)   # the angels stop hearing about them
+		net.set_vanished(user_key, Skills.VANISH_TIME * GameRules.f("vanish_time"))   # the angels stop hearing about them
 	if mode == "practice":
 		player.apply_powerup(kind)
 	elif net:
@@ -3617,7 +3710,7 @@ func give_powerup(user_key: int, kind: String, where: Vector3) -> void:
 		if kind == "sense" and net.peers.has(user_key):
 			# Everyone sees the little cherub flapping about over their head (Ted, Nov 18: "it's funny!").
 			var who: int = net.my_eid if user_key == 1 else net.peers[user_key]["eid"]
-			broadcast_fx("sense_cherub", [who, PowerUps.DURATION["sense"]])
+			broadcast_fx("sense_cherub", [who, PowerUps.duration("sense")])
 
 
 # Cherub Sense: a red bubble pulses around you and the horn blares while a demon is close.
@@ -3652,7 +3745,7 @@ func _update_sense_bubble(delta: float) -> void:
 	_sense_bubble.visible = player.sense_alarm
 	if player.sense_alarm:
 		var tt := Time.get_ticks_msec() / 1000.0
-		_sense_bubble.scale = Vector3.ONE * Skills.CHERUB_RADIUS * (0.6 + 0.4 * absf(sin(tt * 3.0)))
+		_sense_bubble.scale = Vector3.ONE * Skills.cherub_radius() * (0.6 + 0.4 * absf(sin(tt * 3.0)))
 		_sense_bubble.position.y = 0.9
 		_sense_sound_time -= delta
 		if _sense_sound_time <= 0.0:
@@ -3673,7 +3766,7 @@ func _check_sense(delta: float) -> void:
 		if role == "angel" and player.powerup_left("sense") > 0.0:
 			var near := false
 			for d in demon_targets():
-				if d.global_position.distance_to(player.global_position) <= Skills.CHERUB_RADIUS:
+				if d.global_position.distance_to(player.global_position) <= Skills.cherub_radius():
 					near = true
 			player.sense_alarm = near
 	elif net:
@@ -3708,7 +3801,7 @@ func _check_naughty(delta: float) -> void:
 			continue
 		for a in angel_nodes():
 			var off: Vector3 = a.global_position - f["pos"]
-			if Vector2(off.x, off.z).length() <= Skills.FIRE_RADIUS and off.y > -0.5 and off.y < 1.5:
+			if Vector2(off.x, off.z).length() <= f.get("r", Skills.FIRE_RADIUS) and off.y > -0.5 and off.y < 1.5:
 				award_hatred(f["owner"], Skills.NAUGHTY_FIRE_PER_SEC * 0.5, "an angel is roasting in your fire")
 
 
@@ -3719,7 +3812,7 @@ func _in_lit_fire(pos: Vector3, t: float) -> bool:
 		if t < f["lit_at"] or t > f["until"]:
 			continue
 		var off: Vector3 = pos - f["pos"]
-		if Vector2(off.x, off.z).length() <= Skills.FIRE_RADIUS and off.y > -0.5 and off.y < 1.5:
+		if Vector2(off.x, off.z).length() <= f.get("r", Skills.FIRE_RADIUS) and off.y > -0.5 and off.y < 1.5:
 			return true
 	return false
 
@@ -3735,8 +3828,19 @@ func _check_burning() -> void:
 			fires.erase(id)
 			continue
 		var off: Vector3 = me - f.global_position
-		if f.is_lit() and Vector2(off.x, off.z).length() <= Skills.FIRE_RADIUS and off.y > -0.5 and off.y < 1.5:
-			player.burning = maxf(player.burning, Skills.FIRE_LINGER)
+		if f.is_lit() and Vector2(off.x, off.z).length() <= f.radius and off.y > -0.5 and off.y < 1.5:
+			player.burning = maxf(player.burning, Skills.fire_linger())
+
+
+# The round is over: every cherub stops its alarm on this screen at once (the host's "cherub_alarm" may arrive
+# after the round-end message, or not at all once the round's things are cleared).
+func _hush_cherubs() -> void:
+	for cid in cherubs:
+		if is_instance_valid(cherubs[cid]):
+			cherubs[cid].alarmed = false
+			cherubs[cid].creep = Vector3.ZERO
+	for cid in _auth_cherubs:
+		_auth_cherubs[cid]["alarmed"] = false
 
 
 func _check_cherubs(delta: float) -> void:
@@ -3745,7 +3849,13 @@ func _check_cherubs(delta: float) -> void:
 		return
 	_cherub_check = 0.25
 	var now := Time.get_ticks_msec() / 1000.0
-	var targets := demon_targets()
+	# Only live demons during the hunt count. Once the last one is caught the round is over, so every cherub
+	# goes quiet straight away (Ted, Nov 27: one kept screaming after the last demon was caught).
+	var targets := []
+	if state == State.HUNTING:
+		for d in demon_targets():
+			if is_instance_valid(d) and d.is_inside_tree() and not d.is_queued_for_deletion():
+				targets.append(d)
 	for cid in _auth_cherubs.keys():
 		var c: Dictionary = _auth_cherubs[cid]
 		if now > c["until"]:
@@ -3772,7 +3882,7 @@ func _check_cherubs(delta: float) -> void:
 		var closest_dist := INF
 		for d in targets:
 			var dist: float = d.global_position.distance_to(c["pos"])
-			if dist <= Skills.CHERUB_RADIUS:
+			if dist <= Skills.cherub_radius():
 				near = true
 				if dist < closest_dist:
 					closest_dist = dist
@@ -3857,10 +3967,10 @@ func fx(kind: String, args: Array) -> void:
 		"fire_burst":
 			for i in 10:
 				var a := TAU * i / 10.0
-				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.3, sin(a)) * PowerUps.FIRE_BURST_RADIUS * 0.6, Color(1.0, 0.45, 0.05, 0.85), 2.2)
+				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.3, sin(a)) * PowerUps.burst_radius() * 0.6, Color(1.0, 0.45, 0.05, 0.85), 2.2)
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.5, Color(1.0, 0.3, 0.0, 0.9), 3.5)
 			Effects.smoke(_fx_parent(), args[0] + Vector3.UP * 0.5, Color(0.25, 0.12, 0.08), 2.0)
-			_blast_props(args[0], PowerUps.FIRE_BURST_RADIUS * GameRules.f("blast"), 6.0)
+			_blast_props(args[0], PowerUps.burst_radius(), 6.0)
 			_shake_near(args[0], 0.4, 14.0)
 		"cherub":
 			var c := Cherub.new()
@@ -3900,6 +4010,9 @@ func fx(kind: String, args: Array) -> void:
 			f.vel = args[2]
 			f.to = args[3]
 			f.flight_time = args[4]
+			if args.size() >= 7:
+				f.radius = clampf(float(args[5]), 0.2, 8.0)
+				f.life_time = clampf(float(args[6]), 0.5, 30.0)
 			f.add_to_group("hellfire")   # (snow_tracks.gd: it melts the snow)
 			_fx_parent().add_child(f)
 			fires[args[0]] = f
@@ -3925,7 +4038,7 @@ func fx(kind: String, args: Array) -> void:
 		"fear":
 			for i in 12:
 				var a := TAU * i / 12.0
-				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.4, sin(a)) * Skills.FEAR_RADIUS * 0.5, Color(0.25, 0.0, 0.3, 0.7), 2.0)
+				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.4, sin(a)) * Skills.fear_radius() * 0.5, Color(0.25, 0.0, 0.3, 0.7), 2.0)
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 1.0, Color(0.15, 0.0, 0.2, 0.85), 3.0)
 			if player.global_position.distance_to(args[0]) < 35.0:
 				_play("fear")
@@ -3933,13 +4046,13 @@ func fx(kind: String, args: Array) -> void:
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.6, Color(0.35, 0.05, 0.08, 0.8), 1.6)
 			Effects.smoke(_fx_parent(), args[0] + Vector3.UP * 0.4, Color(0.3, 0.06, 0.1), 1.0)
 		"stomp":
-			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.2, Color(1.0, 1.0, 1.0, 0.75), Skills.STOMP_RADIUS * 1.2)
+			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.2, Color(1.0, 1.0, 1.0, 0.75), Skills.stomp_radius() * 1.2)
 			for i in 10:   # a shockwave ring out to the edge of where it hurts
 				var a := TAU * i / 10.0
-				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.3, sin(a)) * Skills.STOMP_RADIUS * 0.8, Color(1.0, 0.97, 0.8, 0.6), 1.6)
+				Effects.puff(_fx_parent(), args[0] + Vector3(cos(a), 0.3, sin(a)) * Skills.stomp_radius() * 0.8, Color(1.0, 0.97, 0.8, 0.6), 1.6)
 			Effects.puff(_fx_parent(), args[0] + Vector3.UP * 0.6, Color(1.0, 0.95, 0.7, 0.6), 2.0)
-			Effects.dust(_fx_parent(), args[0], Skills.STOMP_RADIUS * 0.5, 24)
-			_blast_props(args[0], Skills.STOMP_RADIUS * 1.2, 7.0)
+			Effects.dust(_fx_parent(), args[0], Skills.stomp_radius() * 0.5, 24)
+			_blast_props(args[0], Skills.stomp_radius() * 1.2, 7.0)
 			_shake_near(args[0], 0.5, 18.0)
 			# a superhero landing (Sara, Nov 25: the timpani wasn't it): bigger drops land deeper and longer
 			var k := clampf((float(args[1]) if args.size() > 1 else 6.0) / 15.0, 0.0, 1.0)
@@ -4038,7 +4151,7 @@ func _pull_props(center: Vector3, v: Node3D) -> void:
 	for prop in props:
 		if not is_instance_valid(prop) or not prop.is_in_group("prop"):
 			continue
-		if not Vortex.in_reach(prop.global_position - center):
+		if not Vortex.in_reach(prop.global_position - center) or PropLib.is_fixed(prop.get_meta("prop_type", "")):
 			continue
 		var knock: Node = prop.get_node_or_null("Knock")
 		if knock and knock.is_physics_processing():
@@ -4084,8 +4197,8 @@ func bump(thing: Node, push: Vector3, by: Node) -> void:
 		if thing.get(field) != null:
 			form = str(thing.get(field))
 			break
-	if form in ["", "<null>"] or not PropLib.TYPES.has(form):
-		return
+	if form in ["", "<null>"] or not PropLib.TYPES.has(form) or PropLib.is_fixed(form):
+		return   # (a demon disguised as a fixed-in-place prop doesn't budge either)
 	var dv := push / PropLib.mass(form)
 	var slide := dv.length() * dv.length() / (2.0 * Knock.FRICTION)
 	if slide < 0.05 or thing == by:
@@ -4829,7 +4942,7 @@ func _update_hud(delta: float) -> void:
 	hurt_rect.color.a = clampf(_hurt_time, 0.0, 0.25) * 1.4
 	heat_rect.visible = player.burning > 0.0
 	if heat_rect.visible:
-		(heat_rect.material as ShaderMaterial).set_shader_parameter("strength", clampf(player.burning / Skills.FIRE_LINGER, 0.25, 1.0))
+		(heat_rect.material as ShaderMaterial).set_shader_parameter("strength", clampf(player.burning / Skills.fire_linger(), 0.25, 1.0))
 	if player.burning > 0.0:   # standing in demon fire: orange glow at the edges of sight
 		hurt_rect.color = Color(1.0, 0.45, 0.05, maxf(hurt_rect.color.a, 0.18 + sin(Time.get_ticks_msec() * 0.02) * 0.05))
 	else:
@@ -4880,7 +4993,7 @@ func _update_hud(delta: float) -> void:
 	var sprint_color := Color(0.85, 0.35, 0.3) if player._sprint_exhausted else Color(0.4, 0.85, 0.45)
 	_set_bar("sprint", "Sprint", player.sprint_stamina / player.SPRINT_MAX, sprint_color)
 	if role == "angel":
-		var low := player.throw_stamina < player.THROW_COST
+		var low := player.throw_stamina < player.throw_cost()
 		_set_bar("power", "Blessing", player.throw_stamina / player.THROW_STAMINA_MAX,
 				Color(0.6, 0.5, 0.25) if low else Color(1.0, 0.85, 0.3))
 	else:

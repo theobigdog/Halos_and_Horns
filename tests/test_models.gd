@@ -624,6 +624,17 @@ func _run() -> void:
 	check(heavy.is_empty(), "every prop is under %d triangles %s" % [PROP_TRIANGLES, str(heavy)])
 	check(defaults.is_empty(), "no sphere or ring is left at Godot's 4,000-triangle default %s" % str(defaults))
 
+	# Road signs (Ted, Nov 27): every one builds, solid, in a handful of draw calls, and every speed is a look
+	var RoadSigns = load("res://scripts/road_signs.gd")
+	for kind in HollowBuildings.SIGNS:
+		var sgn: Node3D = HollowBuildings.make(kind, 3)
+		var meshes := sgn.find_children("*", "GeometryInstance3D", true, false).size()
+		var solid := sgn.find_children("*", "CollisionShape3D", true, false).size()
+		check(meshes <= 12 and solid >= 1 and HollowBuildings.size(kind).y > 2.5, "road sign %s builds (%d pieces, %d solid)" % [kind, meshes, solid])
+		sgn.free()
+	check(RoadSigns.looks("sign_speed").size() == 8 and MapData.clean({"pieces": [{"type": "building", "kind": "sign_speed", "pos": [0, 0, 0], "look": 7}]})["pieces"][0]["look"] == 7,
+			"speed limit signs keep all 8 speeds")
+
 	# Walk-in buildings: no two faces facing the same way lie in one plane and overlap (they flicker as the
 	# camera moves: Ted's Nov 26 notes, three rounds of them)
 	for kind in HollowBuildings.KINDS:

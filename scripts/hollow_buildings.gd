@@ -30,9 +30,23 @@ const KINDS := {
 	# Deciduous trees (Ted's wife, Nov 26): grown in trees.gd, placed like the rest.
 	"oak": "Oak tree",
 	"birch": "Birch tree",
+	# Road signs (Ted, Nov 27): road_signs.gd
+	"sign_stop": "Stop sign",
+	"sign_yield": "Yield sign",
+	"sign_speed": "Speed limit sign",
+	"sign_noentry": "Do Not Enter sign",
+	"sign_oneway": "One Way sign",
+	"sign_noparking": "No Parking sign",
+	"sign_crossing": "Pedestrian crossing sign",
+	"sign_deadend": "Dead End sign",
+	"sign_railroad": "Railroad crossing sign",
+	"sign_demons": "Demon crossing sign",
 }
 const GATES := ["gate", "gate_open", "arch_gate", "arch_gate_open"]
 const TREES := ["oak", "birch"]
+const SIGNS := ["sign_stop", "sign_yield", "sign_speed", "sign_noentry", "sign_oneway", "sign_noparking",
+		"sign_crossing", "sign_deadend", "sign_railroad", "sign_demons"]
+const RoadSigns = preload("res://scripts/road_signs.gd")
 const Trees = preload("res://scripts/trees.gd")
 const ChapelBell = preload("res://scripts/chapel_bell.gd")
 
@@ -183,6 +197,8 @@ static var _cache := {}
 static func size(kind: String) -> Vector3:
 	if kind in TREES:
 		return Trees.size(kind)
+	if kind in SIGNS:
+		return RoadSigns.size(kind)
 	var b: Dictionary = _built(kind, 0)
 	return b["size"]
 
@@ -190,6 +206,8 @@ static func size(kind: String) -> Vector3:
 static func make(kind: String, look: int = 0) -> Node3D:
 	if kind in TREES:
 		return Trees.make(kind, look)
+	if kind in SIGNS:
+		return RoadSigns.make(kind, look)
 	if not KINDS.has(kind):
 		kind = "cottage"
 	var b: Dictionary = _built(kind, clampi(look, 0, 3))
@@ -220,8 +238,8 @@ static func make(kind: String, look: int = 0) -> Node3D:
 # faces facing the same way lie in (almost) one plane and overlap, which flicker as the camera moves.
 # Returns [[where, material a, material b, overlap m2], ...].
 static func coplanar_faces(kind: String, look := 0) -> Array:
-	if kind in TREES:
-		return []   # (no boxes in a tree)
+	if kind in TREES or kind in SIGNS:
+		return []   # (no boxes in a tree; a sign's layers are millimetres apart on purpose, not coplanar)
 	var b := Bld.new()
 	b.record = true
 	match kind:

@@ -21,7 +21,7 @@ var fall_gravity := 13.0
 var jump_velocity := 5.6
 var steering := false          # the owner is holding the key
 var target := Vector3.ZERO     # where it's walking to
-var life := Skills.MINION_LIFETIME
+var life := Skills.minion_lifetime()
 var on_hit: Callable           # practice / host-owned: an angel's hit landed on it
 
 var _has_target := false

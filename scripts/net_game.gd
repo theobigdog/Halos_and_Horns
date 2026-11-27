@@ -35,7 +35,7 @@ const RELAY_RATE := 20.0         # host sends everyone's positions this many tim
 const MAX_MOVE_SPEED := 14.0     # m/s; sprinting is ~10.4, the rest is slack for lag
 const DEMON_HEALTH := 100
 const END_SCREEN_TIME := 8.0
-const THROW_COST := 12.0          # (must match player.gd)
+const THROW_COST := 10.0          # (must match player.gd; was 12 here after player.gd went to 10)
 const THROW_STAMINA_MAX := 100.0
 const THROW_REGEN := 18.0
 const SCOREBOARD_RATE := 1.0     # roster (Tab) updates per second
@@ -286,7 +286,7 @@ var idle_limit := 0.0   # seconds an ANGEL can go without moving or looking arou
 # Demons are never kicked for sitting still (hiding is the whole point), but a demon
 # that hasn't moved for this long during the hunt taunts, whether it likes it or not,
 # and again every time this long passes. Taunting by choice resets the clock.
-const STILL_TAUNT_AFTER := 20.0
+const STILL_TAUNT_AFTER := 30.0   # standard (was 20; Ted, Nov 27: "a little too frequent"); Custom rules: still_taunt
 const STILL_WARNING := 5.0     # (heads-up this long before)
 
 
@@ -346,9 +346,10 @@ func _check_still_demons() -> void:
 			rec["still_warned"] = false
 			continue
 		var since: float = maxf(rec["still_since"], rec["last_taunt"])
-		if t - since >= STILL_TAUNT_AFTER:
+		var after := GameRules.f("still_taunt")
+		if t - since >= after:
 			force_taunt(id)
-		elif t - since >= STILL_TAUNT_AFTER - STILL_WARNING and not rec["still_warned"]:
+		elif t - since >= after - STILL_WARNING and not rec["still_warned"]:
 			rec["still_warned"] = true
 			if id == 1:
 				main.still_warning(STILL_WARNING)
@@ -982,7 +983,9 @@ func c_state(pos: Vector3, yaw: float, form: String, flying: bool, sneaking := f
 	if not _in_bounds(pos):
 		problem = "out of bounds"
 	else:
-		var max_speed := DASH_MOVE_SPEED if t < rec["dash_until"] else MAX_MOVE_SPEED
+		# (Custom rules can make everyone faster: the allowance grows with them)
+		var fast := maxf(1.0, maxf(GameRules.f("angel_speed"), GameRules.f("demon_speed")))
+		var max_speed := DASH_MOVE_SPEED * maxf(1.0, GameRules.f("dash_speed")) if t < rec["dash_until"] else MAX_MOVE_SPEED * fast
 		if flat > max_speed * dt + 1.5:
 			problem = "moving too fast (%.1f m in %.2f s, from %s to %s)" % [flat, dt, _short(rec["valid_pos"]), _short(pos)]
 	if problem != "":
@@ -1024,8 +1027,8 @@ func c_state(pos: Vector3, yaw: float, form: String, flying: bool, sneaking := f
 # the air for a while without flying (or a dash / pull the host approved) too.
 func _check_flight(id: int, rec: Dictionary, pos: Vector3, flying: bool, dt: float, t: float) -> void:
 	if rec["role"] == "demon":
-		var regen := HATRED_REGEN * (PowerUps.FAST_HATRED_MULT if now() < rec.get("fast_hatred_until", 0.0) else 1.0)
-		rec["hatred"] = clampf(rec["hatred"] + regen * dt - (HATRED_FLY_DRAIN * dt if flying else 0.0), -50.0, 100.0)
+		var regen := HATRED_REGEN * GameRules.f("hatred_regen") * (PowerUps.surge_mult() if now() < rec.get("fast_hatred_until", 0.0) else 1.0)
+		rec["hatred"] = clampf(rec["hatred"] + regen * dt - (HATRED_FLY_DRAIN * GameRules.f("fly_drain") * dt if flying else 0.0), -50.0, 100.0)
 		if flying and rec["hatred"] < -15.0:
 			rec["hatred"] = 0.0
 			_note_cheat(id, "flying without enough Hatred")
@@ -1098,7 +1101,8 @@ func c_throw(origin: Vector3, velocity: Vector3, kind: String, gravity: float, s
 	var rec: Dictionary = peers[id]
 	if not rec["in_round"] or rec["role"] != "angel" or phase != "hunting":
 		return
-	if not Blessings.KINDS.has(kind) or velocity.length() > 85.0 or gravity < 3.9 or gravity > 16.1:
+	var drop := 4.0 * GameRules.f("throw_drop")
+	if not Blessings.KINDS.has(kind) or velocity.length() > 85.0 * maxf(1.0, GameRules.f("throw_speed")) 			or gravity < minf(3.9, drop - 0.1) or gravity > maxf(16.1, drop + 0.1):
 		return
 	if not _origin_ok(rec, origin):
 		_note_cheat(id, "throwing from somewhere they aren't")
@@ -1106,13 +1110,14 @@ func c_throw(origin: Vector3, velocity: Vector3, kind: String, gravity: float, s
 	# Mirror the blessing stamina so a hacked client can't throw endlessly.
 	# (A little slack for network timing.)
 	var t := now()
-	var regen := THROW_REGEN * (6.0 if t < rec.get("quick_throw_until", 0.0) else 1.0) * GameRules.f("stamina")
+	var regen := THROW_REGEN * (6.0 if t < rec.get("quick_throw_until", 0.0) else 1.0) * GameRules.f("throw_regen")
 	rec["stamina"] = minf(rec["stamina"] + regen * (t - rec["stamina_time"]), THROW_STAMINA_MAX)
 	rec["stamina_time"] = t
-	if rec["stamina"] < -THROW_COST:
+	var cost := THROW_COST * GameRules.f("throw_cost")
+	if rec["stamina"] < -cost:
 		_note_cheat(id, "throwing faster than stamina allows")
 		return
-	rec["stamina"] -= THROW_COST
+	rec["stamina"] -= cost
 	rec["throws"] += 1
 	# Remember the throw: it can hurt a demon once, either by the host's own copy
 	# hitting, or by the thrower's claim that it hit on their screen (checked below).
@@ -1326,7 +1331,7 @@ func minion_spawned(owner: int, point: Vector3, form_index: int) -> void:
 	if form_index >= 0 and form_index < types.size() and main.map_has_prop_type(types[form_index]):
 		form = types[form_index]
 	var m := {"eid": _new_eid(), "pos": main.ground_below(point + Vector3.UP), "yaw": rec["yaw"],
-		"form": form, "hp": PropLib.max_hp(rec["form"]) * Skills.MINION_HEALTH, "until": now() + Skills.MINION_LIFETIME, "last_time": now()}
+		"form": form, "hp": PropLib.max_hp(rec["form"]) * Skills.minion_health(), "until": now() + Skills.minion_lifetime(), "last_time": now()}
 	minions[owner] = m
 	_send_looks()   # (the minion dresses like its owner)
 	if owner != 1:
@@ -1432,7 +1437,7 @@ func damage_player(id: int, damage: int, by := 0) -> bool:
 	main.powerups.angels_made_progress()
 	# Health is kept as a fraction, so switching forms keeps your percentage:
 	# the same hit hurts a stack of books (50 hp) more than a hay bale (150 hp).
-	rec["hp"] -= float(damage) * GameRules.f("damage") / PropLib.max_hp(rec["form"])
+	rec["hp"] -= float(damage) * GameRules.f("damage") / GameRules.f("demon_health") / PropLib.max_hp(rec["form"])
 	var left := maxf(rec["hp"], 0.0)
 	if id == 1:
 		main.online_you_hit(left)
@@ -1580,7 +1585,7 @@ func give_powerup(id: int, kind: String) -> void:
 	if not peers.has(id):
 		return
 	var rec: Dictionary = peers[id]
-	var until: float = now() + PowerUps.DURATION.get(kind, 0.0) + 0.5   # (a little slack for the mirrors)
+	var until: float = now() + PowerUps.duration(kind) + 0.5   # (a little slack for the mirrors)
 	match kind:
 		"fast_hatred": rec["fast_hatred_until"] = until
 		"quick_throw": rec["quick_throw_until"] = until
@@ -1622,7 +1627,7 @@ func c_bouncy_used(id: int) -> void:
 func heal_player(id: int) -> void:
 	if not peers.has(id) or peers[id]["role"] != "demon":
 		return
-	var hp: float = minf(peers[id]["hp"] + PowerUps.HEAL_AMOUNT, PowerUps.MAX_HEALTH)
+	var hp: float = minf(peers[id]["hp"] + PowerUps.HEAL_AMOUNT * GameRules.f("heal_amount"), PowerUps.MAX_HEALTH)
 	peers[id]["hp"] = hp
 	print("[host] %s healed up to %d%%" % [peers[id]["name"], int(round(hp * 100.0))])
 	if id == 1:
@@ -1693,7 +1698,7 @@ func check_sense() -> void:
 		var near := false
 		if sensing:
 			for d in demons:
-				if d.global_position.distance_to(rec["pos"]) <= Skills.CHERUB_RADIUS:
+				if d.global_position.distance_to(rec["pos"]) <= Skills.cherub_radius():
 					near = true
 					break
 		if near != rec.get("sense_near", false):

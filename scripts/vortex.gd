@@ -45,7 +45,7 @@ static var _meshes := {}
 # The reach at time t.
 static func radius_at(t: float) -> float:
 	var k := clampf(t / T, 0.0, 1.0)
-	return Skills.VACUUM_RADIUS - (Skills.VACUUM_RADIUS - Skills.VACUUM_RADIUS_END) * pow(k, 1.6)
+	return Skills.vacuum_radius() - (Skills.vacuum_radius() - Skills.vacuum_radius_end()) * pow(k, 1.6)
 
 
 # How hard it sucks, 0 (just opened) .. 1 (the end).
@@ -61,7 +61,7 @@ static func _suction(t: float) -> float:
 
 # Distance from the centre at time t of a prop that started rho0 away (nearer = yanked harder).
 static func _rho(rho0: float, t: float) -> float:
-	var grip := 0.6 + 2.0 * pow(maxf(1.0 - rho0 / Skills.VACUUM_RADIUS, 0.0), 1.5)
+	var grip := 0.6 + 2.0 * pow(maxf(1.0 - rho0 / Skills.vacuum_radius(), 0.0), 1.5)
 	var rmin := 0.9 + 0.2 * rho0   # (props settle round the middle, not on top of a caught demon)
 	return rmin + (rho0 - rmin) * exp(-_suction(t) * grip)
 
@@ -102,7 +102,7 @@ static func prop_offset(start: Vector3, t: float, released: float) -> Vector3:
 # Is this prop (flat offset from the centre) in reach when the vortex opens?
 static func in_reach(offset: Vector3) -> bool:
 	var d := Vector2(offset.x, offset.z).length()
-	return d < Skills.VACUUM_RADIUS and d > 0.01 and absf(offset.y) < 4.0
+	return d < Skills.vacuum_radius() and d > 0.01 and absf(offset.y) < 4.0
 
 
 # ---------- setup ----------
@@ -130,7 +130,7 @@ func _ready() -> void:
 	# Ring and spiral arms on the ground: shows the reach shrinking.
 	var ground := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
-	pm.size = Vector2.ONE * (Skills.VACUUM_RADIUS * 2.0 + 1.5)
+	pm.size = Vector2.ONE * (Skills.vacuum_radius() * 2.0 + 1.5)
 	ground.mesh = pm
 	ground.material_override = _mat("ground")
 	_ground = ground
