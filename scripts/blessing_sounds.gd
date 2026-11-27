@@ -347,17 +347,21 @@ static func _water_impact() -> AudioStreamWAV:
 const RING := [[1.0, 1.0], [2.32, 0.55], [4.25, 0.3], [6.63, 0.14]]
 
 
+# (Wife's notes, Nov 26: "make it a more ethereal sound".) No metal ting any more: a soft, glowing chord
+# that swells in and floats upward, doubled a few Hz off so it shimmers like a choir, with slow sparkles
+# above it and a breath of air.
 static func _halo_throw() -> AudioStreamWAV:
-	var b := _buf(0.4)
+	var b := _buf(0.62)
 	var rng := _rng(7301)
-	# the ting as it leaves the hand
-	for p in RING:
-		_partial(b, 0.0, 740.0 * p[0], 0.3 * p[1], 14.0 + 6.0 * p[0], 0.002)
-	# the whirr: a held metallic chord flickering as the ring spins (spin speeds up a little)
-	for p in RING.slice(0, 3):
-		_partial(b, 0.02, 620.0 * p[0], 0.28 * p[1], 4.5, 0.05, 1.04, 6.0, 19.0, 0.8)
-	# the air it cuts, chopped by the spin
-	_noise(b, rng, 0.0, 0.4, 900.0, 1600.0, 0.8, 0.6, 0.06, 1.4, 0, 19.0, 0.75, 26.0)
+	var base := 660.0
+	for p in [[1.0, 0.36], [1.5, 0.26], [2.0, 0.2], [3.0, 0.07]]:
+		_partial(b, 0.0, base * p[0], p[1], 3.2, 0.07, 1.05, 2.5, 6.5, 0.25)
+		_partial(b, 0.0, base * p[0] + 2.2 * p[0], p[1] * 0.7, 3.0, 0.09, 1.05, 2.5, 5.0, 0.3, rng.randf() * TAU)
+	# sparkles high up, fading in a little later
+	for k in 3:
+		_partial(b, 0.06 + 0.07 * k, [1760.0, 1976.0, 2349.0][k], 0.06, 7.0, 0.03, 1.02, 4.0, 11.0, 0.5)
+	# a soft breath of air
+	_noise(b, rng, 0.0, 0.55, 1300.0, 2200.0, 0.6, 0.3, 0.09, 1.6, 0)
 	return _to_wav(b, THROW_LOUD)
 
 

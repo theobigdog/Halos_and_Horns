@@ -258,7 +258,7 @@ func _apply_trail() -> void:
 
 func _apply_form() -> void:
 	_rig = null
-	anim_presses = 0
+	anim_presses = PropLib.state_of(possessed_type)   # (a prop placed lit / open: E goes on from there)
 	fuse_lit = false
 	for child in visual_root.get_children():
 		child.queue_free()

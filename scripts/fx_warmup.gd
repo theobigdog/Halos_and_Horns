@@ -16,6 +16,7 @@ const StompSounds = preload("res://scripts/stomp_sounds.gd")
 const VacuumSounds = preload("res://scripts/vacuum_sounds.gd")
 const BlessingSounds = preload("res://scripts/blessing_sounds.gd")
 const Blessings = preload("res://scripts/blessings.gd")
+const ChapelBell = preload("res://scripts/chapel_bell.gd")
 
 const VORTEX_SHADERS := ["core", "debris", "ground", "halo", "shell", "streak"]
 
@@ -41,11 +42,17 @@ static func sounds() -> void:
 		made.append([VacuumSounds._cache, "close", VacuumSounds._make_close()])
 		for k in kinds:
 			made.append([BlessingSounds._cache, "impact_" + k, BlessingSounds._make_impact(k)])
+			made.append([BlessingSounds._cache, "throw_" + k, BlessingSounds._make_throw(k)])
+		made.append([null, "bell", ChapelBell.make_sound()])   # (the chapel's bell: about 0.3 s to make)
 		_store.call_deferred(made))
 
 
 static func _store(made: Array) -> void:
 	for m in made:
+		if m[0] == null:
+			if ChapelBell._sound == null:
+				ChapelBell._sound = m[2]
+			continue
 		var cache: Dictionary = m[0]
 		if not cache.has(m[1]):
 			cache[m[1]] = m[2]

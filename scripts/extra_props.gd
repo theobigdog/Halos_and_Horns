@@ -18,7 +18,16 @@ const TYPES := {
 	"powder_keg": {"shape": "cylinder", "radius": 0.36, "height": 0.82, "label": "Powder keg", "hp": 110, "speed": 5.0, "mass": 2.4, "cat": "Explosives"},
 	"rocking_chair": {"shape": "box", "size": Vector3(0.68, 1.12, 0.95), "label": "Rocking chair", "hp": 100, "speed": 5.5, "mass": 1.6, "cat": "Furniture"},
 	"weaponrack_armed": {"shape": "box", "size": Vector3(1.2, 1.6, 0.78), "label": "Weapon rack (armed)", "hp": 140, "speed": 4.8, "mass": 2.8, "cat": "Village & nature"},
+	# (Wife's notes, Nov 26: a garbage can, bushes that aren't in pots, flowers and plants: classic_props.gd)
+	"trash_can": {"shape": "cylinder", "radius": 0.3, "height": 0.86, "label": "Garbage can", "hp": 90, "speed": 5.5, "mass": 1.4, "cat": "Town"},
+	"wheelie_bin": {"shape": "box", "size": Vector3(0.62, 1.03, 0.72), "label": "Wheelie bin", "hp": 120, "speed": 5.0, "mass": 2.0, "cat": "Town"},
+	"bush": {"shape": "cylinder", "radius": 0.72, "height": 1.0, "label": "Bush", "hp": 110, "speed": 5.0, "mass": 1.6, "round": true, "cat": "Village & nature"},
+	"bush_flowering": {"shape": "cylinder", "radius": 0.62, "height": 0.86, "label": "Flowering bush", "hp": 100, "speed": 5.2, "mass": 1.4, "round": true, "cat": "Village & nature"},
+	"flowers_daisies": {"shape": "cylinder", "radius": 0.32, "height": 0.4, "label": "Daisies", "hp": 40, "speed": 7.5, "mass": 0.4, "cat": "Village & nature"},
+	"flowers_tulips": {"shape": "cylinder", "radius": 0.28, "height": 0.5, "label": "Tulips", "hp": 40, "speed": 7.5, "mass": 0.4, "cat": "Village & nature"},
+	"fern": {"shape": "cylinder", "radius": 0.45, "height": 0.55, "label": "Fern", "hp": 50, "speed": 7.0, "mass": 0.5, "cat": "Village & nature"},
 }
+const ClassicProps = preload("res://scripts/classic_props.gd")
 
 
 static func has(type_name: String) -> bool:
@@ -36,6 +45,7 @@ static func make(type_name: String) -> Node3D:
 		"powder_keg": _keg(root)
 		"rocking_chair": _rocking_chair(root)
 		"weaponrack_armed": _weapon_rack(root)
+		_: ClassicProps.make(type_name, root)
 	return root
 
 

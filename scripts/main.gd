@@ -836,7 +836,7 @@ func load_map(map: Dictionary, path := "") -> void:
 				ONE_USE_BOUNCIES.append(pos)
 				ONE_USE_LOOKS.append(int(p.get("look", 0)))
 			"bouncy_super": SUPER_BOUNCIES.append(pos)
-			"prop": PLACED_PROPS.append([PropLib.scaled(p["prop"], p.get("scale", 1.0)), pos, MapData.rot_rad(p)])
+			"prop": PLACED_PROPS.append([PropLib.with_state(PropLib.scaled(p["prop"], p.get("scale", 1.0)), int(p.get("state", 0))), pos, MapData.rot_rad(p)])
 	Models.festive = map_data["weather"] == "snow"   # (before building: trees and buildings get lights)
 	_build_map()
 	graphics.set_time_of_day(map_data["time"])
@@ -1153,8 +1153,28 @@ func _random_spot() -> Vector3:
 				ok = false
 		if ok:
 			used_spots.append(p)
-			return Vector3(p.x, 0, p.y)
+			return Vector3(p.x, ground_height(p), p.y)
 	return Vector3.ZERO
+
+
+# How high the floor is here: on top of any ground block or sidewalk placed on the map (Wife's notes, Nov 26:
+# random props were buried in the gravel). Worked out from the map itself, so every screen agrees.
+func ground_height(at: Vector2) -> float:
+	var top := 0.0
+	for p in map_data["pieces"]:
+		if not p["type"] in ["ground", "sidewalk"]:
+			continue
+		var sz := MapData.vec(p["size"]) if p.has("size") else Vector3(2.0, 0.18, 6.0)
+		var xf := Transform3D(Basis.from_euler(MapData.rot_rad(p)), MapData.vec(p["pos"]))
+		var local := xf.affine_inverse() * Vector3(at.x, 0.0, at.y)
+		var up := xf.basis * Vector3.UP
+		if up.y < 0.9:
+			continue   # (tipped over on its side: no flat top to stand on)
+		if absf(local.x) > sz.x * 0.5 - 0.3 or absf(local.z) > sz.z * 0.5 - 0.3:
+			continue
+		var top_pt := xf * Vector3(local.x, sz.y, local.z)
+		top = maxf(top, top_pt.y)
+	return top
 
 
 func _spawn_prop(type_name: String, pos: Vector3, rot = null) -> void:

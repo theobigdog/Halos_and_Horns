@@ -21,13 +21,26 @@ const KINDS := {
 	"barn": "Barn",
 	"chapel": "Chapel",
 	"ruin": "Ruined House",
+	# Gates (Ted, Nov 26: "make the gate into an actual gate... one closed-gate option, and an opened-gate
+	# option"): not walk-in buildings, but built the same way (Creative lists them on their own).
+	"gate": "Graveyard Gate (closed)",
+	"gate_open": "Graveyard Gate (open)",
+	"arch_gate": "Arched Gate (closed)",
+	"arch_gate_open": "Arched Gate (open)",
+	# Deciduous trees (Ted's wife, Nov 26): grown in trees.gd, placed like the rest.
+	"oak": "Oak tree",
+	"birch": "Birch tree",
 }
+const GATES := ["gate", "gate_open", "arch_gate", "arch_gate_open"]
+const TREES := ["oak", "birch"]
+const Trees = preload("res://scripts/trees.gd")
+const ChapelBell = preload("res://scripts/chapel_bell.gd")
 
 const T := 0.25 # wall thickness
 const FLOOR := 0.15 # ground floor top
 
 # Materials (one mesh surface each).
-enum { PLASTER, BRICK, STONE, PLANKS, ROOF, TRIM, HAY, BOARDS, FLAG, TIMBER }
+enum { PLASTER, BRICK, STONE, PLANKS, ROOF, TRIM, HAY, BOARDS, FLAG, TIMBER, IRON, GOLD, STAINED }
 
 const SHADER := """
 shader_type spatial;
@@ -52,6 +65,8 @@ void fragment() {
 	vec2 uv = UV;
 	float sh = 1.0;
 	float rough = 0.88;
+	float metal = 0.0;
+	vec3 emit = vec3(0.0);
 	if (detail) {
 		float n = vn(uv * 1.7) * 0.6 + vn(uv * 6.0) * 0.4;
 		if (mode == 0) {
@@ -117,6 +132,26 @@ void fragment() {
 			vec3 wg = wood_grain(uv, mix(1.0, 0.3, paint));
 			sh = mix(wg.x, 1.0 + (wg.x - 1.0) * 0.3, paint);
 			rough = mix(wg.z, 0.6, paint);
+		} else if (mode == 10) {
+			// wrought iron (gates): hammered, a little rusty in the hollows
+			sh = 0.82 + 0.26 * n;
+			base = mix(base, vec3(0.32, 0.17, 0.09), smoothstep(0.62, 0.85, vn(uv * 9.0)) * 0.35);
+			rough = 0.5 + 0.2 * n;
+			metal = 0.55;
+		} else if (mode == 12) {
+			// stained glass (the chapel, Ted Nov 26): diamond panes of jewel colours in dark lead, glowing
+			vec2 q = vec2(uv.x + uv.y, uv.x - uv.y) / 0.21;
+			vec2 id = floor(q);
+			vec2 f = fract(q);
+			float e = min(min(f.x, 1.0 - f.x), min(f.y, 1.0 - f.y));
+			float lead = 1.0 - smoothstep(0.035, 0.085, e);
+			float hh = h21(id + 3.7);
+			vec3 jewel = hh < 0.26 ? vec3(0.78, 0.07, 0.1) : (hh < 0.5 ? vec3(0.1, 0.24, 0.85) : (hh < 0.68 ? vec3(0.98, 0.72, 0.15)
+					: (hh < 0.84 ? vec3(0.12, 0.62, 0.28) : vec3(0.52, 0.16, 0.66))));
+			jewel *= 0.75 + 0.45 * vn(uv * 13.0);
+			base = mix(jewel, vec3(0.05, 0.05, 0.06), lead);
+			emit = jewel * (1.0 - lead) * 0.55;
+			rough = mix(0.12, 0.75, lead);
 		} else if (mode == 6) {
 			float s = vn(vec2(uv.x * 3.0, uv.y * 40.0)) * 0.6 + vn(vec2(uv.x * 9.0 + 4.0, uv.y * 70.0)) * 0.4;
 			sh = 0.68 + 0.45 * s;
@@ -126,9 +161,15 @@ void fragment() {
 			rough = 0.7;
 		}
 	}
+	if (mode == 11) {   // polished gold
+		metal = 1.0;
+		rough = 0.2;
+	}
 	ALBEDO = base * sh;
 	ROUGHNESS = rough;
 	SPECULAR = 0.3;
+	METALLIC = metal;
+	EMISSION = emit;
 }
 """
 
@@ -140,11 +181,15 @@ static var _cache := {}
 # ---------------------------------------------------------------- public API
 
 static func size(kind: String) -> Vector3:
+	if kind in TREES:
+		return Trees.size(kind)
 	var b: Dictionary = _built(kind, 0)
 	return b["size"]
 
 
 static func make(kind: String, look: int = 0) -> Node3D:
+	if kind in TREES:
+		return Trees.make(kind, look)
 	if not KINDS.has(kind):
 		kind = "cottage"
 	var b: Dictionary = _built(kind, clampi(look, 0, 3))
@@ -163,6 +208,11 @@ static func make(kind: String, look: int = 0) -> Node3D:
 		cs.shape = s[0]
 		cs.transform = s[1]
 		body.add_child(cs)
+	if b["marks"].has("bell"):
+		var bell := ChapelBell.new()
+		bell.name = "Bell"
+		bell.position = b["marks"]["bell"]
+		root.add_child(bell)
 	return root
 
 
@@ -170,6 +220,8 @@ static func make(kind: String, look: int = 0) -> Node3D:
 # faces facing the same way lie in (almost) one plane and overlap, which flicker as the camera moves.
 # Returns [[where, material a, material b, overlap m2], ...].
 static func coplanar_faces(kind: String, look := 0) -> Array:
+	if kind in TREES:
+		return []   # (no boxes in a tree)
 	var b := Bld.new()
 	b.record = true
 	match kind:
@@ -236,6 +288,8 @@ static func _built(kind: String, look: int) -> Dictionary:
 		"barn": _barn(b, look)
 		"chapel": _chapel(b, look)
 		"ruin": _ruin(b, look)
+		"gate", "gate_open", "arch_gate", "arch_gate_open":
+			_gate(b, look, kind.begins_with("arch"), kind.ends_with("open"))
 	var mesh := ArrayMesh.new()
 	var keys: Array = b.sts.keys()
 	keys.sort()
@@ -244,7 +298,7 @@ static func _built(kind: String, look: int) -> Dictionary:
 		st.commit(mesh)
 		mesh.surface_set_material(mesh.get_surface_count() - 1, _mat(m, low))
 	var sz := Vector3(2.0 * maxf(absf(b.lo.x), absf(b.hi.x)), b.hi.y, 2.0 * maxf(absf(b.lo.z), absf(b.hi.z)))
-	var out := {"mesh": mesh, "shapes": b.shapes, "size": sz}
+	var out := {"mesh": mesh, "shapes": b.shapes, "size": sz, "marks": b.marks}
 	_cache[key] = out
 	return out
 
@@ -324,6 +378,7 @@ static func _crate(b: Bld, at: Vector3) -> void:
 
 class Bld:
 	var sts := {}
+	var marks := {}   # named spots for things that aren't part of the mesh (the chapel's bell)
 	var shapes: Array = []
 	var grain := Vector3.ZERO   # TIMBER: the way the wood grain runs (set while a beam is drawn)
 	var grain_off := Vector2.ZERO   # ...and where in the grain this beam starts (so no two look alike)
@@ -669,6 +724,9 @@ const BARN_ROOF := ["#4a4c52", "#5f7a54", "#8a4a30", "#5a4636"]
 const CHAPEL_WALL := ["#bdb6aa", "#d8c49a", "#9faa98", "#8a8894"]
 const CHAPEL_ROOF := ["#4a5266", "#7a4a3c", "#3f5a52", "#5a4a6a"]
 
+const GATE_IRON := ["#26262b", "#2c4636", "#5a3826", "#1d1d21"]
+const GATE_STONE := ["#a8a49c", "#c4b08a", "#8d968a", "#77726c"]
+const GATE_TIP := ["#26262b", "#2c4636", "#5a3826", "#d8aa3a"]   # (the last: gilded spear tips)
 const RUIN_WALL := ["#a8a296", "#b8a88a", "#8f9690", "#9a8e8a"]
 
 
@@ -936,6 +994,145 @@ static func _barn(b: Bld, look: int) -> void:
 	b.ab(TIMBER, Vector3(-1.2, 4.75, -d * 0.5 - 0.1), Vector3(1.2, 4.95, -d * 0.5 + 0.1), white, false)
 
 
+# A four-sided spike (a spear tip, a pillar's cap): base centre c, half-width hw, height ht, turned by bas.
+static func _spike(b: Bld, m: int, c: Vector3, hw: float, ht: float, col: Color, bas := Basis()) -> void:
+	var apex := c + bas.y.normalized() * ht
+	var x := bas.x.normalized() * hw
+	var z := bas.z.normalized() * hw
+	var corners := [c - x - z, c + x - z, c + x + z, c - x + z]
+	for i in 4:
+		var p0: Vector3 = corners[i]
+		var p1: Vector3 = corners[(i + 1) % 4]
+		var n := (p1 - p0).cross(apex - p0).normalized()
+		if n.dot((p0 + p1) * 0.5 - c) < 0.0:
+			n = -n
+		b.tri(m, p0, p1, apex, n, col)
+
+
+# Graveyard gates (Ted, Nov 26; his wife's picture: an iron gate hung under a stone arch). Two stone pillars
+# with panelled faces and capped tops (or an arch of stones over them), and a pair of wrought-iron gate
+# leaves between: stiles, rails, an arched top rail, spear-topped bars, a band of rings, hinges and a latch.
+# Shut, they close the way; open, they stand swung back. The way through is 2.2 m wide.
+static func _gate(b: Bld, look: int, arched: bool, open: bool) -> void:
+	var iron := _c(GATE_IRON[look])
+	var stone := _c(GATE_STONE[look])
+	var tip := _c(GATE_TIP[look])
+	var gap := 2.2
+	var pw := 0.56
+	var ph := 2.55 if arched else 2.2
+	var px := gap * 0.5 + pw * 0.5
+	for sx in [-1.0, 1.0]:
+		var c := Vector3(sx * px, 0.0, 0.0)
+		b.ab(STONE, c + Vector3(-pw * 0.5 - 0.06, 0.0, -pw * 0.5 - 0.06), c + Vector3(pw * 0.5 + 0.06, 0.32, pw * 0.5 + 0.06), stone.darkened(0.12))
+		b.ab(STONE, c + Vector3(-pw * 0.5, 0.32, -pw * 0.5), c + Vector3(pw * 0.5, ph, pw * 0.5), stone)
+		for sz in [-1.0, 1.0]:   # a sunken panel on the front and back
+			b.ab(TRIM, c + Vector3(-0.15, 0.72, sz * pw * 0.5), c + Vector3(0.15, ph - 0.42, sz * (pw * 0.5 + 0.022)), stone.darkened(0.2), false)
+		b.ab(STONE, c + Vector3(-0.36, ph, -0.36), c + Vector3(0.36, ph + 0.13, 0.36), stone.lightened(0.07))
+		if not arched:
+			b.ab(STONE, c + Vector3(-0.27, ph + 0.13, -0.27), c + Vector3(0.27, ph + 0.2, 0.27), stone.lightened(0.03), false)
+			_spike(b, STONE, c + Vector3(0, ph + 0.2, 0), 0.27, 0.34, stone.lightened(0.07))
+	if arched:
+		# an arch of stones from pillar to pillar, a keystone at the top
+		var spring := ph + 0.13
+		var r_in := px - 0.05
+		var ring := 0.4
+		var n := 11
+		for i in n:
+			var a := PI * (i + 0.5) / n
+			var mid := (r_in + ring * 0.5)
+			var cc := Vector3(cos(a) * mid, spring + sin(a) * mid, 0.0)
+			var key := i == n / 2
+			var sz := Vector3(ring + (0.12 if key else 0.0), PI * mid / n * 1.03, 0.52 + 0.03 * (i % 2) + (0.06 if key else 0.0))
+			b.box(STONE, cc, sz, stone.darkened(0.04 * (i % 3)), true, Basis(Vector3.BACK, a))
+	# the leaves, hung on the pillars' inner faces a little behind the middle; open, they swing back 88 degrees
+	var lw := gap * 0.5 - 0.06
+	for sx in [-1.0, 1.0]:
+		var hinge := Vector3(sx * (gap * 0.5 - 0.04), 0.0, -0.16)
+		var ang: float = -sx * deg_to_rad(88.0) if open else 0.0
+		var u := Basis(Vector3.UP, ang) * Vector3(-sx, 0.0, 0.0)
+		var nrm := u.cross(Vector3.UP)
+		var bas := Basis(u, Vector3.UP, nrm)
+		var at := func(s: float, y: float, off := 0.0) -> Vector3:
+			return hinge + u * s + Vector3.UP * y + nrm * off
+		var top := func(s: float) -> float:
+			return 1.5 + 0.28 * sin(s / lw * PI * 0.5)
+		var bar := func(s0: float, y0: float, s1: float, y1: float, th: float, dep: float, col: Color) -> void:
+			var a: Vector3 = at.call(s0, y0)
+			var c2: Vector3 = at.call(s1, y1)
+			var along := (c2 - a)
+			var tilt := atan2(y1 - y0, s1 - s0)
+			b.box(IRON, (a + c2) * 0.5, Vector3(along.length(), th, dep), col, false, bas * Basis(Vector3.BACK, tilt))
+		# stiles: the hinge side and the meeting side, taller, with finials
+		for s in [0.025, lw - 0.025]:
+			var ht: float = top.call(s) + 0.22
+			b.box(IRON, at.call(s, (0.06 + ht) * 0.5), Vector3(0.05, ht - 0.06, 0.05), iron, false, bas)
+			_spike(b, IRON, at.call(s, ht), 0.04, 0.16, tip, bas)
+		# rails: bottom, middle, the band of rings between, and the arched top rail
+		for y in [0.2, 1.0, 1.22]:
+			bar.call(0.05, y, lw - 0.05, y, 0.045, 0.04, iron)
+		var segs := 6
+		for k in segs:
+			var s0 := 0.05 + (lw - 0.1) * k / segs
+			var s1 := 0.05 + (lw - 0.1) * (k + 1) / segs
+			bar.call(s0 - 0.004, top.call(s0), s1 + 0.004, top.call(s1), 0.045, 0.044 + 0.004 * (k % 2), iron)
+		# bars, each with a spear tip
+		var nb := 6
+		for i in nb:
+			var s := 0.05 + (lw - 0.1) * (i + 0.5) / nb
+			var ht: float = top.call(s) + 0.13
+			b.box(IRON, at.call(s, (0.1 + ht) * 0.5), Vector3(0.032, ht - 0.1, 0.032), iron, false, bas)
+			_spike(b, IRON, at.call(s, ht), 0.034, 0.13, tip, bas)
+		# rings between the bars, in the band
+		for i in nb - 1:
+			var s := 0.05 + (lw - 0.1) * (i + 1.0) / nb
+			var rc: Vector3 = at.call(s, 1.11)
+			for k in 8:
+				var a := TAU * (k + 0.5) / 8.0
+				var p := rc + (u * cos(a) + Vector3.UP * sin(a)) * 0.075
+				b.box(IRON, p, Vector3(0.016, 0.062, 0.022 + 0.003 * (k % 2)), iron, false, bas * Basis(Vector3.BACK, a))
+		# hinges (pins into the pillar) and, on one leaf, the latch
+		for y in [0.45, 1.35]:
+			b.ab(IRON, at.call(-0.03, y - 0.06, -0.03), at.call(0.0, y + 0.06, 0.03), iron.lightened(0.05), false)
+			b.box(IRON, at.call(0.08, y), Vector3(0.18, 0.05, 0.056), iron, false, bas)
+		if sx > 0.0:
+			b.box(IRON, at.call(lw - 0.03, 0.95, 0.04), Vector3(0.14, 0.035, 0.02), iron.lightened(0.08), false, bas)
+		# what stops you: shut, the whole way; open, each leaf where it stands
+		var mid_s := lw * 0.5
+		b.cbox(at.call(mid_s, 0.95), Vector3(lw, 1.9, 0.08), bas)
+
+
+# A pane of stained glass filling an arched window opening (in the wall's middle), the arch made of the same
+# steps the wall's opening is cut in.
+static func _glass_arch(b: Bld, axis: int, c: float, op: Dictionary) -> void:
+	var r: float = op["w"] * 0.5
+	var spring: float = op["t"] - r
+	var u: float = op["u"]
+	var glass := _c("#c8c0d8")
+	var put := func(u0: float, u1: float, y0: float, y1: float) -> void:
+		if axis == 0:
+			b.box(STAINED, Vector3((u0 + u1) * 0.5, (y0 + y1) * 0.5, c), Vector3(u1 - u0, y1 - y0, 0.03), glass, true)
+		else:
+			b.box(STAINED, Vector3(c, (y0 + y1) * 0.5, (u0 + u1) * 0.5), Vector3(0.03, y1 - y0, u1 - u0), glass, true)
+	# (1.2 cm up from the wall's steps: their tops and the glass's would lie in one plane inside the wall)
+	put.call(u - r - 0.02, u + r + 0.02, op["b"] - 0.02, spring + 0.012)
+	var steps := 6
+	for k in steps:
+		var ya := spring + r * k / steps + 0.012
+		var yb := spring + r * (k + 1) / steps + 0.012
+		var ext := sqrt(maxf(0.0, r * r - pow(yb - spring, 2.0)))
+		put.call(u - ext - 0.02, u + ext + 0.02, ya, yb + (0.02 if k == steps - 1 else 0.0))
+
+
+# The round window in the chapel's front gable: a rose of stained glass (facing +Z).
+static func _rose(b: Bld, c: Vector3, r: float) -> void:
+	var glass := _c("#c8c0d8")
+	var n := 24
+	for i in n:
+		var a0 := TAU * i / n
+		var a1 := TAU * (i + 1) / n
+		b.tri(STAINED, c, c + Vector3(cos(a0), sin(a0), 0) * r, c + Vector3(cos(a1), sin(a1), 0) * r, Vector3.BACK, glass)
+
+
 static func _chapel(b: Bld, look: int) -> void:
 	var w := 7.0
 	var d := 12.0
@@ -961,7 +1158,13 @@ static func _chapel(b: Bld, look: int) -> void:
 	for i in 10:
 		var ang := TAU * i / 10.0
 		b.box(TRIM, Vector3(cos(ang) * 0.5, gy + sin(ang) * 0.5, d * 0.5 + 0.03 + 0.01 * (i % 2)), Vector3(0.34, 0.16, 0.1), trim, false, Basis(Vector3(0, 0, 1), ang + PI * 0.5))
-	b.ab(TRIM, Vector3(-0.42, gy - 0.42, d * 0.5 - 0.01), Vector3(0.42, gy + 0.42, d * 0.5 + 0.02), _c("#2a2440"), false)
+	_rose(b, Vector3(0.0, gy, d * 0.5 + 0.012), 0.47)
+	# stained glass in the arched windows (Ted, Nov 26)
+	for side in ["left", "right", "back"]:
+		var axis := 1 if side in ["left", "right"] else 0
+		var c: float = (-1.0 if side in ["left", "back"] else 1.0) * ((w if axis == 1 else d) * 0.5 - T * 0.5)
+		for op in ops[side]:
+			_glass_arch(b, axis, c, op)
 	# buttresses
 	for sx in [-1.0, 1.0]:
 		for z in [-5.2, -1.75, 1.75, 5.2]:
@@ -974,9 +1177,7 @@ static func _chapel(b: Bld, look: int) -> void:
 		b.ab(STONE, Vector3(sx * 0.55 - 0.18, by, bz - 0.3), Vector3(sx * 0.55 + 0.18, by + 1.7, bz + 0.3), wall)
 	b.ab(STONE, Vector3(-0.8, by + 1.7, bz - 0.4), Vector3(0.8, by + 2.0, bz + 0.4), wall)
 	b.ab(STONE, Vector3(-0.76, by - 0.2, bz - 0.37), Vector3(0.76, by + 0.2, bz + 0.37), wall)
-	var gold := _c("#e0b040")
-	b.ab(TRIM, Vector3(-0.25, by + 0.75, bz - 0.25), Vector3(0.25, by + 1.35, bz + 0.25), gold, false)
-	b.ab(TRIM, Vector3(-0.33, by + 0.66, bz - 0.33), Vector3(0.33, by + 0.8, bz + 0.33), gold, false)
+	b.marks["bell"] = Vector3(0.0, by + 1.62, bz)   # (the golden bell hangs here: chapel_bell.gd)
 	for sx in [-1.0, 1.0]:
 		b.box(ROOF, Vector3(sx * 0.45, by + 2.32, bz), Vector3(1.15, 0.12, 1.1 + 0.01 * sx), roof, false, Basis(Vector3(0, 0, 1), -sx * 0.72))
 	# doors: two open wooden leaves just inside, against the wall
@@ -1111,64 +1312,37 @@ static func _ruin(b: Bld, look: int) -> void:
 	_timber(b, Vector3(-hw + T * 0.5, 2.55, -1.15), Vector3(-1.25, 2.75, -0.95), wood, true)    # girder
 	_pocket(b, Vector3(-hw + T, 2.65, -1.05), Vector3.RIGHT, Vector2(0.3, 0.3), wall)
 	_timber(b, Vector3(-1.55, FLOOR, -1.15), Vector3(-1.35, 2.55, -0.95), wood, true)          # its post
-	# The slumped part (Ted, Nov 26: the sheet of planks "looks WAY too orderly for what must have happened"):
-	# a broken, tumbled mess down to the floor. Some boards are gone, most snapped in two with splinters at the
-	# break, every piece skewed its own way, a few lying across the others and one of the joists come down
-	# with them. Under it all there's still one walkable slope (the collision box), so it can be climbed.
-	var top_z := -0.9
-	var foot_z := 1.45
-	var top_y := 2.8
-	var foot_y := FLOOR + 0.06
-	var slope_dir := Vector3(0, foot_y - top_y, foot_z - top_z).normalized()
-	var slope_up := Vector3.RIGHT.cross(slope_dir)
-	if slope_up.y < 0.0:
-		slope_up = -slope_up
-	var sb := Basis(Vector3.RIGHT, slope_up, Vector3.RIGHT.cross(slope_up))
-	var slope_len := Vector2(foot_z - top_z, top_y - foot_y).length()
-	var on_slope := func(x: float, s: float, lift: float) -> Vector3:
-		return Vector3(x, top_y, top_z) + slope_dir * s + slope_up * lift
-	var cx := -3.72
-	while cx < -2.0:
-		if rng.randf() < 0.22:   # this one's gone
-			cx += rng.randf_range(0.22, 0.32)
-			continue
-		var s0 := rng.randf_range(0.0, 0.45)
-		var s1 := slope_len - rng.randf_range(0.0, 0.7)
-		var two := rng.randf() < 0.65
-		var cut := lerpf(s0, s1, rng.randf_range(0.3, 0.7))
-		for k in (2 if two else 1):
-			var a0: float = s0 if k == 0 else cut + rng.randf_range(0.06, 0.3)
-			var a1: float = (cut if two else s1) if k == 0 else s1
-			if a1 - a0 < 0.25:
-				continue
-			var bas := sb * Basis(Vector3.UP, rng.randf_range(-0.24, 0.24)) * Basis(Vector3.BACK, rng.randf_range(-0.2, 0.2)) \
-					* Basis(Vector3.RIGHT, rng.randf_range(-0.1, 0.1))
-			var mid: Vector3 = on_slope.call(cx + rng.randf_range(-0.06, 0.06), (a0 + a1) * 0.5, rng.randf_range(0.05, 0.14))
-			var col := wood.lightened(rng.randf_range(-0.12, 0.06))
-			var bw := rng.randf_range(0.15, 0.22)
-			b.box(TIMBER, mid, Vector3(bw, 0.045, a1 - a0), col, false, bas)
-			if two and k == 0:
-				# splinters at the break, fanning out a little
-				var end: Vector3 = mid + bas.z.normalized() * (a1 - a0) * 0.5 * signf(bas.z.dot(slope_dir))
-				for sp in rng.randi_range(2, 3):
-					var sl := rng.randf_range(0.12, 0.3)
-					var sbas := bas * Basis(Vector3.UP, rng.randf_range(-0.35, 0.35)) * Basis(Vector3.RIGHT, rng.randf_range(-0.15, 0.25))
-					var at: Vector3 = end + bas.x.normalized() * rng.randf_range(-bw * 0.35, bw * 0.35) + sbas.z.normalized() * sl * 0.5 * signf(sbas.z.dot(slope_dir))
-					b.box(TIMBER, at, Vector3(rng.randf_range(0.02, 0.04), 0.02, sl), col.lightened(0.08), false, sbas)
-		cx += rng.randf_range(0.2, 0.3)
-	# a few lying across the others
-	for k in 3:
-		var bas := sb * Basis(Vector3.UP, PI * 0.5 + rng.randf_range(-0.45, 0.45)) * Basis(Vector3.BACK, rng.randf_range(-0.12, 0.12))
-		var at: Vector3 = on_slope.call(rng.randf_range(-3.3, -2.4), rng.randf_range(0.5, slope_len - 0.4), rng.randf_range(0.17, 0.22))
-		b.box(TIMBER, at, Vector3(0.19, 0.045, rng.randf_range(0.7, 1.4)), wood.lightened(rng.randf_range(-0.1, 0.05)), false, bas)
-	# a joist that came down with them, slewed across the slope
-	_beam(b, on_slope.call(-3.45, 0.35, 0.2), on_slope.call(-2.35, slope_len - 0.35, 0.22), wood)
-	b.cbox(Vector3(-2.85, (top_y + foot_y) * 0.5 + 0.06, (top_z + foot_z) * 0.5), Vector3(1.9, 0.12, slope_len), sb)
-	# a few loose boards that fell off it
-	for k in 3:
-		var at := Vector3(rng.randf_range(-3.6, -2.2), FLOOR + 0.03 + 0.05 * k, rng.randf_range(1.7, 2.6))
-		b.box(TIMBER, at, Vector3(0.2, 0.05, rng.randf_range(0.8, 1.6)), wood.lightened(rng.randf_range(-0.1, 0.05)), false,
-				Basis(Vector3.UP, rng.randf() * TAU))
+	# The rest of that floor came down (Ted, Nov 26, twice: first the slumped sheet "looks WAY too orderly",
+	# then the tumbled boards "mostly floating impossibly"; "just remove most of them, and have a bunch of
+	# broken planks underneath"). A couple of boards still hang from the girder, their feet down on the heap,
+	# and under them a heap of broken planks on the floor: each one lies flat on the floor or on the ones it
+	# lands across, nothing in the air.
+	var heap := []   # [centre xz, half length, layer] of the planks lying in the heap so far
+	var lay := func(at: Vector2, len: float, yaw: float, col: Color, w2 := 0.19) -> void:
+		var layer := 0
+		for q in heap:
+			if (q[0] as Vector2).distance_to(at) < q[1] + len * 0.5 + 0.12:
+				layer = maxi(layer, int(q[2]) + 1)
+		heap.append([at, len * 0.5, layer])
+		var y := FLOOR + 0.0225 + 0.046 * layer + 0.0011 * (heap.size() % 5)
+		b.box(TIMBER, Vector3(at.x, y, at.y), Vector3(w2, 0.045, len), col, false, Basis(Vector3.UP, yaw) * Basis(Vector3.BACK, rng.randf_range(-0.03, 0.03)))
+	for k in 16:
+		var at := Vector2(rng.randf_range(-3.7, -1.9), rng.randf_range(-0.4, 1.9))
+		var len := rng.randf_range(0.45, 1.5) if rng.randf() < 0.7 else rng.randf_range(1.6, 2.2)
+		lay.call(at, len, rng.randf() * TAU, wood.lightened(rng.randf_range(-0.14, 0.06)), rng.randf_range(0.15, 0.22))
+	# snapped ends and splinters scattered round the heap
+	for k in 7:
+		var at := Vector2(rng.randf_range(-4.0, -1.6), rng.randf_range(-0.6, 2.3))
+		lay.call(at, rng.randf_range(0.15, 0.35), rng.randf() * TAU, wood.lightened(rng.randf_range(-0.05, 0.1)), rng.randf_range(0.03, 0.06))
+	# two boards still hooked over the girder, sloping down onto the heap
+	for hx in [-3.3, -2.55]:
+		var hang_top := Vector3(hx, 2.75 + 0.0225, -1.02)
+		var hang_foot := Vector3(hx + rng.randf_range(-0.25, 0.25), FLOOR + 0.12, 1.05 + rng.randf_range(-0.2, 0.2))
+		var dir := (hang_foot - hang_top).normalized()
+		var side := Vector3.UP.cross(dir).normalized()
+		var bas := Basis(side, dir.cross(side), dir)
+		b.box(TIMBER, (hang_top + hang_foot) * 0.5, Vector3(0.2, 0.045, hang_top.distance_to(hang_foot) + 0.12), wood.lightened(rng.randf_range(-0.1, 0.03)), false, bas)
+	b.cbox(Vector3(-2.8, FLOOR + 0.1, 0.75), Vector3(2.0, 0.2, 2.5))   # (the heap: something to stand on)
 	b.ab(TRIM, Vector3(-1.6, FLOOR, -1.2), Vector3(-1.3, FLOOR + 0.08, -0.9), wood.darkened(0.2), false)   # pad stone
 	# A joist that came loose at one end: still in its pocket in the back wall (a dark hole round it, so it
 	# goes INTO the wall instead of through it: Ted, Nov 26), the other end down on the floor.

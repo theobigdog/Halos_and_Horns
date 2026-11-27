@@ -117,6 +117,7 @@ uniform float stretch = 1.0;     // rain: long thin streaks
 uniform vec4 tint : source_color = vec4(1.0, 1.0, 1.0, 0.85);
 uniform float round_drop = 1.0;  // snow: soft round flakes
 varying vec2 uv;
+varying float fade;
 
 void vertex() {
 	vec4 seed = INSTANCE_CUSTOM;
@@ -128,15 +129,22 @@ void vertex() {
 	vec3 right = normalize(INV_VIEW_MATRIX[0].xyz);
 	vec3 up = stretch > 1.0 ? vec3(0.0, 1.0, 0.0) : normalize(INV_VIEW_MATRIX[1].xyz);
 	uv = UV;
-	// (the quad's own corners, -0.5..0.5, come in as VERTEX before the model matrix: it's identity here)
-	VERTEX = p + right * (UV.x - 0.5) * size + up * (UV.y - 0.5) * size * stretch;
+	// Far flakes used to shrink below a pixel and twinkle on and off ("too much flicker everywhere": Ted,
+	// Nov 26): never smaller than about two pixels, fainter instead as they grow. And they fade out before
+	// the edges of the box, where they wrap round (they used to pop in and out there).
+	float dist = length(p - CAMERA_POSITION_WORLD);
+	float px = dist * 0.0032;                    // about two pixels at 1080p
+	float sz = max(size, px);
+	vec3 rel = abs(p - center) / (box * 0.5);
+	fade = (size * size) / (sz * sz) * (1.0 - smoothstep(0.6, 0.95, max(max(rel.x, rel.z), rel.y)));
+	VERTEX = p + right * (UV.x - 0.5) * sz + up * (UV.y - 0.5) * sz * stretch;
 }
 
 void fragment() {
 	vec2 d = uv - 0.5;
 	float a = round_drop > 0.5 ? 1.0 - smoothstep(0.2, 0.5, length(d)) : 1.0 - smoothstep(0.25, 0.5, abs(d.x));
 	ALBEDO = tint.rgb;
-	ALPHA = tint.a * a * smoothstep(1.2, 3.5, length(VERTEX));   // (no huge blobs right in your face)
+	ALPHA = tint.a * a * fade * smoothstep(1.2, 3.5, length(VERTEX));   // (no huge blobs right in your face)
 }
 """
 
@@ -324,7 +332,7 @@ func _make_fall(kind: String) -> void:
 	var quad := QuadMesh.new()
 	quad.size = Vector2.ONE
 	mm.mesh = quad
-	mm.instance_count = [600, 1500, 2600][quality] * (2 if kind == "rain" else 1)
+	mm.instance_count = [600, 1500, 2600][quality] * (2 if kind == "rain" else 1) * (3 if kind == "snow" else 2) / 2   # (snow: more, now far ones are fainter)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 90210   # (its own numbers, never the game's)
 	for i in mm.instance_count:

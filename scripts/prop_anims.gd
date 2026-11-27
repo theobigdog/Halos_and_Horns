@@ -105,7 +105,7 @@ static func _build() -> Dictionary:
 
 
 static func entry(type_name: String) -> Dictionary:
-	return TABLE.get(type_name.get_slice("@", 0), {})
+	return TABLE.get(type_name.get_slice("#", 0).get_slice("@", 0), {})
 
 
 static func kind(type_name: String) -> String:
@@ -114,6 +114,47 @@ static func kind(type_name: String) -> String:
 
 static func can_animate(type_name: String) -> bool:
 	return kind(type_name) != ""
+
+
+# Kinds that stay the way they were left (a lit candle, an open oven, a messy table): a prop placed on a map
+# can start the round in either state (Ted, Nov 26), set in Creative. Everything starts "off".
+const STATEFUL := ["light", "lamp", "jack", "oven", "spill", "disarray", "dirty", "blood", "bed", "sofabed",
+		"recline", "picture"]
+const PICTURES := 4   # (the pictures "picture" goes through, after the one it came with)
+
+
+static func has_state(type_name: String) -> bool:
+	return kind(type_name) in STATEFUL
+
+
+# How many states it has: 2 for on/off, more for the picture.
+static func state_count(type_name: String) -> int:
+	return PICTURES + 1 if kind(type_name) == "picture" else (2 if has_state(type_name) else 1)
+
+
+# What a placed prop's state is called in Creative.
+static func state_name(type_name: String, n: int) -> String:
+	match kind(type_name):
+		"light", "lamp", "jack": return "lit" if n % 2 == 1 else "out"
+		"oven", "sofabed": return "open" if n % 2 == 1 else "shut"
+		"recline": return "reclined" if n % 2 == 1 else "upright"
+		"bed": return "unmade" if n % 2 == 1 else "made"
+		"spill": return "spilled" if n % 2 == 1 else "stacked"
+		"disarray": return "messy" if n % 2 == 1 else "tidy"
+		"dirty": return "dirty" if n % 2 == 1 else "clean"
+		"blood": return "bloody" if n % 2 == 1 else "clean"
+		"picture": return "its own picture" if n == 0 else "picture %d" % ((n - 1) % PICTURES + 1)
+	return ""
+
+
+# Put a prop straight into its n-th state (quietly: no sounds as a round starts).
+static func set_state(visual: Node3D, type_name: String, n: int) -> void:
+	if n <= 0 or not has_state(type_name) or not is_instance_valid(visual):
+		return
+	var a := _animator(visual, type_name)
+	a.quiet = true
+	a.press(n)
+	a.quiet = false
 
 
 static func is_explosive(type_name: String) -> bool:
@@ -146,7 +187,7 @@ static func _animator(visual: Node3D, type_name: String) -> Node3D:
 	if a == null:
 		a = Animator.new()
 		a.name = "PropAnim"
-		a.setup(type_name.get_slice("@", 0), entry(type_name), visual)
+		a.setup(type_name.get_slice("#", 0).get_slice("@", 0), entry(type_name), visual)
 		visual.add_child(a)
 	return a
 

@@ -146,7 +146,6 @@ float n2(vec2 p) {
 void vertex() {
 	up = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz).y;
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-	VERTEX += NORMAL * 0.004;
 }
 void fragment() {
 	float n = n2(wp.xz * 2.5) * 0.6 + n2(wp.xz * 9.0) * 0.4;
@@ -169,6 +168,7 @@ static func set_snow(cover: float) -> void:
 			sh.code = SNOW_SHADER
 			_snow_pass = ShaderMaterial.new()
 			_snow_pass.shader = sh
+			_snow_pass.render_priority = 2   # (always after the grime: their order used to flip as you moved)
 		g.next_pass = _snow_pass
 	elif cover <= 0.0 and g.next_pass != null:
 		g.next_pass = null

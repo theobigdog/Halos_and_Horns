@@ -2415,6 +2415,7 @@ func _build_color(id: int) -> int:
 
 
 func _send_build_start(id: int) -> void:
+	peers[id].erase("has_map")   # (Creative shows them a bare copy of the ground: the round's map must go again after)
 	s_build_start.rpc_id(id, MapData.to_text(main.editor.map), build_can.get(id, true))
 
 

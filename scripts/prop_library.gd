@@ -15,6 +15,7 @@ const Models = preload("res://scripts/models.gd")
 const ClassicLook = preload("res://scripts/classic_look.gd")
 const ExtraProps = preload("res://scripts/extra_props.gd")
 const PropAnims = preload("res://scripts/prop_anims.gd")
+const ClassicProps = preload("res://scripts/classic_props.gd")
 
 const CLASSIC := {
 	"barrel": {"shape": "cylinder", "radius": 0.45, "height": 1.0, "label": "Barrel", "hp": 120, "speed": 5.0, "mass": 2.5},
@@ -90,7 +91,29 @@ static func scaled(type_name: String, k: float) -> String:
 
 
 static func base_type(type_name: String) -> String:
-	return type_name.get_slice("@", 0)
+	return type_name.get_slice("#", 0).get_slice("@", 0)
+
+
+# An animated prop placed in Creative lit, open, messy... ("state": PropAnims.set_state) is its own type too,
+# "<type>#<n>", registered when the map loads (on every screen), so a demon who possesses or copies it starts
+# out the same way, everywhere, with nothing extra sent.
+static func with_state(type_name: String, n: int) -> String:
+	var plain := type_name.get_slice("#", 0)
+	if n <= 0 or not TYPES.has(plain) or not PropAnims.has_state(plain):
+		return plain
+	n = mini(n, PropAnims.state_count(plain) - 1)
+	var key := "%s#%d" % [plain, n]
+	if not TYPES.has(key):
+		var d: Dictionary = TYPES[plain].duplicate(true)
+		d["state"] = n
+		if not d.has("base"):
+			d["base"] = plain
+		TYPES[key] = d
+	return key
+
+
+static func state_of(type_name: String) -> int:
+	return int(TYPES.get(type_name, {}).get("state", 0))
 
 
 static func scale_of(type_name: String) -> float:
@@ -247,6 +270,10 @@ static func _box(size: Vector3) -> BoxMesh:
 
 
 static func make_visual(type_name: String) -> Node3D:
+	if "#" in type_name:
+		var sv := make_visual(type_name.get_slice("#", 0))
+		PropAnims.set_state(sv, type_name, state_of(type_name))
+		return sv
 	if "@" in type_name:
 		var v := make_visual(base_type(type_name))
 		v.scale = Vector3.ONE * scale_of(type_name)
@@ -260,6 +287,9 @@ static func make_visual(type_name: String) -> Node3D:
 		PropAnims.dress(ev, type_name)
 		return ev
 	var root := Node3D.new()
+	if ClassicProps.make(type_name, root):   # (the classic props, made properly: classic_props.gd)
+		PropAnims.dress(root, type_name)
+		return root
 	match type_name:
 		"barrel":
 			_add_mesh(root, _cyl(0.42, 0.42, 1.0), Color(0.55, 0.33, 0.15), Vector3(0, 0.5, 0), "wood")

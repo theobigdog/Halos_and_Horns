@@ -22,14 +22,22 @@ const KINDS := {
 	"landscaping": "Landscaping (mulch bed)",
 	"flowerbed": "Flowerbed",
 	"sand": "Sand",
+	"parking": "Parking lot",
 }
-const _KIND_ID := {"grass": 0, "dirt": 1, "gravel": 2, "landscaping": 3, "flowerbed": 4, "sand": 5}
+const _KIND_ID := {"grass": 0, "dirt": 1, "gravel": 2, "landscaping": 3, "flowerbed": 4, "sand": 5, "parking": 6}
+# Parking lots (Ted's wife, Nov 26: "a parking lot or parking spaces that are tilable"): asphalt with painted
+# stalls 2.6 m wide and 5 m deep, measured from the block's own back-left corner, so blocks set side by side
+# (or back to back) carry on the same pattern. A block 10.5 m deep or more gets a row of stalls along each side
+# with the aisle between. Each stall has a concrete wheel stop.
+const STALL_W := 2.6
+const STALL_D := 5.0
 
 const SHADER := """
 shader_type spatial;
 render_mode cull_back;
 
 uniform int kind = 0;
+instance uniform vec3 bsize = vec3(4.0, 0.3, 4.0);   // the block's size (parking: where the stalls go)
 global uniform float snow_cover;
 
 varying vec3 wp;      // world position (metres)
@@ -189,18 +197,57 @@ void sand_top(vec2 p, out vec3 c, out float h) {
 	c = mix(c, lin(vec3(0.5, 0.45, 0.4)), step(0.985, g) * 0.6);
 }
 
+// asphalt, with stall lines measured from the block's corner (object space)
+void parking_top(out vec3 c, out float h) {
+	vec2 q = op.xz + bsize.xz * 0.5;         // metres from the back-left corner
+	vec3 asph = lin(vec3(0.17, 0.17, 0.18));
+	vec2 pw = q + vec2(bsize.x * 0.37, bsize.z * 0.61) + op.y;
+	c = asph * (0.85 + 0.25 * fbm(pw * 0.4));
+	float g = h2(floor(pw * 90.0));
+	c *= 0.88 + 0.22 * g;                                                      // aggregate
+	c = mix(c, lin(vec3(0.33, 0.32, 0.3)), step(0.97, g) * 0.5);
+	h = n2(pw * 40.0) * 0.003;
+#ifndef LOW
+	vec3 k = cells(pw * 0.5);
+	float crack = smoothstep(0.03, 0.0, k.y) * smoothstep(0.55, 0.75, fbm(pw * 0.8 + 7.0));
+	c *= 1.0 - crack * 0.55;
+#endif
+	// the stalls: a row along the back, and along the front too if it's deep enough for an aisle between
+	float rows = bsize.z >= 10.5 ? 2.0 : 1.0;
+	bool in_row = q.y <= 5.0 || (rows > 1.5 && q.y >= bsize.z - 5.0);
+	float u = q.x - round(q.x / 2.6) * 2.6;
+	float line = 1.0 - smoothstep(0.055, 0.07, abs(u));
+	float paint = in_row ? line : 0.0;
+	// oil stains in the middle of some stalls
+	float stall = floor(q.x / 2.6);
+	vec2 sc = vec2((stall + 0.5) * 2.6, q.y < bsize.z * 0.5 ? 2.6 : bsize.z - 2.6);
+	float oil = smoothstep(0.9, 0.2, length((q - sc) * vec2(1.0, 0.6)) + fbm(q * 3.0) * 0.5) * step(0.45, h2(vec2(stall, q.y < bsize.z * 0.5 ? 1.0 : 2.0)));
+	c = mix(c, lin(vec3(0.06, 0.06, 0.065)), oil * 0.6 * (in_row ? 1.0 : 0.0));
+	float worn = smoothstep(0.25, 0.55, fbm(pw * 2.5));
+	c = mix(c, lin(vec3(0.86, 0.85, 0.8)), paint * (0.55 + 0.45 * worn));
+	h += paint * 0.001;
+}
+
 void top_mat(vec2 p, float ac, out vec3 c, out float h) {
 	if (kind == 0) grass_top(p, c, h);
 	else if (kind == 1) soil_top(p, ac, c, h, true);
 	else if (kind == 2) gravel_top(p, c, h);
 	else if (kind == 3) mulch_top(p, c, h);
 	else if (kind == 4) bed_top(p, c, h);
+	else if (kind == 6) parking_top(c, h);
 	else sand_top(p, c, h);
 }
 
 // ---- sides: layers going down from the top ----
 void side_mat(vec2 s, out vec3 c, out float h) {      // s = (along the face, depth)
 	float d = s.y + (fbm(vec2(s.x * 1.4, s.y * 2.0)) - 0.5) * 0.14;
+	if (kind == 6) {   // asphalt over a gravel base
+		vec3 asph = lin(vec3(0.16, 0.16, 0.17)) * (0.85 + 0.25 * h2(floor(s * 120.0)));
+		vec3 base = mix(lin(vec3(0.42, 0.4, 0.37)), lin(vec3(0.3, 0.28, 0.26)), h2(floor(s * 60.0)));
+		c = mix(asph, base, smoothstep(0.07, 0.1, d));
+		h = 0.0;
+		return;
+	}
 	if (kind == 5) {
 		c = mix(lin(vec3(0.84, 0.74, 0.52)), lin(vec3(0.72, 0.6, 0.4)), smoothstep(0.1, 0.7, d));
 		c *= 0.97 + 0.03 * sin(d * 50.0 + n2(s * 3.0) * 3.0);
@@ -250,7 +297,7 @@ void fragment() {
 	} else {
 		float along = (abs(on.x) > abs(on.z) ? op.z : op.x) + wp.x + wp.z - op.x - op.z;
 		// how far the top layer lips over the edge
-		float lip = kind == 0 ? 0.05 : kind == 2 ? 0.1 : kind == 3 ? 0.08 : kind == 4 ? 0.05 : kind == 5 ? 0.0 : 0.03;
+		float lip = kind == 0 ? 0.05 : kind == 2 ? 0.1 : kind == 3 ? 0.08 : kind == 4 ? 0.05 : (kind == 5 || kind == 6) ? 0.0 : 0.03;
 		lip += (n2(vec2(along * 7.0, 0.0)) - 0.5) * lip * 0.7;
 		if (kind == 0) { lip += smoothstep(0.75, 1.0, n2(vec2(along * 19.0, 3.0))) * 0.05; }   // grass hanging down
 		float on_top = smoothstep(0.5, 0.8, up);
@@ -356,6 +403,7 @@ static func make(kind: String, size: Vector3) -> Node3D:
 	mi.name = "Block"
 	mi.mesh = _box_mesh(size)
 	mi.material_override = _mat(kind, q)
+	mi.set_instance_shader_parameter("bsize", size)
 	root.add_child(mi)
 	var body := StaticBody3D.new()
 	body.name = "Body"
@@ -500,6 +548,22 @@ static func _build_extras(kind: String, sz: Vector3, q: int) -> Array:
 	var no_shadow := GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var shadow := GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 	match kind:
+		"parking":
+			# a concrete wheel stop at the back of every whole stall
+			var stop := BoxMesh.new()
+			stop.size = Vector3(1.7, 0.12, 0.2)
+			var conc := StandardMaterial3D.new()
+			conc.albedo_color = Color(0.72, 0.71, 0.68)
+			Surfaces.apply(conc, "stone")
+			var rows := [[-sz.z * 0.5 + 0.75, 0.0]]
+			if sz.z >= 10.5:
+				rows.append([sz.z * 0.5 - 0.75, PI])
+			var n := int(floor(sz.x / STALL_W + 0.001))
+			for row in rows:
+				for i in n:
+					var x := -sz.x * 0.5 + (i + 0.5) * STALL_W
+					out.append([stop, conc, GeometryInstance3D.SHADOW_CASTING_SETTING_ON,
+							Transform3D(Basis(Vector3.UP, row[1]), Vector3(x, top + 0.06, row[0]))])
 		"grass":
 			if q >= 1:
 				var n := clampi(int(area * (7.0 if q >= 2 else 2.5)), 0, 320 if q >= 2 else 110)

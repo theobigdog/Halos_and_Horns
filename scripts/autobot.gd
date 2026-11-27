@@ -181,10 +181,10 @@ func _play_demon(delta: float, p) -> void:
 		for prop in main.props:
 			if is_instance_valid(prop) and prop.is_in_group("prop"):
 				var d: float = prop.global_position.distance_to(p.global_position)
-				if d < best and d < 9.0:
+				if d < best and d < 15.0:   # (9 m: the host bot sometimes found none and the test flaked)
 					best = d
 					_possess_target = prop
-	if _possess_target and is_instance_valid(_possess_target) and _possess_tries < 5.0:
+	if _possess_target and is_instance_valid(_possess_target) and _possess_tries < 8.0:
 		_possess_tries += delta
 		if not p.first_person["demon"]:
 			p.toggle_view()   # line it up through the eyes, not over the shoulder

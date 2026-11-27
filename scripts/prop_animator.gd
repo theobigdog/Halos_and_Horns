@@ -15,6 +15,7 @@ var id := ""
 var e := {}
 var holder: Node3D
 var presses := 0
+var quiet := false    # (set_state: no sounds)
 var _built := false
 var _p := {}          # what each kind keeps between presses
 var _orig := {}       # source MeshInstance path -> {mesh, mats, gone: {surface: {tri: true}}}
@@ -300,7 +301,7 @@ func _tween(key: String) -> Tween:
 
 
 func _sound(sound_name: String, db := -8.0, at := Vector3.ZERO) -> void:
-	if not is_inside_tree() or DisplayServer.get_name() == "headless":
+	if quiet or not is_inside_tree() or DisplayServer.get_name() == "headless":
 		return
 	var asp := AudioStreamPlayer3D.new()
 	asp.stream = Sounds.get_sound(sound_name)
@@ -316,10 +317,10 @@ func _sound(sound_name: String, db := -8.0, at := Vector3.ZERO) -> void:
 
 # ---------- lights ----------
 
+# Everything starts out (Ted, Nov 26: "defaults to off for things like candles and lights"); a prop placed on a
+# map can start lit (its "state").
 func _default_on() -> bool:
-	if e.has("on"):
-		return e["on"]
-	return not (_p.get("natives", []) as Array).is_empty()
+	return false
 
 
 static func _is_flame(c: Color) -> bool:

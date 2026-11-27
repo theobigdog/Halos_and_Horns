@@ -278,6 +278,9 @@ static func clean(raw: Dictionary) -> Dictionary:
 			var psc := PropLib.snap_scale(_num(p.get("scale"), PropLib.SCALE_MIN, PropLib.SCALE_MAX, 1.0))
 			if not is_equal_approx(psc, 1.0):
 				c["scale"] = psc   # sized evenly (PropLib.scaled)
+			var st := int(_num(p.get("state"), 0.0, float(PropLib.PropAnims.state_count(c["prop"]) - 1), 0.0))
+			if st > 0:
+				c["state"] = st   # how an animated prop starts the round (lit, open...)
 		elif t == "shrine":
 			shrines += 1
 			if shrines > 1:

@@ -171,6 +171,7 @@ var _spins := {}               # "pos0".."size2" -> SpinBox
 var _rows := {}                # "pos" / "rot" / "size" -> row container
 var _color_pick: ColorPickerButton
 var _prop_pick: OptionButton
+var _state_button: Button
 var _snap_check: CheckBox
 var _local_check: CheckBox
 
@@ -330,7 +331,7 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 		"prop":
 			var body := StaticBody3D.new()
 			var pt := PropLib.scaled(p["prop"], p.get("scale", 1.0))
-			body.add_child(PropLib.make_visual(pt))
+			body.add_child(PropLib.make_visual(PropLib.with_state(pt, int(p.get("state", 0)))))
 			var cs := CollisionShape3D.new()
 			cs.shape = PropLib.make_shape(pt)
 			cs.position.y = PropLib.height(pt) / 2.0
@@ -385,6 +386,8 @@ var _looks_for := ""
 
 func _fill_looks(t: String) -> void:
 	var kind := t if t in ["window", "bouncy", "bouncy_once", "bouncy_super", "ground", "building"] else "model"
+	if kind == "building" and str(piece(selected).get("kind", "")) in HollowBuildings.TREES:
+		kind = "tree"   # (seasons, not colour schemes)
 	if kind == _looks_for:
 		return
 	_looks_for = kind
@@ -397,6 +400,7 @@ func _fill_looks(t: String) -> void:
 		"bouncy_super": names = Bouncy.skin_names("super")
 		"ground": names = GroundBlock.KINDS.values()
 		"building": names = ["Colours 1", "Colours 2", "Colours 3", "Colours 4"]
+		"tree": names = HollowBuildings.Trees.LOOKS
 	for ln in names:
 		_look_pick.add_item(ln)
 
@@ -657,6 +661,8 @@ func _new_piece(kind: String, at: Vector3) -> Dictionary:
 		p = {"type": "prop", "prop": kind.substr(5), "pos": [at.x, at.y, at.z]}
 	elif kind.begins_with("ground:"):
 		p = {"type": "ground", "look": GroundBlock.KINDS.keys().find(kind.substr(7)), "size": [4.0, 0.3, 4.0], "pos": [at.x, at.y, at.z]}
+		if kind == "ground:parking":   # (five stalls in a row; set more side by side, or resize it)
+			p["size"] = [GroundBlock.STALL_W * 5.0, 0.1, 5.2]
 	elif kind.begins_with("building:"):
 		p = {"type": "building", "kind": kind.substr(9), "look": 0, "pos": [at.x, at.y, at.z]}
 	elif kind.begins_with("model:"):
@@ -1046,8 +1052,8 @@ func begin(kind: String) -> void:
 	if kind == "extend" and t != "model":
 		_say("Only structures (walls, fences...) can be extended. Blocks can just be resized (T).", 3.0)
 		return
-	if kind == "scale" and not t in RESIZES:
-		_say("Only blocks, cylinders and structures can be resized.", 2.0)
+	if kind == "scale" and not t in RESIZES and t != "prop":
+		_say("That can't be resized.", 2.0)
 		return
 	_end_drag(true)
 	drag = kind
@@ -1227,6 +1233,16 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 						nodes[m].rotation = me
 		"scale":
 			var factor := maxf(1.0 + (mouse_pos.x - _drag_mouse.x) * 0.006, 0.02)
+			if p["type"] == "prop":   # (props grow evenly, 50% to 200%: Wife, Nov 26 "make all props resizable")
+				var k := PropLib.snap_scale(float(_drag_piece.get("scale", 1.0)) * factor)
+				if is_equal_approx(k, 1.0):
+					p.erase("scale")
+				else:
+					p["scale"] = k
+				_refresh_piece(selected)
+				_say("Resizing %s: %d%%. Click to finish, Esc to cancel." % [piece_name(p), roundi(k * 100.0)], 999.0)
+				_sync_inspector()
+				return
 			var is_model: bool = p["type"] == "model"
 			var s0 := MapData.vec(_drag_piece["size"]) if _drag_piece.has("size") else Vector3.ONE
 			var s := s0
@@ -2665,7 +2681,8 @@ func _build_ui() -> void:
 	search.placeholder_text = "Search props & structures..."
 	search.clear_button_enabled = true
 	search.text_changed.connect(_filter_palette)
-	pal.add_child(search)
+	lcol.add_child(search)   # (above the list, so it's there however far down you've scrolled: Wife, Nov 26)
+	lcol.move_child(search, 1)
 	var special := _palette_section(pal, "Special structures", true)
 	for p in PIECES:
 		var kind: String = p[0]
@@ -2676,7 +2693,14 @@ func _build_ui() -> void:
 		_palette_button(special, p[1], kind)
 	var walk_in := _palette_section(pal, "Walk-in buildings", true)
 	for bk in HollowBuildings.KINDS:
-		_palette_button(walk_in, HollowBuildings.KINDS[bk], "building:" + bk)
+		if not bk in HollowBuildings.GATES and not bk in HollowBuildings.TREES:
+			_palette_button(walk_in, HollowBuildings.KINDS[bk], "building:" + bk)
+	var gates := _palette_section(pal, "Gates", true)
+	for bk in HollowBuildings.GATES:
+		_palette_button(gates, HollowBuildings.KINDS[bk], "building:" + bk)
+	var trees := _palette_section(pal, "Trees", true)
+	for bk in HollowBuildings.TREES:
+		_palette_button(trees, HollowBuildings.KINDS[bk], "building:" + bk)
 	# Props (demons can be these), then structures (solid scenery), each by category
 	for group in [["Props", PropLib.type_names().filter(PropLib.in_palette), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
 		var glabel := _label(pal, "  " + group[0] + " (%d)" % group[1].size())
@@ -2870,6 +2894,16 @@ func _build_ui() -> void:
 	prow.add_child(_prop_pick)
 	_inspector.add_child(prow)
 	_rows["prop"] = prow
+	# How an animated prop starts the round (lit, open, messy...; Ted, Nov 26)
+	var st_row := HBoxContainer.new()
+	_label(st_row, "Starts")
+	_state_button = _small_button(st_row, "", func():
+		var q := piece(selected)
+		var pt: String = q.get("prop", "")
+		set_value(selected, "state", (int(q.get("state", 0)) + 1) % PropLib.PropAnims.state_count(pt)))
+	_state_button.tooltip_text = "How it starts each round (demons can still change it with E)"
+	_inspector.add_child(st_row)
+	_rows["state"] = st_row
 	var brow := HBoxContainer.new()
 	_small_button(brow, "Move (G)", func(): begin("move"))
 	_small_button(brow, "Turn (R)", func(): begin("rotate"))
@@ -3127,6 +3161,9 @@ func _sync_inspector() -> void:
 		_color_pick.color = Color(p["color"])
 	elif t == "model":
 		_color_pick.color = Color(0.75, 0.7, 0.65)   # (a rug still in its own colours)
+	_rows["state"].visible = t == "prop" and PropLib.PropAnims.has_state(p.get("prop", ""))
+	if _rows["state"].visible:
+		_state_button.text = PropLib.PropAnims.state_name(p["prop"], int(p.get("state", 0))).capitalize() + " (click to change)"
 	if t == "prop":
 		for idx in _prop_pick.item_count:
 			if _prop_pick.get_item_metadata(idx) == p["prop"]:

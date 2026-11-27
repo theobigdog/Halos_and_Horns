@@ -3,6 +3,7 @@
 #                     Ava's piece (must be refused), makes Cid view-only, then ends building.
 #   --buildbot=ava    places a crate and a wall, moves the host's block, deletes and un-deletes
 #                     the wall, and keeps her crate selected (claimed).
+#   --buildbot=tphost / tpjoin   test play from building together, three times, the joiner joining mid-build.
 #   --buildbot=cheat  (Cid) a modified game: sends junk edits straight to the host, floods it,
 #                     touches Ava's claimed crate, and keeps building after being made view-only.
 # Everyone prints the shared map's fingerprint at the end; they must all match.
@@ -13,6 +14,8 @@ var role := ""
 var _t := -1.0                 # seconds since building started here
 var _done := {}
 var _quit_at := -1.0
+var _rounds := 0
+var _was_building := false
 
 
 func log_line(text: String) -> void:
@@ -26,7 +29,21 @@ func _process(delta: float) -> void:
 			get_tree().quit()
 		return
 	var ed = main.editor
+	if role == "tpjoin" and main.building_online:
+		_was_building = true
 	if _t < 0.0:
+		if role == "tphost" and main.net and main.net.is_host and not _done.has("start"):
+			_done["start"] = true
+			main.net.start_building()
+		if role == "tpjoin" and main.building_online:
+			_was_building = true
+		if role == "tpjoin" and main.state == main.State.HIDING and _was_building and not main.building_online:
+			_was_building = false
+			_report()
+			_rounds += 1
+			if _rounds >= 3:
+				_quit_at = 1.0
+			return
 		if role == "host" and main.net and main.net.is_host and main.net.peers.size() >= 3 and not _done.has("start"):
 			_done["start"] = true
 			main.net.start_building()
@@ -34,12 +51,16 @@ func _process(delta: float) -> void:
 			_t = 0.0
 			log_line("%s is building (%d pieces)" % [role, ed.map["pieces"].size()])
 		return
-	if role != "host" and not main.building_online:
+	if role == "tpjoin" and not main.building_online:
+		_t = -1.0
+		return
+	if role != "host" and role != "tphost" and not main.building_online:
 		log_line("%s: building ended" % role)
 		_quit_at = 1.0
 		return
 	_t += delta
 	match role:
+		"tphost": _tphost(ed)
 		"host": _host(ed)
 		"ava": _ava(ed)
 		"cheat": _cheat(ed)
@@ -160,3 +181,36 @@ func _fingerprint(ed) -> String:
 	var m: Dictionary = ed.map.duplicate(true)
 	m["pieces"] = ps
 	return "%s (%d pieces, size %s)" % [JSON.stringify(m).md5_text().substr(0, 12), ps.size(), m["size"]]
+
+
+# Test play from building together (Ted, Nov 26: a joiner saw no structures and walked through them): the
+# joiner reports the map she's playing each round; it must be the host's, every time.
+func _report() -> void:
+	var fp: String = (load("res://scripts/map_data.gd") as GDScript).fingerprint(main.map_data).substr(0, 10)
+	log_line("%s round: map %s (%d pieces)" % [role, fp, main.map_data["pieces"].size()])
+
+
+# Three test plays: the second after a change, the third with none.
+func _tphost(ed) -> void:
+	if at(2.0, "bld"):
+		ed.place("building:townhouse", Vector3(6, 0, 6))
+		ed.place("model:halloween/fence", Vector3(-6, 0, -6))
+	if at(8.0, "test"):
+		main.net.build_test_play()
+	if at(10.0, "rep"):
+		_report()
+	if at(12.0, "back"):
+		main.net.build_test_stop()
+	if at(15.0, "bld2"):
+		main.editor.place("building:cottage", Vector3(-8, 0, 8))
+	if at(17.0, "test2"):
+		main.net.build_test_play()
+	if at(19.0, "rep2"):
+		_report()
+	if at(21.0, "back2"):
+		main.net.build_test_stop()
+	if at(24.0, "test3"):
+		main.net.build_test_play()
+	if at(26.0, "rep3"):
+		_report()
+		_quit_at = 3.0

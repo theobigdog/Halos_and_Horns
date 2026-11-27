@@ -24,5 +24,14 @@ check "a silly map size was clamped" "grep -q 'size 200' '$OUT/host.log'"
 check "flooding and view-only edits were refused" "grep -q 'too fast' '$OUT/host.log' && grep -q 'view-only)' '$OUT/host.log' && grep -q 'Cid is view-only' '$OUT/host.log'"
 check "the view-only player's block never appeared" "! grep -q '#123456' '$OUT/host.log' && grep -q 'can_edit=false' '$OUT/Cid.log'"
 check "done building: the map is the lobby's map" "grep -q 'lobby map has .* pieces, building=false' '$OUT/host.log' && grep -q 'building ended' '$OUT/Ava.log'"
+# Test play from building together, three times (the third with no changes), the joiner joining mid-build:
+# she must play the host's map every time (Ted, Nov 26: she saw no structures and walked through them).
+"$GODOT" --headless -- --host --name=Abe --buildbot=tphost --map=res://tests/test_map.json > "$OUT/tphost.log" 2>&1 &
+sleep 4
+timeout 90 "$GODOT" --headless -- --join=127.0.0.1 --name=Ava --buildbot=tpjoin > "$OUT/tpjoin.log" 2>&1
+wait
+rounds() { grep -o 'round: map [0-9a-f]* ([0-9]* pieces)' "$OUT/$1.log" | tr '
+' ' '; }
+check "test play: the joiner plays the host's map every time ($(rounds tpjoin))" "[ \$(grep -c 'round: map' '$OUT/tphost.log') -eq 3 ] && [ \"\$(rounds tphost)\" = \"\$(rounds tpjoin)\" ]"
 check "no script errors" "! grep -q 'SCRIPT ERROR' '$OUT'/*.log"
 if [ $fails -eq 0 ]; then echo "ALL PASSED"; else echo "FAILED (logs in $OUT)"; fi

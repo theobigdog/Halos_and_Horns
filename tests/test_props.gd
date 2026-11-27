@@ -8,6 +8,7 @@ const Effects = preload("res://scripts/effects.gd")
 const Models = preload("res://scripts/models.gd")
 const PropLib = preload("res://scripts/prop_library.gd")
 const PropAnims = preload("res://scripts/prop_anims.gd")
+const MapData = preload("res://scripts/map_data.gd")
 
 var main: Node
 var failures := 0
@@ -243,6 +244,18 @@ func _run() -> void:
 	check(main.music != null and main.music.get("_want") == "lobby" or main.music.get("_want") == "hiding" or main.music.get("_want") == "hunt",
 		"the music follows the game (now: %s)" % main.music.get("_want"))
 
+	# ---- The chapel's bell (Ted, Nov 26): bump it and it swings, rings, and settles ----
+	var chapel: Node3D = load("res://scripts/hollow_buildings.gd").make("chapel", 0)
+	main.add_child(chapel)
+	var bell = chapel.get_node("Bell")
+	check(bell != null and bell.get_child_count() > 0, "the chapel has its golden bell")
+	bell.push(4.5)
+	await frames(150)
+	check(bell.rings >= 2 and bell.rings <= 6, "...a shove swings it and it rings, once a swing (%d rings in 2.5 s)" % bell.rings)
+	await frames(1500)
+	check(absf(bell.angle) < 0.15, "...and it settles down again (%.2f rad)" % bell.angle)
+	chapel.queue_free()
+
 	# ---- Animated props (E) ----
 	var missing := PropAnims.TABLE.keys().filter(func(t): return not PropLib.TYPES.has(t))
 	check(missing.is_empty(), "every animated prop is a real prop type %s" % str(missing))
@@ -260,12 +273,30 @@ func _run() -> void:
 	check(quiet, "all %d animated props build and play" % PropAnims.TABLE.size())
 	check(PropLib.label("dungeon/torch_lit") == "Torch" and not PropLib.in_palette("dungeon/torch") and PropLib.TYPES.has("dungeon/torch"),
 			"the two torches are one \"Torch\" in the palette (old maps' unlit ones still load)")
-	var real_candle := PropLib.make_visual("dungeon/candle_lit")
-	var copy_candle := PropLib.make_visual("dungeon/candle_lit")
-	check(real_candle.get_node("PropAnim")._p["natives"][0].visible and copy_candle.get_node("PropAnim")._p["natives"][0].visible,
-			"a lit candle starts lit, real or disguise")
+	# Everything starts out (Ted, Nov 26), unless it was placed lit in Creative: then real and copy start lit
+	var plain_candle := PropLib.make_visual("dungeon/candle_lit")
+	check(not plain_candle.get_node("PropAnim")._p["natives"][0].visible, "a candle starts out")
+	plain_candle.free()
+	var lit_type := PropLib.with_state(PropLib.scaled("dungeon/candle_lit", 1.5), 1)
+	var real_candle := PropLib.make_visual(lit_type)
+	var copy_candle := PropLib.make_visual(lit_type)
+	check(lit_type == "dungeon/candle_lit@1.5#1" and real_candle.get_node("PropAnim")._p["natives"][0].visible
+			and copy_candle.get_node("PropAnim")._p["natives"][0].visible and is_equal_approx(real_candle.scale.x, 1.5),
+			"a candle placed lit (and bigger) starts lit, real or disguise (%s)" % lit_type)
 	real_candle.free()
 	copy_candle.free()
+	check(PropLib.with_state("apple", 1) == "apple" and PropLib.with_state("dungeon/candle", 7) == "dungeon/candle#1",
+			"...only props with a state get one, within range")
+	var placed := MapData.clean({"pieces": [{"type": "prop", "prop": "restaurant/oven", "pos": [0, 0, 0], "state": 1},
+			{"type": "prop", "prop": "apple", "pos": [1, 0, 0], "state": 1}]})
+	check(placed["pieces"][0].get("state", 0) == 1 and not placed["pieces"][1].has("state"), "a map keeps a placed prop's state")
+	player.global_position = Vector3(6, 0.1, 22)
+	player.force_possess(lit_type)
+	await frames(3)
+	check(player.visual_root.get_child(player.visual_root.get_child_count() - 1).get_node("PropAnim")._p["natives"][0].visible
+			and player.try_animate() and not player.visual_root.get_child(player.visual_root.get_child_count() - 1).get_node("PropAnim")._p["natives"][0].visible,
+			"copying a lit candle: lit, and the first E snuffs it")
+	await frames(40)
 	player.global_position = Vector3(6, 0.1, 22)
 	player.force_possess("halloween/candle")
 	await frames(3)
