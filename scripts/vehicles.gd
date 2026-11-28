@@ -20,7 +20,7 @@ const BUILDERS := {
 # id: [length, wheelbase, body colour, cabin from, cabin to (0 back .. 1 front), cabin top]
 const CARS := {
 	"city/car_sedan": [4.2, 2.5, Color(0.78, 0.22, 0.2), 0.26, 0.66, 1.5],
-	"city/car_hatchback": [3.6, 2.2, Color(0.2, 0.42, 0.85), 0.1, 0.62, 1.5],
+	"city/car_hatchback": [3.6, 2.2, Color(0.2, 0.42, 0.85), 0.1, 0.7, 1.56],
 	"city/car_stationwagon": [4.2, 2.5, Color(0.28, 0.6, 0.3), 0.08, 0.66, 1.5],
 	"city/car_taxi": [4.2, 2.5, Color(0.98, 0.78, 0.18), 0.26, 0.66, 1.5],
 	"city/car_police": [4.2, 2.5, Color(0.12, 0.25, 0.6), 0.26, 0.66, 1.5],
@@ -63,7 +63,11 @@ const CHROME := Color(0.82, 0.83, 0.85)
 # `rake`: how far the top of its front (x) and of its back (y) lean in, in metres: a cabin with a sloping
 # windscreen and rear window (Sara, Nov 28: "I don't like how the front windshields of the cars are completely
 # vertical and not sloped"). The bottom stays where it is.
-static func soft_box(st: SurfaceTool, c: Vector3, s: Vector3, r: float, col: Color, bas := Basis(), n := 5, rake := Vector2.ZERO) -> void:
+# `droop`: how far its top sinks toward the front end (x) and the back end (y), in metres, more and more the
+# further along: a bonnet that slopes down to the nose and a boot that falls away, as on Sara's sheet of example
+# vehicles (the bodies were flat-topped slabs).
+static func soft_box(st: SurfaceTool, c: Vector3, s: Vector3, r: float, col: Color, bas := Basis(), n := 5, rake := Vector2.ZERO,
+		droop := Vector2.ZERO) -> void:
 	var h := s * 0.5
 	r = minf(r, minf(h.x, minf(h.y, h.z)) - 0.001)
 	var inner := h - Vector3.ONE * r
@@ -84,6 +88,9 @@ static func soft_box(st: SurfaceTool, c: Vector3, s: Vector3, r: float, col: Col
 				if rake != Vector2.ZERO:
 					var up := clampf((at.y + h.y) / (2.0 * h.y), 0.0, 1.0)
 					at.z -= (rake.x if at.z > 0.0 else -rake.y) * up * absf(at.z) / h.z
+				if droop != Vector2.ZERO and at.y > 0.0:
+					var along := absf(at.z) / h.z
+					at.y -= (droop.x if at.z > 0.0 else droop.y) * along * along * at.y / h.y
 				row.append(at)
 			pts.append(row)
 		for i in n:
@@ -97,7 +104,7 @@ static func soft_box(st: SurfaceTool, c: Vector3, s: Vector3, r: float, col: Col
 
 
 # A wheel (radius r, width w) at c, its outside facing along +x (side = +1) or -x: a chunky tyre and a grey hubcap.
-static func wheel(st: SurfaceTool, c: Vector3, r: float, w: float, side: float) -> void:
+static func wheel(st: SurfaceTool, c: Vector3, r: float, w: float, side: float, hub := GREY) -> void:
 	var ax := Vector3(side, 0, 0)
 	var n := 20
 	var prof := [[r * 0.55, -w * 0.5], [r * 0.92, -w * 0.5], [r, -w * 0.35], [r, w * 0.35], [r * 0.92, w * 0.5], [r * 0.62, w * 0.5]]
@@ -123,8 +130,8 @@ static func wheel(st: SurfaceTool, c: Vector3, r: float, w: float, side: float) 
 		var rim1 := c + ax * w * 0.5 + Vector3(0, sin(a1), cos(a1)) * r * 0.62
 		var mid0 := c + ax * (w * 0.5 + 0.04) + Vector3(0, sin(a0), cos(a0)) * r * 0.35
 		var mid1 := c + ax * (w * 0.5 + 0.04) + Vector3(0, sin(a1), cos(a1)) * r * 0.35
-		CP._quad(st, rim0, rim1, mid1, mid0, GREY.lightened(0.1), ax + Vector3(0, sin(a0), cos(a0)) * 0.6)
-		CP._tri(st, c + ax * (w * 0.5 + 0.06), mid0, mid1, GREY.darkened(0.25), ax)
+		CP._quad(st, rim0, rim1, mid1, mid0, hub.lightened(0.1), ax + Vector3(0, sin(a0), cos(a0)) * 0.6)
+		CP._tri(st, c + ax * (w * 0.5 + 0.06), mid0, mid1, hub.darkened(0.25), ax)
 
 
 # A round lamp (radius r) on a face pointing along `n`, with a chrome ring; the lens goes in `lens`.
@@ -143,12 +150,12 @@ static func lamp(st: SurfaceTool, lens: SurfaceTool, c: Vector3, n: Vector3, r: 
 		CP._tri(lens, c + n * 0.05, c + d0 * r + n * 0.03, c + d1 * r + n * 0.03, Color.WHITE, n)
 
 
-# Light, clear-looking glass like the examples (the town's other glass is dark and mirror-like).
+# Tinted blue-grey glass like the examples' (it was a pale sky blue; the town's other glass is dark and mirror-like).
 static func _toy_glass() -> StandardMaterial3D:
 	if not RM._cache.has("toy_glass"):
 		var m := StandardMaterial3D.new()
-		m.albedo_color = Color(0.62, 0.74, 0.82)
-		m.metallic = 0.25
+		m.albedo_color = Color(0.36, 0.48, 0.57)
+		m.metallic = 0.3
 		m.roughness = 0.08
 		m.clearcoat_enabled = true
 		m.rim_enabled = true
@@ -216,8 +223,12 @@ static func _car_meshes(id: String) -> Array:
 	var police := id == "city/car_police"
 	var white := Color(0.95, 0.95, 0.95)
 	var wr := 0.38
-	# the lower body, and fender bulges over the wheels
-	soft_box(body, Vector3(0, 0.66, 0), Vector3(W, 0.6, L), 0.24, paint)
+	# the lower body, its bonnet sloping down to the nose and its boot falling away behind (hardly, on the two
+	# that are square behind), and fender bulges over the wheels
+	var hatch := id == "city/car_hatchback"
+	var square_back := c0 <= 0.2
+	soft_box(body, Vector3(0, 0.66, 0), Vector3(W, 0.6, L), 0.24, paint, Basis(), 7, Vector2.ZERO,
+			Vector2(0.26 if hatch else 0.2, 0.04 if square_back else 0.13))
 	for s: float in [-1.0, 1.0]:
 		for wz: float in [-base * 0.5, base * 0.5]:
 			soft_box(body, Vector3(s * (W * 0.5 - 0.12), 0.72, wz), Vector3(0.34, 0.38, wr * 2.3), 0.16, paint.darkened(0.04))
@@ -231,7 +242,7 @@ static func _car_meshes(id: String) -> Array:
 	var cab_s := Vector3(W * 0.86, top - 0.9 + 0.1, cz1 - cz0)
 	# (the windscreen leans back 0.42 m over the cabin's height, about 30 degrees; the rear window less, and
 	# hardly at all on the hatchback and the station wagon, which are square behind)
-	var rake := Vector2(0.42, 0.26 if c0 > 0.2 else 0.1)
+	var rake := Vector2(0.6 if hatch else 0.42, 0.1 if square_back else 0.26)
 	soft_box(body, cab_c, cab_s, 0.2, white if police else paint, Basis(), 5, rake)
 	var gy0 := 1.0
 	var gy1 := top - 0.1
@@ -266,13 +277,16 @@ static func _car_meshes(id: String) -> Array:
 	for e: float in [-1.0, 1.0]:
 		soft_box(trim, Vector3(0, 0.42, e * (L * 0.5 + 0.04)), Vector3(W + 0.06, 0.2, 0.24), 0.08, GREY)
 		CP._box(trim, Vector3(0, 0.42, e * (L * 0.5 + 0.165)), Vector3(0.5, 0.12, 0.01), Color(0.95, 0.95, 0.9))
-	soft_box(trim, Vector3(0, 0.66, L * 0.5 - 0.01), Vector3(0.64, 0.22, 0.06), 0.06, DARK)
+	# (the nose is lower now: grille and lamps sit a hand lower, the grille in a chrome surround)
+	soft_box(trim, Vector3(0, 0.58, L * 0.5 - 0.022), Vector3(0.72, 0.27, 0.06), 0.07, CHROME)
+	soft_box(trim, Vector3(0, 0.58, L * 0.5 - 0.008), Vector3(0.62, 0.19, 0.06), 0.05, DARK)
 	for k in 3:
-		CP._box(trim, Vector3(0, 0.6 + k * 0.06, L * 0.5 + 0.022), Vector3(0.56, 0.018, 0.01), GREY)
-	# lamps: big round headlights, round tail lights
+		CP._box(trim, Vector3(0, 0.53 + k * 0.05, L * 0.5 + 0.024), Vector3(0.54, 0.016, 0.01), GREY)
+	# lamps: big round headlights with a little amber indicator outside each, round tail lights
 	for s: float in [-1.0, 1.0]:
-		lamp(trim, heads, Vector3(s * W * 0.33, 0.72, L * 0.5 - 0.005), Vector3(0, 0, 1), 0.12)
-		lamp(trim, tails, Vector3(s * W * 0.36, 0.74, -L * 0.5 + 0.005), Vector3(0, 0, -1), 0.09)
+		lamp(trim, heads, Vector3(s * W * 0.31, 0.62, L * 0.5 - 0.005), Vector3(0, 0, 1), 0.12)
+		soft_box(trim, Vector3(s * (W * 0.31 + 0.19), 0.6, L * 0.5 - 0.02), Vector3(0.09, 0.08, 0.06), 0.025, Color(1.0, 0.58, 0.1))
+		lamp(trim, tails, Vector3(s * W * 0.36, 0.66, -L * 0.5 + 0.005), Vector3(0, 0, -1), 0.09)
 	# wheels
 	for s: float in [-1.0, 1.0]:
 		for wz: float in [-base * 0.5, base * 0.5]:
@@ -300,7 +314,8 @@ static func _car_meshes(id: String) -> Array:
 static func _cab(body: SurfaceTool, glass: SurfaceTool, trim: SurfaceTool, heads: SurfaceTool, front_z: float, W: float,
 		cab_len: float, floor_y: float, top: float, col: Color) -> float:
 	var back_z := front_z - cab_len
-	soft_box(body, Vector3(0, floor_y + 0.32, front_z - cab_len * 0.5), Vector3(W, 0.66, cab_len), 0.2, col)
+	soft_box(body, Vector3(0, floor_y + 0.32, front_z - cab_len * 0.5), Vector3(W, 0.66, cab_len), 0.2, col, Basis(), 6, Vector2.ZERO,
+			Vector2(0.1, 0.0))   # (the bonnet slopes a little to the nose)
 	# (the upper cab's front leans back 0.34 m: a sloping windscreen, like the cars')
 	var up_h := top - floor_y - 0.6
 	var up_lo := (floor_y + 0.62 + top) * 0.5 - up_h * 0.5
@@ -360,7 +375,7 @@ static func _pickup(root: Node3D, id: String) -> void:
 			lamp(trim, heads, Vector3(s * W * 0.38, floor_y + 0.42, -L * 0.5 - 0.005), Vector3(0, 0, -1), 0.08)
 			soft_box(trim, Vector3(s * (W * 0.5 + 0.08), floor_y - 0.02, 0.0), Vector3(0.12, 0.06, 1.3), 0.025, GREY)   # running boards
 			for wz: float in [-1.45, 1.45]:
-				soft_box(body, Vector3(s * (W * 0.5 - 0.05), floor_y + 0.12, wz), Vector3(0.3, 0.3, 1.05), 0.14, col.darkened(0.1))   # fender flares
+				soft_box(trim, Vector3(s * (W * 0.5 - 0.05), floor_y + 0.12, wz), Vector3(0.3, 0.3, 1.05), 0.14, Color(0.2, 0.2, 0.22))   # fender flares: dark, like the example's
 				wheel(tyres, Vector3(s * (W * 0.5 - 0.1), 0.48, wz), 0.48, 0.4, s)
 		return [CP._end(body, true), CP._end(glass, false), CP._end(trim, false), CP._end(tyres, false), CP._end(heads, false)])
 	_put_parts(root, parts)
@@ -385,7 +400,7 @@ static func _ambulance(root: Node3D, id: String) -> void:
 		var box_len := back + L * 0.5
 		soft_box(body, Vector3(0, floor_y + 1.05, (back - L * 0.5) * 0.5), Vector3(W + 0.1, 2.0, box_len), 0.14, white)
 		for s: float in [-1.0, 1.0]:
-			CP._box(trim, Vector3(s * (W * 0.5 + 0.056), floor_y + 0.9, (back - L * 0.5) * 0.5 + 0.6), Vector3(0.006, 0.18, box_len + 1.4), redc)   # the stripe
+			CP._box(trim, Vector3(s * (W * 0.5 + 0.056), floor_y + 0.9, (back - L * 0.5) * 0.5 + 0.4), Vector3(0.006, 0.18, box_len + 0.8), redc)   # the stripe (it stops short of the sloping windscreen)
 			_cross(trim, Vector3(s * (W * 0.5 + 0.058), floor_y + 1.45, (back - L * 0.5) * 0.5), Vector3(s, 0, 0), 0.5, redc)
 			lamp(trim, heads, Vector3(s * W * 0.38, floor_y + 0.3, -L * 0.5 - 0.005), Vector3(0, 0, -1), 0.08)
 			for wz: float in [-1.4, 1.5]:
@@ -509,7 +524,8 @@ static func _motorcycle(root: Node3D, id: String) -> void:
 		var orange := _paint(Color(0.95, 0.5, 0.12))
 		var r := 0.34
 		for wz: float in [-0.7, 0.72]:
-			wheel(tyres, Vector3(-0.1, r, wz), r, 0.2, -1.0)
+			wheel(tyres, Vector3(-0.1, r, wz), r, 0.2, -1.0, orange)   # (orange rims, like the example's)
+			wheel(tyres, Vector3(0.1, r, wz), r, 0.001, 1.0, orange)    # ...on both sides
 			CP._tube(trim, [Vector3(-0.2, r, wz), Vector3(0.0, r, wz)], [0.03, 0.03], GREY, 6)
 		# frame, forks and swing arm
 		CP._tube(trim, [Vector3(0, r, -0.7), Vector3(0, 0.55, -0.15), Vector3(0, 0.62, 0.35)], [0.035, 0.035, 0.035], GREY, 6)

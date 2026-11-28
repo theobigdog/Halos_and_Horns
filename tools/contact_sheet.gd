@@ -14,6 +14,8 @@
 #   --kaykit                     the KayKit models in place of the hand-built ones that replaced them
 #   --press=N                    press E on every animated prop N times first, and let it play
 #   --real                       real sizes, not scaled to fit
+#   --height=0.3                 look from lower down (0.8: from well above, the usual)
+#   --yaw=0.6                    which way everything is turned
 extends SceneTree
 
 const Models = preload("res://scripts/models.gd")
@@ -178,7 +180,7 @@ func _go() -> void:
 	var cx := (cols - 1) * cell * 0.5
 	var cz := (rows - 1) * cell * 1.45 * 0.5
 	var dist := maxf(cols * 1.02, rows * 2.1) * cell * 1.0
-	cam.position = Vector3(cx, dist * 0.8, cz + dist * 0.72)
+	cam.position = Vector3(cx, dist * float(args.get("height", "0.8")), cz + dist * 0.72)
 	cam.look_at(Vector3(cx, 0.6, cz + 0.4))
 	if args.has("press"):
 		var PA = load("res://scripts/prop_anims.gd")
