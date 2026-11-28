@@ -1,5 +1,7 @@
 # Creative pieces made in code (Ted's wife's notes, Nov 21):
 #  - "sidewalk": a raised concrete slab (curb height), with joints, to run along roads. Solid; resizable.
+#    (Since Nov 28 it is drawn by ground_block.gd, like the "Sidewalk" ground block: a "sidewalk" piece in an
+#    older map is the same thing.)
 #  - "window": a flat picture to stick on a building's window: a furnished room seen through it (living
 #    room, kitchen, bedroom, library) or a plain lit pane. It glows warmer at night, as if the lights
 #    were on inside. No collision (it's paint on the glass).
@@ -110,48 +112,6 @@ static func make_window(p: Dictionary) -> Node3D:
 	mi.material_override = _room_mat(int(p.get("look", 0)))
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return mi
-
-
-static var _walk_mat: StandardMaterial3D
-static var _joint_mat: StandardMaterial3D
-
-
-# A sidewalk slab, standing on y = 0 (its "size" is width, height, depth).
-static func make_sidewalk(p: Dictionary) -> StaticBody3D:
-	var sz: Vector3 = _vec(p.get("size", [2.0, 0.18, 6.0]))
-	if _walk_mat == null:
-		_walk_mat = PropLib.mat(Color(0.74, 0.73, 0.7), "stone")
-		_joint_mat = StandardMaterial3D.new()
-		_joint_mat.albedo_color = Color(0.4, 0.4, 0.4)
-	var body := StaticBody3D.new()
-	var cs := CollisionShape3D.new()
-	var shape := BoxShape3D.new()
-	shape.size = sz
-	cs.shape = shape
-	cs.position.y = sz.y / 2.0
-	body.add_child(cs)
-	var slab := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = sz
-	slab.mesh = bm
-	slab.material_override = _walk_mat
-	slab.position.y = sz.y / 2.0
-	body.add_child(slab)
-	# joints across it every metre and a half, along the long way
-	var long_z := sz.z >= sz.x
-	var length := sz.z if long_z else sz.x
-	var across := sz.x if long_z else sz.z
-	var count := int(length / 1.5)
-	for i in range(1, count + 1):
-		var at := -length / 2.0 + length * i / (count + 1)
-		var j := MeshInstance3D.new()
-		var jm := BoxMesh.new()
-		jm.size = Vector3(across * 0.98, 0.006, 0.03) if long_z else Vector3(0.03, 0.006, across * 0.98)
-		j.mesh = jm
-		j.material_override = _joint_mat
-		j.position = Vector3(0, sz.y + 0.001, at) if long_z else Vector3(at, sz.y + 0.001, 0)
-		body.add_child(j)
-	return body
 
 
 static func _vec(a) -> Vector3:

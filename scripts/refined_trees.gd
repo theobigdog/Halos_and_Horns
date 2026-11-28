@@ -92,8 +92,9 @@ static func _conifer(trunk: SurfaceTool, boughs: SurfaceTool, at: Vector3, h: fl
 				CP._quad(boughs, p0 + up, p1 + up, p1 + side * w1, p0 + side * w0, col.lightened(0.05), Vector3.UP + side * 0.3)
 				if undersides:
 					CP._quad(boughs, p0 - side * w0, p0 + side * w0, p1 + side * w1, p1 - side * w1, col.darkened(0.3), Vector3.DOWN)
-			spots.append([mid + Vector3.UP * 0.03, reach * 0.32])
-			spots.append([root.lerp(tip, 0.85), reach * 0.22])
+			# (where the needle sprigs go, and which way the bough runs there: classic_props.gd _foliage)
+			spots.append([mid + Vector3.UP * 0.03, reach * 0.32, (mid - root).normalized()])
+			spots.append([root.lerp(tip, 0.85), reach * 0.22, (tip - mid).normalized()])
 	# the leader at the very top
 	CP._lathe(boughs, [[w * 0.06, h * 0.88], [0.0, h * 1.0]], 6, func(_i, _a): return cols[0], at)
 
@@ -109,7 +110,7 @@ static func _pine(root: Node3D, id: String) -> void:
 		return [CP._end(trunk, true), CP._end(boughs, false), spots])
 	RM._put(root, parts[0], CP._vmat("wood", 0.95))
 	RM._put(root, parts[1], CP._vmat("plant", 0.85, -1.0, true))
-	CP._foliage(root, "needles_" + id, parts[2], parts[2].size() * 14, 0.16, NEEDLES[pal], hash(id) % 997, "leaf")
+	CP._foliage(root, "needles_" + id, parts[2], parts[2].size() * 9, 0.2 + s.y * 0.05, NEEDLES[pal], hash(id) % 997, "sprig")
 	_no_collide_foliage(root)
 
 
@@ -134,16 +135,25 @@ static func _broadleaf_tree(trunk: SurfaceTool, at: Vector3, h: float, w: float,
 		spots.append([ctr + Vector3(cos(a) * ring * w * 0.36, y * h * 0.3, sin(a) * ring * w * 0.36), w * rng.randf_range(0.19, 0.25) * fatter])
 
 
+# The leafy mass inside a crown: the clumps a little smaller than the spots the shoots are rooted on, so the
+# shoots stand clear of it and it reads as the shade inside the tree, not as balls (Nov 28).
+static func _shrunk(spots: Array) -> Array:
+	var out := []
+	for sp in spots:
+		out.append([sp[0], float(sp[1]) * 0.8])
+	return out
+
+
 static func _broadleaf(root: Node3D, id: String) -> void:
 	var s := _size(id)
 	var parts := RM._cached("t_" + id, func() -> Array:
 		var trunk := CP._begin()
 		var spots := []
 		_broadleaf_tree(trunk, Vector3.ZERO, s.y, minf(s.x, s.z), 77, spots)
-		return [CP._end(trunk, true), spots, CP._clumps(spots, Color(0.13, 0.3, 0.1), 9, 10, 5)])
+		return [CP._end(trunk, true), spots, CP._clumps(_shrunk(spots), Color(0.13, 0.3, 0.1), 9, 10, 5)])
 	RM._put(root, parts[0], CP._vmat("wood", 0.95))
 	RM._put(root, parts[2], CP._vmat("plant", 0.9), false)
-	CP._foliage(root, "leaves_" + id, parts[1], parts[1].size() * 70, 0.2, [Color(0.17, 0.38, 0.12), Color(0.22, 0.45, 0.15), Color(0.13, 0.3, 0.09)], 33)
+	CP._foliage(root, "leaves_" + id, parts[1], parts[1].size() * 75, 0.5, [Color(0.17, 0.38, 0.12), Color(0.22, 0.45, 0.15), Color(0.13, 0.3, 0.09)], 33, "spray")
 	_no_collide_foliage(root)
 
 
@@ -180,15 +190,15 @@ static func _grove(root: Node3D, id: String) -> void:
 				_conifer(trunk, boughs, p, h, h * 0.42, "green", rng.randi() % 1000, spots, false)
 			else:
 				_broadleaf_tree(trunk, p, h, h * 0.55, rng.randi() % 1000, spots, 10)
-		var cl: ArrayMesh = null if conifers else CP._clumps(spots, Color(0.13, 0.3, 0.1), 9, 8, 4)
+		var cl: ArrayMesh = null if conifers else CP._clumps(_shrunk(spots), Color(0.13, 0.3, 0.1), 9, 8, 4)
 		return [CP._end(trunk, true), CP._end(boughs, false), spots, cl])
 	RM._put(root, parts[0], CP._vmat("wood", 0.95))
 	if conifers:
 		RM._put(root, parts[1], CP._vmat("plant", 0.85, -1.0, true))
-		CP._foliage(root, "needles_" + id, parts[2], parts[2].size() * 5, 0.22, NEEDLES["green"], hash(id) % 997, "leaf")
+		CP._foliage(root, "needles_" + id, parts[2], parts[2].size() * 4, 0.42, NEEDLES["green"], hash(id) % 997, "sprig")
 	else:
 		RM._put(root, parts[3], CP._vmat("plant", 0.9), false)
-		CP._foliage(root, "leaves_" + id, parts[2], parts[2].size() * 40, 0.26, [Color(0.17, 0.38, 0.12), Color(0.22, 0.45, 0.15), Color(0.13, 0.3, 0.09)], hash(id) % 991)
+		CP._foliage(root, "leaves_" + id, parts[2], parts[2].size() * 26, 0.55, [Color(0.17, 0.38, 0.12), Color(0.22, 0.45, 0.15), Color(0.13, 0.3, 0.09)], hash(id) % 991, "spray")
 	_no_collide_foliage(root)
 
 

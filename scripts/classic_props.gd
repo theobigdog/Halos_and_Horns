@@ -1257,14 +1257,49 @@ static func _wheelie_bin(root: Node3D) -> void:
 static func _leaf_mat(kind: String) -> StandardMaterial3D:
 	if _cache.has("leafmat:" + kind):
 		return _cache["leafmat:" + kind]
-	var img := Image.create(64, 64, false, Image.FORMAT_RGBA8)
-	for y in 64:
-		for x in 64:
-			var u := (x + 0.5) / 64.0 - 0.5
-			var v := (y + 0.5) / 64.0
+	var px := 128 if kind in ["spray", "sprig"] else 64
+	var img := Image.create(px, px, false, Image.FORMAT_RGBA8)
+	for y in px:
+		for x in px:
+			var u := (x + 0.5) / px - 0.5
+			var v := (y + 0.5) / px
 			var a := 0.0
 			var c := Color(1, 1, 1)
 			match kind:
+				"spray":   # a leafy shoot: a twig (from the bottom of the card) with leaves either side and one at the tip
+					var tv := 1.0 - v
+					if absf(u) < 0.012 and tv < 0.8:
+						a = 1.0
+						c = Color(0.5, 0.46, 0.36)
+					for k in 7:
+						var joins := 0.06 + 0.115 * k
+						var ang := (1.0 - 0.07 * k) * (-1.0 if k % 2 == 0 else 1.0)
+						var leaf_len := 0.33
+						if k == 6:
+							joins = 0.74
+							ang = 0.0
+							leaf_len = 0.25
+						var d := Vector2(sin(ang), cos(ang))
+						var rel := Vector2(u, tv - joins)
+						var along := rel.dot(d) / leaf_len
+						var across := (rel.x * d.y - rel.y * d.x) / leaf_len
+						if along > 0.0 and along < 1.0:
+							var w := 0.25 * sin(PI * along) * (1.0 - 0.3 * along)
+							if absf(across) < w:
+								a = 1.0
+								c = Color(1, 1, 1).darkened(0.1 * (k % 3) + 0.12 * (1.0 - absf(across) / maxf(w, 0.01)))
+								if absf(across) < 0.018:
+									c = Color(0.82, 0.88, 0.7)
+				"sprig":   # a conifer sprig: a twig thick with needles sweeping forward, narrowing to the tip
+					var tv := 1.0 - v
+					var half := 0.42 * (1.0 - 0.55 * tv) * smoothstep(0.0, 0.07, tv)
+					# (more needle than gap, so the sprig stays whole when it's small on screen)
+					if absf(u) < half and fposmod(tv * 22.0 - absf(u) * 9.0, 1.0) < 0.62:
+						a = 1.0
+						c = Color(1, 1, 1).darkened(0.35 * (1.0 - absf(u) / 0.42))
+					if absf(u) < 0.03 and tv < 0.93:
+						a = 1.0
+						c = Color(0.62, 0.52, 0.4)
 				"leaf":    # a pointed oval leaf with a midrib
 					var w := 0.42 * sin(PI * v) * (1.0 - 0.35 * v)
 					a = 1.0 if absf(u) < w else 0.0
@@ -1297,14 +1332,21 @@ static func _leaf_mat(kind: String) -> StandardMaterial3D:
 	return m
 
 
-static func _card(len: float) -> QuadMesh:
+static func _card(len: float, wide := 0.7) -> QuadMesh:
 	var q := QuadMesh.new()
-	q.size = Vector2(len * 0.7, len)
+	q.size = Vector2(len * wide, len)
 	q.center_offset = Vector3(0, len * 0.5, 0)
 	return q
 
 
 # Many leaf (or flower) cards over lumpy clumps: spots = [[centre, radius], ...].
+# Kinds: "leaf" one small leaf standing out from the clump, and "petal" a flower: for bushes and blossom.
+# Trees use the next two (Ted, Nov 28: "the leaves just kinda float near the branches"): a tree's clumps are
+# big, so single leaves were a thin fuzz hovering off dark balls.
+#   "spray": a shoot of seven leaves, rooted INSIDE the clump and growing out and along its surface, facing
+#     outward, so the shoots overlap like a real crown and nothing hangs in the air;
+#   "sprig": a conifer sprig. Its spots carry a third thing, the way their bough runs ([centre, radius, along]),
+#     and the sprigs lie along the bough, fanning out to the sides and drooping at the tip.
 static func _foliage(root: Node3D, key: String, spots: Array, count: int, size: float, cols: Array, seed: int, kind := "leaf") -> void:
 	var mm: MultiMesh
 	if _cache.has("mm:" + key):
@@ -1315,7 +1357,7 @@ static func _foliage(root: Node3D, key: String, spots: Array, count: int, size: 
 		mm = MultiMesh.new()
 		mm.transform_format = MultiMesh.TRANSFORM_3D
 		mm.use_colors = true
-		mm.mesh = _card(size)
+		mm.mesh = _card(size, 1.0 if kind == "spray" else (0.62 if kind == "sprig" else 0.7))
 		mm.instance_count = count
 		for i in count:
 			var s: Array = spots[i % spots.size()]
@@ -1327,6 +1369,21 @@ static func _foliage(root: Node3D, key: String, spots: Array, count: int, size: 
 			var yax := (dir + Vector3.UP * 0.4).normalized()
 			var ref := Vector3.UP if absf(yax.y) < 0.9 else Vector3.RIGHT
 			var xax := yax.cross(ref).normalized().rotated(yax, rng.randf() * TAU)
+			if kind == "spray":
+				at = c + dir * r * rng.randf_range(0.7, 0.88)
+				var tang := dir.cross(Vector3.UP)
+				if tang.length() < 0.1:
+					tang = Vector3.RIGHT
+				tang = tang.normalized().rotated(dir, rng.randf() * TAU)
+				yax = (dir * rng.randf_range(0.45, 0.85) + tang + Vector3.DOWN * rng.randf_range(0.0, 0.25)).normalized()
+				xax = yax.cross(dir).normalized().rotated(yax, rng.randf_range(-0.6, 0.6))
+			elif kind == "sprig":
+				var along: Vector3 = s[2] if s.size() > 2 else Vector3(dir.x, 0.0, dir.z).normalized()
+				var side := along.cross(Vector3.UP).normalized()
+				var out := rng.randf_range(-1.0, 1.0)      # which side of the bough, and how far out
+				at = c + along * r * rng.randf_range(-1.0, 0.8) + side * out * r * 0.55 + Vector3.UP * 0.02
+				yax = (along + side * out * 0.9 + Vector3.DOWN * rng.randf_range(0.1, 0.4)).normalized()
+				xax = yax.cross(Vector3.UP).normalized().rotated(yax, rng.randf_range(-0.5, 0.5))
 			var b := Basis(xax, yax, xax.cross(yax)).scaled(Vector3.ONE * rng.randf_range(0.75, 1.2))
 			mm.set_instance_transform(i, Transform3D(b, at))
 			var col: Color = cols[rng.randi() % cols.size()]

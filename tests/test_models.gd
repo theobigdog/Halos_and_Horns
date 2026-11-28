@@ -652,6 +652,101 @@ func _run() -> void:
 	for u in 5:
 		ed.undo()
 	check(not ed.map["pieces"][fi].has("repeat"), "...undo takes it back")
+	# ---- Paving, sidewalks and edgings (Ted, Nov 28) ----
+	var PvGround = load("res://scripts/ground_block.gd")
+	var pv_keys: Array = PvGround.KINDS.keys()
+	check(pv_keys.slice(0, 11) == ["grass", "dirt", "gravel", "landscaping", "flowerbed", "sand", "parking", "parking_spot",
+			"parking_accessible", "asphalt", "concrete"], "the ground kinds maps already use keep their numbers (new ones go at the end)")
+	check(PvGround.PAVINGS.all(func(k): return PvGround._KIND_ID.has(k)) and PvGround._KIND_ID.has("sidewalk") and PvGround.EDGINGS.all(func(k): return PvGround.KINDS.has(k) and PvGround.EDGE_COLORS.has(k) and PvGround.DEFAULT_SIZES.has(k)),
+			"every paving, the sidewalk and every edging is a ground kind with a look of its own")
+	var pv_undo_mark: int = ed._undo.size()
+	var pv_pieces_mark: int = ed.map["pieces"].size()
+	# a sidewalk: one slab, a tab on every side; pulling one moves that side and leaves the opposite one put
+	var pv_walk: int = ed.place("ground:sidewalk", Vector3(20, 0, 20))
+	ed.select(pv_walk)
+	check(ed._tabs().size() == 4 and ed.map["pieces"][pv_walk]["size"] == [1.5, 0.15, 1.5], "a new sidewalk is one slab with a tab on every side (%d tabs, %s)" % [ed._tabs().size(), ed.map["pieces"][pv_walk]["size"]])
+	ed.pull_tab(3, -1)
+	ed.drag_update(Vector3(20, 30, 13.2), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	var pv_wp: Dictionary = ed.map["pieces"][pv_walk]
+	check(pv_wp["size"] == [1.5, 0.15, 7.5] and pv_wp["pos"] == [20.0, 0.0, 17.0], "pulling a tab runs it out that way, the other end staying put (%s at %s)" % [pv_wp["size"], pv_wp["pos"]])
+	# pulling the end and swinging out sideways turns a corner: a new piece, not one big rectangle
+	ed.pull_tab(3, -1)
+	ed.drag_update(Vector3(14.9, 30, 13.2), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	var pv_wc: Dictionary = ed.map["pieces"][ed.map["pieces"].size() - 1]
+	check(ed.map["pieces"].size() == pv_pieces_mark + 2 and pv_wc["type"] == "ground" and int(pv_wc["look"]) == pv_keys.find("sidewalk")
+			and pv_wc["size"] == [4.5, 0.15, 1.5] and pv_wc["pos"] == [17.0, 0.0, 14.0] and ed.selected == ed.map["pieces"].size() - 1,
+			"swinging out to the side turns a corner: a new run the same width, flush with the end, selected (%s at %s)" % [pv_wc["size"], pv_wc["pos"]])
+	check(ed.map["pieces"][pv_walk]["size"] == [1.5, 0.15, 7.5], "...and the first run stays a run (%s)" % [ed.map["pieces"][pv_walk]["size"]])
+	check(ed._slab_end(pv_wc, 2) and not ed._slab_end(pv_wc, 3), "...the new run's ends are its short sides")
+	ed.select(pv_walk)
+	ed.pull_tab(3, -1)
+	ed.drag_update(Vector3(25.6, 30, 13.2), Vector3.DOWN, Vector2.ZERO)
+	check(ed.map["pieces"].size() == pv_pieces_mark + 3, "...a corner the other way while the tab is held")
+	ed.drag_update(Vector3(20.2, 30, 11.1), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	check(ed.map["pieces"].size() == pv_pieces_mark + 2 and ed.map["pieces"][pv_walk]["size"] == [1.5, 0.15, 9.5], "...which goes again when the mouse swings back in line (%d pieces, %s)" % [ed.map["pieces"].size() - pv_pieces_mark, ed.map["pieces"][pv_walk]["size"]])
+	# a long side's tab just makes it wider
+	ed.select(pv_walk)
+	ed.pull_tab(2, 1)
+	ed.drag_update(Vector3(23.2, 30, 5.0), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	check(ed.map["pieces"].size() == pv_pieces_mark + 2 and ed.map["pieces"][pv_walk]["size"] == [4.0, 0.15, 9.5], "pulling a long side's tab only widens it (%s)" % [ed.map["pieces"][pv_walk]["size"]])
+	# an edging turns corners the same way, however thin
+	var pv_edge: int = ed.place("ground:edge_rocks", Vector3(30, 0, 30))
+	ed.select(pv_edge)
+	ed.pull_tab(2, 1)
+	ed.drag_update(Vector3(34.1, 30, 32.6), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	var pv_ec: Dictionary = ed.map["pieces"][ed.map["pieces"].size() - 1]
+	check(ed.map["pieces"][pv_edge]["size"] == [5.0, 0.14, 0.2] and pv_ec["size"] == [0.2, 0.14, 2.5] and is_equal_approx(pv_ec["pos"][0], 33.9) and is_equal_approx(pv_ec["pos"][2], 31.35),
+			"a rock edging pulled out and round a corner meets itself at the corner (%s, then %s at %s)" % [ed.map["pieces"][pv_edge]["size"], pv_ec["size"], pv_ec["pos"]])
+	var pv_rocks: MultiMeshInstance3D = ed.nodes[pv_edge].find_children("*", "MultiMeshInstance3D", true, false)[0]
+	check(pv_rocks.multimesh.instance_count >= 20 and ed.nodes[pv_edge].find_children("*", "CollisionShape3D", true, false).size() == 1, "...made of pv_rocks nose to tail, with one box to bump into (%d pv_rocks)" % pv_rocks.multimesh.instance_count)
+	# a floor's end tab turns a corner too (it used to only pull out a rectangle)
+	var pv_tw: float = Models.row_step("dungeon/floor_tile_small").length()
+	var pv_tile: int = ed.place("model:dungeon/floor_tile_small", Vector3(-30, 0, 30))
+	ed.select(pv_tile)
+	ed.pull_tab(0, 1)
+	ed.drag_update(Vector3(-30 + pv_tw * 2.6, 30, 30 + pv_tw * 3.2), Vector3.DOWN, Vector2.ZERO)
+	ed._end_drag(true)
+	var pv_tc: Dictionary = ed.map["pieces"][ed.map["pieces"].size() - 1]
+	check(int(ed.map["pieces"][pv_tile].get("repeat", 1)) == 3 and not ed.map["pieces"][pv_tile].has("repeat2") and pv_tc.get("model", "") == "dungeon/floor_tile_small"
+			and int(pv_tc.get("repeat", 1)) == 3 and is_equal_approx(absf(float(pv_tc["rot"][1])), 90.0)
+			and is_equal_approx(pv_tc["pos"][0], -30 + pv_tw * 2.0) and is_equal_approx(pv_tc["pos"][2], 30 + pv_tw),
+			"a floor pulled out and swung sideways turns a square corner beside its last tile (%s tiles, then %s more at %s turned %s)" % [ed.map["pieces"][pv_tile].get("repeat", 1), pv_tc.get("repeat", 1), pv_tc["pos"], pv_tc.get("rot", [])])
+	# a grid of stone floor tiles becomes one paving block over the same ground
+	ed.select(pv_tile)
+	ed.map["pieces"][pv_tile]["repeat"] = 4
+	ed.map["pieces"][pv_tile]["repeat2"] = 3
+	ed.map["pieces"][pv_tile]["color"] = "#8080c0"
+	ed._refresh_piece(pv_tile)
+	var pv_tiles_tris := triangles(ed.nodes[pv_tile], [], "tiles")
+	check(ed._is_stone_floor("dungeon/floor_tile_small") and not ed._is_stone_floor("dungeon/floor_wood_large") and not ed._is_stone_floor("dungeon/wall"), "stone floors can be turned into paving (wooden ones and walls can't)")
+	ed.to_paving(false)
+	var pv_block: Dictionary = ed.map["pieces"][pv_tile]
+	var pv_th: float = Models.size("dungeon/floor_tile_small").y
+	check(pv_block["type"] == "ground" and int(pv_block["look"]) == pv_keys.find("paving") and is_equal_approx(pv_block["size"][0], pv_tw * 4.0) and is_equal_approx(pv_block["size"][2], pv_tw * 3.0)
+			and is_equal_approx(pv_block["size"][1], pv_th) and is_equal_approx(pv_block["pos"][0], -30 + pv_tw * 1.5) and is_equal_approx(pv_block["pos"][2], 30 + pv_tw) and pv_block.get("color", "") == "#8080c0",
+			"a 4 x 3 floor becomes one paving block over the same ground, as tall, in the same colour (%s at %s)" % [pv_block["size"], pv_block["pos"]])
+	var pv_paving_tris := triangles(ed.nodes[pv_tile], [], "paving")
+	check(pv_paving_tris * 4 < pv_tiles_tris, "...for a fraction of the triangles (%d, from %d)" % [pv_paving_tris, pv_tiles_tris])
+	ed.select(ed.map["pieces"].size() - 1)
+	ed.to_paving(true)
+	check(ed.map["pieces"].all(func(q): return q.get("model", "") != "dungeon/floor_tile_small"), "...and 'every floor like it' swaps the rest of them")
+	# an older map's "sidewalk" piece is the same sidewalk
+	var pv_old_walk: Dictionary = MapData.clean({"pieces": [{"type": "sidewalk", "pos": [0, 0, 0], "size": [2, 0.18, 6]}]})["pieces"][0]
+	ed.map["pieces"].append(pv_old_walk)
+	ed.nodes.append(ed._make_node(pv_old_walk, ed.map["pieces"].size() - 1))
+	ed.select(ed.map["pieces"].size() - 1)
+	check(pv_old_walk["type"] == "sidewalk" and ed._tabs().size() == 4 and ed.nodes[ed.selected].find_child("Block", true, false) != null, "an older map's sidewalk piece still loads, drawn as the new sidewalk, with tabs")
+	ed.map["pieces"].remove_at(ed.map["pieces"].size() - 1)
+	ed.nodes.pop_back().free()
+	ed.select(-1)
+	while ed._undo.size() > pv_undo_mark:
+		ed.undo()
+	check(ed.map["pieces"].size() == pv_pieces_mark, "...and undo takes all of that back (%d pieces left over)" % (ed.map["pieces"].size() - pv_pieces_mark))
 	# Shift + wheel turns what you're about to place; arrow keys nudge the selected piece
 	ed.placing = "model:dungeon/wall"
 	ed.wheel_turn(15.0)
@@ -721,6 +816,9 @@ func _run() -> void:
 	var GroundBlock = load("res://scripts/ground_block.gd")
 	for kind in GroundBlock.KINDS:
 		pieces.append(["ground " + kind, GroundBlock.make(kind, Vector3(12, 0.3, 12))])
+	for kind in GroundBlock.EDGINGS:   # (an edging is long and thin: 40 m of each)
+		var es: Vector3 = GroundBlock.DEFAULT_SIZES[kind]
+		pieces.append(["40 m of " + kind, GroundBlock.make(kind, Vector3(40, es.y, es.z))])
 	for pc in pieces:
 		var s: Node3D = pc[1]
 		root.add_child(s)

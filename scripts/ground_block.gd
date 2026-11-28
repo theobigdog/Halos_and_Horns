@@ -28,14 +28,51 @@ const KINDS := {
 	"parking_accessible": "Accessible parking spot",
 	"asphalt": "Plain asphalt",
 	"concrete": "Plain concrete",
+	# Ted, Nov 28: paving that covers any area without stretching (Sara had stretched and repeated a dungeon floor
+	# tile under a whole town), a real concrete sidewalk with a joint between every slab, and edgings to line
+	# things with. NEW KINDS GO AT THE END: a map stores a block's kind as its place in this list ("look").
+	"paving": "Paving: flagstones",
+	"crazy": "Paving: crazy paving",
+	"cobbles": "Paving: cobblestones",
+	"pavers": "Paving: brick pavers",
+	"sidewalk": "Sidewalk (concrete slabs)",
+	"edge_rocks": "Edging: rocks",
+	"edge_fence": "Edging: little picket fence",
+	"edge_logs": "Edging: log roll",
+	"edge_ceramic": "Edging: glazed ceramic scallops",
+	"edge_brick": "Edging: bricks on the slant",
+	"edge_stone": "Edging: cut stone kerb",
+	"edge_hedge": "Edging: low box hedge",
 }
-const STREET_KINDS := ["parking", "parking_spot", "parking_accessible", "asphalt", "concrete"]   # (Street/Road too)
+const STREET_KINDS := ["parking", "parking_spot", "parking_accessible", "asphalt", "concrete", "paving", "crazy",
+		"cobbles", "pavers", "sidewalk"]   # (Street/Road too)
+const PAVINGS := ["paving", "crazy", "cobbles", "pavers"]
+# Edgings: a thin line of rocks, pickets, tiles... along the block's longer side. "size" is still x, y, z: the
+# longer of x and z is the run, the shorter how thick it is, y how tall. No slab under them. Their colour is
+# REPLACED by the block's colour when it has one (white: as they come), so a rock edging can be white marble
+# and the ceramic one any glaze.
+const EDGINGS := ["edge_rocks", "edge_fence", "edge_logs", "edge_ceramic", "edge_brick", "edge_stone", "edge_hedge"]
+const EDGE_COLORS := {"edge_rocks": Color(0.56, 0.54, 0.5), "edge_fence": Color(0.66, 0.5, 0.33), "edge_logs": Color(0.74, 0.58, 0.39),
+		"edge_ceramic": Color(0.74, 0.33, 0.2), "edge_brick": Color(0.62, 0.3, 0.22), "edge_stone": Color(0.6, 0.6, 0.58),
+		"edge_hedge": Color(0.2, 0.42, 0.16)}
 const _KIND_ID := {"grass": 0, "dirt": 1, "gravel": 2, "landscaping": 3, "flowerbed": 4, "sand": 5, "parking": 6,
-		"parking_spot": 7, "parking_accessible": 8, "asphalt": 9, "concrete": 10}
+		"parking_spot": 7, "parking_accessible": 8, "asphalt": 9, "concrete": 10, "paving": 11, "crazy": 12, "cobbles": 13,
+		"pavers": 14, "sidewalk": 15}
 const END_MARGIN := 0.5   # a lot's plain asphalt past the first and last stalls (Ted's wife, Nov 27)
 # Default sizes for new pieces of these kinds
 const DEFAULT_SIZES := {"parking": Vector3(STALL_W * 5 + END_MARGIN * 2, 0.1, 5.2), "parking_spot": Vector3(STALL_W, 0.1, 5.2),
-		"parking_accessible": Vector3(4.2, 0.1, 5.2), "asphalt": Vector3(6, 0.1, 6), "concrete": Vector3(4, 0.12, 4)}
+		"parking_accessible": Vector3(4.2, 0.1, 5.2), "asphalt": Vector3(6, 0.1, 6), "concrete": Vector3(4, 0.12, 4),
+		"paving": Vector3(3, 0.1, 3), "crazy": Vector3(3, 0.1, 3), "cobbles": Vector3(3, 0.1, 3), "pavers": Vector3(3, 0.1, 3),
+		"sidewalk": Vector3(1.5, 0.15, 1.5),   # one slab: pull a tab to run it on, swing sideways to turn a corner
+		"edge_rocks": Vector3(2, 0.14, 0.2), "edge_fence": Vector3(2, 0.3, 0.1), "edge_logs": Vector3(2, 0.22, 0.1),
+		"edge_ceramic": Vector3(2, 0.2, 0.1), "edge_brick": Vector3(2, 0.12, 0.12), "edge_stone": Vector3(2, 0.14, 0.15),
+		"edge_hedge": Vector3(2, 0.38, 0.32)}
+
+
+# What Creative calls it: "Grass block", but "Sidewalk (concrete slabs)" and "Edging: rocks" as they are.
+static func label(kind: String) -> String:
+	var name: String = KINDS.get(kind, "Grass")
+	return name if kind in PAVINGS or kind in EDGINGS or kind == "sidewalk" else name + " block"
 # Parking lots (Ted's wife, Nov 26: "a parking lot or parking spaces that are tilable"): asphalt with painted
 # stalls 2.6 m wide and 5 m deep, measured from the block's own back-left corner, so blocks set side by side
 # (or back to back) carry on the same pattern. A block 10.5 m deep or more gets a row of stalls along each side
@@ -53,6 +90,8 @@ instance uniform vec3 tint = vec3(1.0);              // Creative's colour for th
 global uniform float snow_cover;
 
 varying vec3 wp;      // world position (metres)
+varying vec3 lp;      // the same, turned the block's way (not shifted): paving runs square to its block, and
+                      // blocks turned the same way carry one pattern across the join
 varying vec3 op;      // object position (metres: the mesh is built at full size)
 varying vec3 on;      // object normal
 varying float across; // coordinate across the block's long axis (furrows run along it)
@@ -308,6 +347,102 @@ void plain_top(vec2 p, out vec3 c, out float h) {
 	}
 }
 
+// ---- paving (kinds 11 to 14) and the sidewalk (15) ----
+// One stone: `d` is how far in from its edge (metres), `rnd` its own random number, `jw` half the joint.
+void stone(vec2 p, float d, float rnd, float jw, vec3 a, vec3 b, float dome, out vec3 c, out float h) {
+	float in_s = smoothstep(jw, jw + 0.01, d);
+	c = mix(a, b, fract(rnd * 7.3)) * (0.84 + 0.26 * rnd);
+	c *= 0.9 + 0.16 * fbm(p * 3.5);
+	c *= 0.95 + 0.09 * h2(floor(p * 80.0));
+	c *= 0.86 + 0.14 * smoothstep(jw, jw + 0.06, d);          // dirt gathers along the edges
+	vec3 joint = lin(vec3(0.27, 0.24, 0.2)) * (0.75 + 0.4 * n2(p * 40.0));
+	c = mix(joint, c, in_s);
+	h = in_s * (0.004 + dome * smoothstep(jw, jw + 0.05, d)) + in_s * n2(p * 22.0) * 0.0012;
+}
+
+// squared flagstones in courses 45 cm deep, each stone a different length
+float flag_end(float i, float row) { return i * 0.62 + (h2(vec2(i, row)) - 0.5) * 0.3; }
+void flag_top(vec2 p, out vec3 c, out float h) {
+	float ch = 0.45;
+	float row = floor(p.y / ch);
+	float fy = p.y - row * ch;
+	float x = p.x + h2(vec2(row, 7.0)) * 3.0;
+	float i = floor(x / 0.62);
+	float b0 = flag_end(i, row);
+	float b1 = flag_end(i + 1.0, row);
+	if (x < b0) { i -= 1.0; b1 = b0; b0 = flag_end(i, row); }
+	else if (x > b1) { i += 1.0; b0 = b1; b1 = flag_end(i + 1.0, row); }
+	float d = min(min(x - b0, b1 - x), min(fy, ch - fy));
+	stone(p, d, h2(vec2(i, row) + 0.37), 0.008, lin(vec3(0.62, 0.6, 0.57)), lin(vec3(0.7, 0.64, 0.54)), 0.003, c, h);
+}
+
+// crazy paving: broken slabs fitted together
+void crazy_top(vec2 p, out vec3 c, out float h) {
+	vec3 k = cells(p * 1.9);
+	stone(p, k.y * 0.26, k.z, 0.011, lin(vec3(0.6, 0.57, 0.52)), lin(vec3(0.72, 0.62, 0.5)), 0.003, c, h);
+}
+
+// cobblestones: small domed setts in rows, every row shifted along
+void cobble_top(vec2 p, out vec3 c, out float h) {
+	float rh = 0.105;
+	float sl = 0.15;
+	float row = floor(p.y / rh);
+	float fy = p.y - row * rh;
+	float x = p.x + (mod(row, 2.0) * 0.5 + (h2(vec2(row, 3.0)) - 0.5) * 0.3) * sl;
+	float i = floor(x / sl);
+	float fx = x - i * sl;
+	vec2 q = abs(vec2(fx - sl * 0.5, fy - rh * 0.5)) - vec2(sl, rh) * 0.5 + 0.03;
+	float d = 0.03 - (length(max(q, 0.0)) + min(max(q.x, q.y), 0.0));     // in from a rounded rectangle
+	stone(p, d, h2(vec2(i, row) + 0.61), 0.007, lin(vec3(0.42, 0.42, 0.43)), lin(vec3(0.55, 0.5, 0.45)), 0.012, c, h);
+}
+
+// brick pavers, herringbone: every brick two squares long, lying across the end of the last
+void pavers_top(vec2 p, out vec3 c, out float h) {
+	vec2 q = p / 0.105;
+	vec2 o = floor(q);            // the brick's first square
+	float m = mod(o.x - o.y, 4.0);
+	vec2 sz = vec2(2.0, 1.0);
+	if (m > 0.5 && m < 1.5) { o.x -= 1.0; }
+	else if (m > 2.5) { sz = vec2(1.0, 2.0); }
+	else if (m > 1.5) { o.y -= 1.0; sz = vec2(1.0, 2.0); }
+	vec2 l = q - o;
+	float d = min(min(l.x, sz.x - l.x), min(l.y, sz.y - l.y)) * 0.105;
+	stone(p, d, h2(o + 0.23), 0.004, lin(vec3(0.64, 0.31, 0.22)), lin(vec3(0.5, 0.27, 0.2)), 0.0015, c, h);
+}
+
+// A concrete sidewalk, measured from the block's own corner: a tooled joint between slabs (spread evenly, as near
+// 1.5 m as fits; a walk wider than about 2.7 m gets them lengthways too), a smooth trowelled margin beside every
+// joint, a broom finish across the rest, the odd hairline crack and stain.
+void sidewalk_top(out vec3 c, out float h) {
+	vec2 q = op.xz + bsize.xz * 0.5;
+	bool lx = bsize.x >= bsize.z;
+	float len = lx ? bsize.x : bsize.z;
+	float wid = lx ? bsize.z : bsize.x;
+	float a = lx ? q.x : q.y;     // along the walk
+	float b = lx ? q.y : q.x;     // across it
+	float sa = len / max(1.0, floor(len / 1.5 + 0.5));
+	float sb = wid / max(1.0, floor(wid / 1.8 + 0.5));
+	float d = min(abs(a - floor(a / sa + 0.5) * sa), abs(b - floor(b / sb + 0.5) * sb));
+	vec2 slab = vec2(floor(a / sa), floor(b / sb));
+	float rnd = h2(slab + bsize.xz * 3.1);
+	vec2 pw = q + vec2(bsize.x * 0.37, bsize.z * 0.61);
+	c = lin(vec3(0.74, 0.735, 0.71)) * (0.93 + 0.1 * rnd) * (0.92 + 0.12 * fbm(pw * 0.9));
+	float broom = n2(vec2(a * 260.0, b * 7.0));
+	float margin = smoothstep(0.03, 0.045, d);
+	c *= (1.0 + (broom - 0.5) * 0.1 * margin) * (0.95 + 0.05 * margin);
+	float groove = 1.0 - smoothstep(0.004, 0.011, d);
+	c = mix(c, lin(vec3(0.33, 0.33, 0.32)), groove * 0.85);
+#ifndef LOW
+	if (rnd > 0.72) {
+		vec2 sp = vec2(a - slab.x * sa, b - slab.y * sb);
+		float cr = abs(sp.x - sa * (0.3 + 0.4 * fract(rnd * 17.0)) - (n2(vec2(sp.y * 5.0, rnd * 40.0)) - 0.5) * 0.35);
+		c *= 1.0 - 0.28 * (1.0 - smoothstep(0.0, 0.004, cr));
+	}
+	c = mix(c, c * vec3(0.8, 0.78, 0.74), smoothstep(0.62, 0.8, fbm(pw * 1.7 + 9.0)) * 0.6);
+#endif
+	h = -groove * 0.004 + (broom - 0.5) * 0.0012 * margin + smoothstep(0.0, 0.03, d) * 0.002;
+}
+
 void top_mat(vec2 p, float ac, out vec3 c, out float h) {
 	if (kind == 0) grass_top(p, c, h);
 	else if (kind == 1) soil_top(p, ac, c, h, true);
@@ -315,15 +450,27 @@ void top_mat(vec2 p, float ac, out vec3 c, out float h) {
 	else if (kind == 3) mulch_top(p, c, h);
 	else if (kind == 4) bed_top(p, c, h);
 	else if (kind >= 6 && kind <= 8) parking_top(c, h);
-	else if (kind >= 9) plain_top(p, c, h);
+	else if (kind == 9 || kind == 10) plain_top(p, c, h);
+	else if (kind == 11) flag_top(p, c, h);
+	else if (kind == 12) crazy_top(p, c, h);
+	else if (kind == 13) cobble_top(p, c, h);
+	else if (kind == 14) pavers_top(p, c, h);
+	else if (kind == 15) sidewalk_top(c, h);
 	else sand_top(p, c, h);
 }
 
 // ---- sides: layers going down from the top ----
 void side_mat(vec2 s, out vec3 c, out float h) {      // s = (along the face, depth)
 	float d = s.y + (fbm(vec2(s.x * 1.4, s.y * 2.0)) - 0.5) * 0.14;
-	if (kind == 10) {  // concrete all the way down
+	if (kind == 10 || kind == 15) {  // concrete all the way down
 		c = lin(vec3(0.72, 0.72, 0.7)) * (0.88 + 0.14 * h2(floor(s * 90.0)));
+		h = 0.0;
+		return;
+	}
+	if (kind >= 11) {   // the edge of the stones, over their bed of sand and gravel
+		vec3 st = (kind == 14 ? lin(vec3(0.5, 0.27, 0.2)) : lin(vec3(0.5, 0.48, 0.45))) * (0.85 + 0.2 * h2(floor(s * 70.0)));
+		vec3 bed = mix(lin(vec3(0.5, 0.44, 0.34)), lin(vec3(0.36, 0.33, 0.29)), h2(floor(s * 60.0)));
+		c = mix(st, bed, smoothstep(0.06, 0.08, d));
 		h = 0.0;
 		return;
 	}
@@ -367,6 +514,7 @@ void side_mat(vec2 s, out vec3 c, out float h) {      // s = (along the face, de
 
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	lp = transpose(mat3(MODEL_MATRIX)) * wp;
 	op = VERTEX;
 	on = NORMAL;
 	across = UV.x;
@@ -392,7 +540,7 @@ void fragment() {
 		vec3 tc = vec3(0.0); float th = 0.0;
 		vec3 sc = vec3(0.0); float sh = 0.0;
 		if (tw > 0.001) {
-			vec2 p = up > 0.5 ? wp.xz : vec2(along, wp.y);
+			vec2 p = up > 0.5 ? ((kind >= 11 && kind <= 14) ? lp.xz : wp.xz) : vec2(along, wp.y);
 			top_mat(p, across, tc, th);
 			if (up <= 0.5) { tc *= 0.8; }
 		}
@@ -485,9 +633,12 @@ static func make(kind: String, size: Vector3, color := Color.WHITE) -> Node3D:
 	_globals()
 	var root := Node3D.new()
 	root.name = "GroundBlock"
+	if kind in EDGINGS:
+		return _make_edging(root, kind, size, color)
 	var mi := MeshInstance3D.new()
 	mi.name = "Block"
-	mi.mesh = _box_mesh(size)
+	# (paving: next to no rounding, so a path made of several blocks reads as one; a sidewalk: a tooled edge)
+	mi.mesh = _box_mesh(size, 0.006 if kind in PAVINGS else (0.02 if kind == "sidewalk" else 0.0))
 	mi.material_override = _mat(kind, q)
 	mi.set_instance_shader_parameter("bsize", size)
 	# (always written, white included: never left to whatever the per-instance slot held before)
@@ -504,7 +655,13 @@ static func make(kind: String, size: Vector3, color := Color.WHITE) -> Node3D:
 	cs.position.y = size.y / 2.0
 	body.add_child(cs)
 	root.add_child(body)
-	for e in _get_extras(kind, size, q):
+	_add_parts(root, _get_extras(kind, size, q))
+	return root
+
+
+# Parts are [MultiMesh, material, shadows] or [Mesh, material, shadows, where].
+static func _add_parts(root: Node3D, parts: Array) -> void:
+	for e in parts:
 		var item: Array = e
 		if item[0] is MultiMesh:
 			var mmi := MultiMeshInstance3D.new()
@@ -519,7 +676,6 @@ static func make(kind: String, size: Vector3, color := Color.WHITE) -> Node3D:
 			m.cast_shadow = item[2]
 			m.transform = item[3]
 			root.add_child(m)
-	return root
 
 
 static func _quality() -> int:
@@ -552,14 +708,16 @@ static func _mat(kind: String, q: int) -> ShaderMaterial:
 
 # ---- the block mesh: a box with a rounded top edge. UV.x = across the long axis, UV.y = depth below the top ----
 
-static func _box_mesh(sz: Vector3) -> ArrayMesh:
-	var key := "%.3f|%.3f|%.3f" % [sz.x, sz.y, sz.z]
+static func _box_mesh(sz: Vector3, bevel := 0.0) -> ArrayMesh:
+	var key := "%.3f|%.3f|%.3f|%.3f" % [sz.x, sz.y, sz.z, bevel]
 	if _meshes.has(key):
 		return _meshes[key]
 	var hx := sz.x / 2.0
 	var hz := sz.z / 2.0
 	var top := sz.y
 	var b := minf(clampf(minf(sz.x, sz.z) * 0.035, 0.02, 0.07), sz.y * 0.45)
+	if bevel > 0.0:
+		b = minf(bevel, sz.y * 0.45)
 	var long_x := sz.x >= sz.z
 	var rings := []    # [inset, y, horizontal normal part, vertical normal part]
 	for i in 4:
@@ -870,6 +1028,326 @@ static func _spot(rng: RandomNumberGenerator, hx: float, hz: float, r: float, ta
 		if ok:
 			return p
 	return Vector2(1e6, 1e6)
+
+
+# ---- edgings (Ted, Nov 28): a thin line of something along the block's longer side ----
+# Everything is placed with a seed from the kind and size, like the other extras, so the same edging always
+# looks the same, on every screen. One box to bump into, the size of the block.
+
+static var _edge_cache := {}     # kind|size|colour|quality -> parts
+static var _edge_meshes := {}    # name -> Mesh
+static var _edge_mats := {}      # name -> Material
+
+
+static func _make_edging(root: Node3D, kind: String, size: Vector3, color: Color) -> Node3D:
+	var body := StaticBody3D.new()
+	body.name = "Body"
+	body.collision_layer = 1
+	var cs := CollisionShape3D.new()
+	var shape := BoxShape3D.new()
+	shape.size = size
+	cs.shape = shape
+	cs.position.y = size.y / 2.0
+	body.add_child(cs)
+	root.add_child(body)
+	var q := _quality()
+	var key := "%s|%.3f|%.3f|%.3f|%s|%d" % [kind, size.x, size.y, size.z, color.to_html(false), q]
+	if not _edge_cache.has(key):
+		_edge_cache[key] = _build_edging(kind, size, color, q)
+	_add_parts(root, _edge_cache[key])
+	return root
+
+
+static func _vary(base: Color, rng: RandomNumberGenerator, amount: float) -> Color:
+	var v := rng.randf_range(1.0 - amount, 1.0 + amount)
+	return Color(clampf(base.r * v * rng.randf_range(0.96, 1.04), 0.0, 1.0), clampf(base.g * v, 0.0, 1.0),
+			clampf(base.b * v * rng.randf_range(0.94, 1.04), 0.0, 1.0))
+
+
+static func _build_edging(kind: String, size: Vector3, color: Color, q: int) -> Array:
+	var out := []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|%.2f|%.2f|%.2f" % [kind, size.x, size.y, size.z])
+	var len := maxf(size.x, size.z)      # the run
+	var thick := minf(size.x, size.z)
+	var tall := size.y
+	# (built along x, then turned if the block's long side is z)
+	var turn := Basis() if size.x >= size.z else Basis(Vector3.UP, PI / 2.0)
+	var base: Color = color
+	if color.is_equal_approx(Color.WHITE):
+		base = EDGE_COLORS[kind]
+	var shadow := GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	var xf := []
+	var cols := []
+	match kind:
+		"edge_rocks":
+			# rocks nose to tail, every one its own length, width, height and lie
+			var x := -len / 2.0
+			while x < len / 2.0 - thick * 0.25:
+				var l := maxf(minf(thick * rng.randf_range(0.7, 1.3), len / 2.0 - x), thick * 0.3)
+				var w := thick * rng.randf_range(0.72, 1.0)
+				var hh := tall * rng.randf_range(0.65, 1.0)
+				var b := Basis(Vector3.UP, rng.randf_range(-0.35, 0.35) + (PI if rng.randf() < 0.5 else 0.0)) * Basis(Vector3.RIGHT, rng.randf_range(-0.12, 0.12))
+				b = b * Basis.from_scale(Vector3(l / 2.0 * 1.32, hh / 1.3, w / 2.0 * 1.12))
+				xf.append(Transform3D(turn * b, turn * Vector3(x + l / 2.0, hh * 0.27, rng.randf_range(-1.0, 1.0) * (thick - w) * 0.5)))
+				cols.append(_vary(base, rng, 0.18))
+				x += l * 0.9
+			out.append([_multi(_rock(q == 0 or len > 60.0), xf, cols), _stones_mat(), shadow])   # (a very long run: the lighter stone)
+		"edge_fence":
+			# pointed pickets a hand high, two rails behind them and a stake every metre or so
+			var pitch := 0.085
+			var n := maxi(1, int(floor(len / pitch)))
+			var th := minf(0.022, thick * 0.3)
+			var x0 := -(n - 1) * pitch / 2.0
+			for i in n:
+				var b := Basis(Vector3.BACK, rng.randf_range(-0.03, 0.03)) * Basis.from_scale(Vector3(0.065, tall * rng.randf_range(0.93, 1.0), th))
+				xf.append(Transform3D(turn * b, turn * Vector3(x0 + i * pitch, 0.0, th)))
+				cols.append(_vary(base, rng, 0.12))
+			out.append([_multi(_picket(), xf, cols), _edge_mat("wood"), shadow])
+			var rxf := []
+			var rcols := []
+			for ry in [0.3, 0.68]:
+				rxf.append(Transform3D(turn * Basis.from_scale(Vector3(len, 0.03, th)), turn * Vector3(0.0, tall * float(ry), 0.0)))
+				rcols.append(base * 0.82)
+			var stakes := maxi(2, int(round(len / 1.1)) + 1)
+			for i in stakes:
+				var sx := lerpf(-len / 2.0 + 0.04, len / 2.0 - 0.04, float(i) / float(stakes - 1))
+				rxf.append(Transform3D(turn * Basis.from_scale(Vector3(0.04, tall * 0.86, 0.035)), turn * Vector3(sx, tall * 0.43, -th * 1.3)))
+				rcols.append(base * 0.75)
+			out.append([_multi(_unit_box(), rxf, rcols), _edge_mat("wood"), shadow])
+		"edge_logs":
+			# a log roll: short logs stood side by side, their tops up and down
+			var n := maxi(1, int(round(len / clampf(thick * 0.92, 0.05, 0.2))))
+			var d := len / n
+			for i in n:
+				var hh := tall * (0.8 + 0.2 * (0.5 + 0.5 * sin(i * 1.9))) * rng.randf_range(0.94, 1.0)
+				var b := Basis(Vector3.UP, rng.randf() * TAU) * Basis.from_scale(Vector3(d, hh, minf(d, thick)))
+				xf.append(Transform3D(turn * b, turn * Vector3(-len / 2.0 + (i + 0.5) * d, 0.0, 0.0)))
+				cols.append(_vary(base, rng, 0.12))
+			out.append([_multi(_log(), xf, cols), _edge_mat("wood"), shadow])
+		"edge_ceramic":
+			# glazed tiles with a round top, edge to edge
+			var n := maxi(1, int(round(len / 0.2)))
+			var tl := len / n
+			var th := clampf(thick * 0.38, 0.025, 0.08)
+			for i in n:
+				var b := Basis(Vector3.BACK, rng.randf_range(-0.02, 0.02)) * Basis.from_scale(Vector3(tl * 0.985, tall * rng.randf_range(0.96, 1.0), th))
+				xf.append(Transform3D(turn * b, turn * Vector3(-len / 2.0 + (i + 0.5) * tl, 0.0, 0.0)))
+				cols.append(_vary(base, rng, 0.07))
+			out.append([_multi(_scallop(), xf, cols), _edge_mat("ceramic"), shadow])
+		"edge_brick":
+			# bricks leaning on each other at 45 degrees, half buried: a row of teeth
+			var bl := 0.2
+			var bt := 0.065
+			var pitch := bt / sin(PI / 4.0)
+			var reach := (bl + bt) * 0.5 * sin(PI / 4.0)   # how far a leaning brick's corners are from its middle
+			var n := maxi(1, int(floor((len - reach * 2.0) / pitch)) + 1)
+			var x0 := -(n - 1) * pitch / 2.0
+			for i in n:
+				var b := Basis(Vector3.BACK, PI / 4.0 + rng.randf_range(-0.03, 0.03)) * Basis.from_scale(Vector3(bl, bt, thick * rng.randf_range(0.95, 1.0)))
+				xf.append(Transform3D(turn * b, turn * Vector3(x0 + i * pitch, tall - reach, 0.0)))
+				cols.append(_vary(base, rng, 0.16))
+			out.append([_multi(_unit_box(), xf, cols), _edge_mat("brick"), shadow])
+		"edge_stone":
+			# squared kerb stones, each a different length, a thin joint between
+			var x := -len / 2.0
+			while x < len / 2.0 - 0.02:
+				var l := rng.randf_range(0.22, 0.36)
+				if len / 2.0 - (x + l) < 0.12:
+					l = len / 2.0 - x
+				var b := Basis(Vector3.UP, rng.randf_range(-0.025, 0.025)) * Basis.from_scale(Vector3(maxf(l - 0.008, 0.02), tall * rng.randf_range(0.93, 1.0), thick * rng.randf_range(0.94, 1.0)))
+				xf.append(Transform3D(turn * b, turn * Vector3(x + l / 2.0, 0.0, 0.0)))
+				cols.append(_vary(base, rng, 0.1))
+				x += l
+			out.append([_multi(_kerb(), xf, cols), _stones_mat(), shadow])
+		"edge_hedge":
+			out.append([_hedge(len, tall, thick, base, rng), _edge_mat("hedge"), shadow, Transform3D(turn, Vector3.ZERO)])
+	return out
+
+
+# One triangle facing along `n` (Godot: clockwise = front), each corner with its own normal and colour.
+static func _tri(st: SurfaceTool, p: Array, nrm: Array, col: Array, n: Vector3) -> void:
+	var order := [0, 1, 2]
+	if ((p[1] as Vector3) - (p[0] as Vector3)).cross((p[2] as Vector3) - (p[0] as Vector3)).dot(n) > 0.0:
+		order = [0, 2, 1]
+	for i in order:
+		st.set_normal(nrm[i])
+		st.set_color(col[i])
+		st.add_vertex(p[i])
+
+
+# A flat outline (x, y; anticlockwise, bulging nowhere inward) pushed through from z = -0.5 to 0.5. `round_from`:
+# the points from there on have smooth sides (a curved top), the rest flat faces.
+static func _prism(pts: PackedVector2Array, round_from := 9999, centre := Vector2.ZERO) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var white := [Color.WHITE, Color.WHITE, Color.WHITE]
+	var n := pts.size()
+	for side in [1.0, -1.0]:
+		var fn := Vector3(0, 0, side)
+		for i in range(1, n - 1):
+			_tri(st, [Vector3(pts[0].x, pts[0].y, 0.5 * side), Vector3(pts[i].x, pts[i].y, 0.5 * side), Vector3(pts[i + 1].x, pts[i + 1].y, 0.5 * side)],
+					[fn, fn, fn], white, fn)
+	for i in n:
+		var a := pts[i]
+		var b := pts[(i + 1) % n]
+		var e := (b - a).normalized()
+		var flat := Vector3(e.y, -e.x, 0.0)
+		var na := flat
+		var nb := flat
+		if i >= round_from and (i + 1) % n >= round_from:
+			na = Vector3(a.x - centre.x, a.y - centre.y, 0.0).normalized()
+			nb = Vector3(b.x - centre.x, b.y - centre.y, 0.0).normalized()
+		var a0 := Vector3(a.x, a.y, 0.5)
+		var b0 := Vector3(b.x, b.y, 0.5)
+		var a1 := Vector3(a.x, a.y, -0.5)
+		var b1 := Vector3(b.x, b.y, -0.5)
+		_tri(st, [a0, b0, b1], [na, nb, nb], white, flat)
+		_tri(st, [a0, b1, a1], [na, nb, na], white, flat)
+	return st.commit()
+
+
+# A picket: 1 wide, 1 tall with a point, 1 thick, standing on the origin.
+static func _picket() -> Mesh:
+	if not _edge_meshes.has("picket"):
+		_edge_meshes["picket"] = _prism(PackedVector2Array([Vector2(-0.5, 0), Vector2(0.5, 0), Vector2(0.5, 0.8), Vector2(0, 1), Vector2(-0.5, 0.8)]))
+	return _edge_meshes["picket"]
+
+
+# A tile with a half-round top: 1 wide, 1 tall, 1 thick.
+static func _scallop() -> Mesh:
+	if not _edge_meshes.has("scallop"):
+		var pts := PackedVector2Array([Vector2(-0.5, 0), Vector2(0.5, 0)])
+		for i in 11:
+			var a := PI * float(i) / 10.0
+			pts.append(Vector2(0.5 * cos(a), 0.5 + 0.5 * sin(a)))
+		_edge_meshes["scallop"] = _prism(pts, 2, Vector2(0, 0.5))
+	return _edge_meshes["scallop"]
+
+
+static func _unit_box() -> Mesh:
+	if not _edge_meshes.has("box"):
+		_edge_meshes["box"] = BoxMesh.new()
+	return _edge_meshes["box"]
+
+
+# A kerb stone: 1 x 1 x 1 standing on the origin, its top edges cut off.
+static func _kerb() -> Mesh:
+	if not _edge_meshes.has("kerb"):
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var white := [Color.WHITE, Color.WHITE, Color.WHITE]
+		var rings := [[0.5, 0.5, 0.0], [0.5, 0.5, 0.8], [0.46, 0.36, 1.0]]   # half x, half z, y
+		for r in 2:
+			var lo: Array = rings[r]
+			var hi: Array = rings[r + 1]
+			for c in 4:
+				var s0: Vector2 = [Vector2(1, 1), Vector2(-1, 1), Vector2(-1, -1), Vector2(1, -1)][c]
+				var s1: Vector2 = [Vector2(1, 1), Vector2(-1, 1), Vector2(-1, -1), Vector2(1, -1)][(c + 1) % 4]
+				var a := Vector3(s0.x * lo[0], lo[2], s0.y * lo[1])
+				var b := Vector3(s1.x * lo[0], lo[2], s1.y * lo[1])
+				var a2 := Vector3(s0.x * hi[0], hi[2], s0.y * hi[1])
+				var b2 := Vector3(s1.x * hi[0], hi[2], s1.y * hi[1])
+				var fn := (b - a).cross(a2 - a).normalized()
+				if fn.dot(Vector3(a.x + b.x, 0.0, a.z + b.z)) < 0.0:
+					fn = -fn
+				_tri(st, [a, b, b2], [fn, fn, fn], white, fn)
+				_tri(st, [a, b2, a2], [fn, fn, fn], white, fn)
+		var t: Array = rings[2]
+		var up := [Vector3.UP, Vector3.UP, Vector3.UP]
+		_tri(st, [Vector3(-t[0], 1, -t[1]), Vector3(t[0], 1, -t[1]), Vector3(t[0], 1, t[1])], up, white, Vector3.UP)
+		_tri(st, [Vector3(-t[0], 1, -t[1]), Vector3(t[0], 1, t[1]), Vector3(-t[0], 1, t[1])], up, white, Vector3.UP)
+		_edge_meshes["kerb"] = st.commit()
+	return _edge_meshes["kerb"]
+
+
+# A short log stood on end: 1 across, 1 tall. Bark down the side (darker), the sawn top as the colour comes.
+static func _log() -> Mesh:
+	if not _edge_meshes.has("log"):
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var bark := Color(0.5, 0.42, 0.36)
+		var sides := 10
+		for i in sides:
+			var a0 := TAU * float(i) / sides
+			var a1 := TAU * float(i + 1) / sides
+			var n0 := Vector3(cos(a0), 0, sin(a0))
+			var n1 := Vector3(cos(a1), 0, sin(a1))
+			var p0 := n0 * 0.5
+			var p1 := n1 * 0.5
+			_tri(st, [p0, p1, p1 + Vector3.UP], [n0, n1, n1], [bark, bark, bark], n0 + n1)
+			_tri(st, [p0, p1 + Vector3.UP, p0 + Vector3.UP], [n0, n1, n0], [bark, bark, bark], n0 + n1)
+			_tri(st, [Vector3.UP, p0 + Vector3.UP, p1 + Vector3.UP], [Vector3.UP, Vector3.UP, Vector3.UP],
+					[Color(0.8, 0.76, 0.7), Color.WHITE, Color.WHITE], Vector3.UP)
+		_edge_meshes["log"] = st.commit()
+	return _edge_meshes["log"]
+
+
+# A low clipped hedge `len` long: a rounded ridge the plant shader makes lumpy and leafy.
+static func _hedge(len: float, tall: float, thick: float, base: Color, rng: RandomNumberGenerator) -> ArrayMesh:
+	var prof := [Vector2(-0.5, 0.0), Vector2(-0.5, 0.78), Vector2(-0.4, 0.96), Vector2(0.0, 1.0), Vector2(0.4, 0.96), Vector2(0.5, 0.78), Vector2(0.5, 0.0)]
+	var rings := maxi(2, int(ceil(len / 0.12)) + 1)
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var pos := []
+	var nrm := []
+	var col := []
+	for r in rings:
+		var x := -len / 2.0 + len * float(r) / float(rings - 1)
+		var shade := rng.randf_range(0.82, 1.12)
+		var end := -1.0 if r == 0 else (1.0 if r == rings - 1 else 0.0)
+		for k in prof.size():
+			var pt: Vector2 = prof[k]
+			pos.append(Vector3(x, pt.y * tall, pt.x * thick))
+			nrm.append(Vector3(end * 0.8, pt.y - 0.45, pt.x * 1.4).normalized())
+			var v := shade * rng.randf_range(0.9, 1.1)
+			col.append(Color(clampf(base.r * v, 0.0, 1.0), clampf(base.g * v, 0.0, 1.0), clampf(base.b * v, 0.0, 1.0)))
+	var np := prof.size()
+	for r in rings - 1:
+		for k in np - 1:
+			var a := r * np + k
+			var b := a + 1
+			var c := a + np
+			var d := c + 1
+			var out_n: Vector3 = (nrm[a] as Vector3) + (nrm[d] as Vector3)
+			_tri(st, [pos[a], pos[b], pos[d]], [nrm[a], nrm[b], nrm[d]], [col[a], col[b], col[d]], out_n)
+			_tri(st, [pos[a], pos[d], pos[c]], [nrm[a], nrm[d], nrm[c]], [col[a], col[d], col[c]], out_n)
+	for r in [0, rings - 1]:   # the two ends
+		var en := Vector3(-1 if r == 0 else 1, 0, 0)
+		for k in range(1, np - 1):
+			var a: int = r * np
+			_tri(st, [pos[a], pos[a + k], pos[a + k + 1]], [nrm[a], nrm[a + k], nrm[a + k + 1]], [col[a], col[a + k], col[a + k + 1]], en)
+	return st.commit()
+
+
+static func _edge_mat(name: String) -> Material:
+	if _edge_mats.has(name):
+		return _edge_mats[name]
+	if name == "hedge":
+		var sh := Shader.new()
+		sh.code = PLANT_SHADER
+		var hm := ShaderMaterial.new()
+		hm.shader = sh
+		hm.set_shader_parameter("lumpy", 0.014)   # (metres here: the hedge is built at full size)
+		_edge_mats[name] = hm
+		return hm
+	var m := StandardMaterial3D.new()
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	match name:
+		"wood":
+			Surfaces.apply(m, "wood")
+		"brick":
+			Surfaces.apply(m, "stone")
+		"ceramic":
+			Surfaces.apply(m, "glossy")
+			m.roughness = 0.16
+			m.metallic_specular = 0.7
+			m.clearcoat_enabled = true
+			m.clearcoat = 0.7
+			m.clearcoat_roughness = 0.1
+	_edge_mats[name] = m
+	return m
 
 
 # ---- shared meshes ----

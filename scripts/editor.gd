@@ -8,6 +8,9 @@
 #   G move   R rotate   T resize (blocks, cylinders and structures)
 #   Pull tabs (or V): a selected structure has glowing tabs at its ends; drag one and it repeats end
 #   to end (walls, fences), posts and all. Floors have tabs on their sides too, to pull out a grid.
+#   Ground blocks, sidewalks and edgings have a tab on every side: pull one and that side follows the
+#   mouse. Pulling an end tab and swinging out sideways turns a corner (floors, walls and fences too):
+#   the run carries on at a right angle as its own piece, so a path goes up, then across.
 #     while doing it: X / Y / Z stick to one axis, L local or world axes,
 #     hold Alt for no snapping, click or Enter to finish, Esc or right-click to undo it
 #   Shift + mouse wheel: turn the piece you're about to place (or the selected one) around
@@ -44,6 +47,7 @@ const PIECES := [
 const ROTATES := ["block", "cylinder", "prop", "model", "light", "ice", "sidewalk", "window", "ground", "building"]       # the others always sit upright
 const RESIZES := ["block", "cylinder", "model", "ice", "sidewalk", "window", "ground"]       # (a model's "size" is how much it's scaled on each axis)
 const ONLY_ONE := ["shrine", "angel_spawn", "demon_spawn"]
+const SLABS := ["ground", "sidewalk"]       # sized in metres: their pull tabs stretch them (and turn corners)
 const GRID_STEPS := [0.05, 0.1, 0.25, 0.5, 1.0, 2.0]
 const NUDGE_KEYS := [KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT, KEY_PAGEUP, KEY_PAGEDOWN]
 const WHEEL_TURN := 15.0       # Shift + wheel turns this many degrees a notch (Alt held: 1 degree)
@@ -138,6 +142,7 @@ var _test_button: Button
 var test_role := "demon"          # Test play as a demon or an angel (Ted, Nov 26: it was always demon)
 var _test_role_button: Button
 var _extend_button: Button
+var _paving_row: HBoxContainer
 var _top_panel: Control
 var _light_range: SpinBox
 var _light_energy: SpinBox
@@ -363,7 +368,7 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 				hbn.scale = MapData.vec(p["size"])   # (gates, trees and signs can be resized)
 			n.add_child(hbn)
 		"sidewalk":
-			n.add_child(Decor.make_sidewalk(p))
+			n.add_child(GroundBlock.make("sidewalk", MapData.vec(p["size"])))
 		"window":
 			n.add_child(Decor.make_window(p))
 			var wsz := MapData.vec(p["size"])
@@ -1066,8 +1071,15 @@ func begin(kind: String) -> void:
 	if kind == "rotate" and not t in ROTATES:
 		_say("That always sits upright.", 2.0)
 		return
+	if kind == "extend" and t in SLABS:   # (V, or the Extend button: the far end of its longer side)
+		kind = "stretch"
+		var ssz := MapData.vec(piece(selected)["size"])
+		_ext_axis = 2 if ssz.x >= ssz.z else 3
+		_ext_side = 1
+	if kind == "stretch" and not t in SLABS:
+		return
 	if kind == "extend" and t != "model":
-		_say("Only structures (walls, fences...) can be extended. Blocks can just be resized (T).", 3.0)
+		_say("Only structures (walls, fences...), ground blocks and edgings can be extended. Blocks can just be resized (T).", 3.0)
 		return
 	if kind == "scale" and not _resizable(piece(selected)) and t != "prop":
 		_say("That can't be resized.", 2.0)
@@ -1089,6 +1101,9 @@ func begin(kind: String) -> void:
 		_start_move_ray()
 	if kind == "extend":
 		_say("Extending " + piece_name(_drag_piece) + ": move the mouse along it to add copies end to end. Click to finish, Esc to cancel.", 999.0)
+		return
+	if kind == "stretch":
+		_say("Extending " + piece_name(_drag_piece) + ": move the mouse along it, or out to the side to turn a corner. Click to finish, Esc to cancel.", 999.0)
 		return
 	_say({"move": "Moving", "rotate": "Rotating", "scale": "Resizing"}[kind] + " " + piece_name(_drag_piece) + ": X / Y / Z for one axis, L local/world, Alt no snap. Click to finish, Esc to cancel.", 999.0)
 
@@ -1218,13 +1233,64 @@ func drag_update(ray_from: Vector3, ray_dir: Vector3, mouse_pos: Vector2) -> voi
 			var r1 := int(p.get("repeat", 1))
 			var r2 := int(p.get("repeat2", 1))
 			var turned := 0
-			if _ext_axis == 0 and other <= 1 and not Models.is_flat(p["model"]) and not Models.is_stairs(p["model"]):
+			if _ext_axis == 0 and other <= 1 and not Models.is_stairs(p["model"]):
 				var row_end: Vector3 = flat_start + dir * w * (count - 0.5) if _ext_side > 0 else Vector3(first.x, hit.y, first.z) - dir * w * 0.5
-				turned = _line_corner(row_end, dir * float(_ext_side), w, Vector3(hit.x, 0.0, hit.z) - Vector3(row_end.x, 0.0, row_end.z), start.y, snap)
+				# (a floor's corner: square to the row, starting beside its last tile; Ted, Nov 28)
+				var ax2 := _ext_steps(_drag_piece)[1] as Vector3
+				var across := Vector3(ax2.x, 0.0, ax2.z).length() if Models.is_flat(p["model"]) else 0.0
+				turned = _line_corner(row_end, dir * float(_ext_side), w, Vector3(hit.x, 0.0, hit.z) - Vector3(row_end.x, 0.0, row_end.z), start.y, snap, across)
 			if turned > 0:
 				_say("Lining with %s: %d, then round the corner %d more. Let go to finish (then pull the new end's tab to turn again), Esc to cancel." % [piece_name(p), r1, turned], 999.0)
 			else:
 				_say(("Extending %s: %d in a row" % [piece_name(p), r1] if r2 <= 1 else "Extending %s: %d x %d" % [piece_name(p), r1, r2]) + ". Swing out to the side to turn a corner. Let go to finish, Esc to cancel.", 999.0)
+		"stretch":
+			# A slab (ground block, sidewalk, edging) pulled by one side: that side follows the mouse and the
+			# opposite one stays put. Pulled by an END (the tab at the end of a run, or any tab of a square
+			# piece), swinging the mouse out sideways turns a corner: a new piece the same width starts at
+			# that end and runs out to the mouse, so a path goes up and then across instead of becoming one
+			# big rectangle (Ted, Nov 28). Swing back in and the corner goes again.
+			var sz0 := MapData.vec(_drag_piece["size"])
+			var sb := Basis.from_euler(MapData.rot_rad(_drag_piece))
+			var ai := 0 if _ext_axis == 2 else 2      # which of the size's numbers is pulled: x or z
+			var oi := 2 - ai
+			var dir := (sb * (Vector3.RIGHT if ai == 0 else Vector3.BACK)) * float(_ext_side)
+			var sdir := sb * (Vector3.BACK if ai == 0 else Vector3.RIGHT)
+			if absf(ray_dir.y) < 0.03:
+				return
+			var hit = Plane(Vector3.UP, start.y + sz0.y).intersects_ray(ray_from, ray_dir)
+			if hit == null or (hit - start).length() > 250.0:
+				return
+			var step := grid if snap else 0.01
+			var width: float = sz0[oi]
+			var fixed := start - dir * sz0[ai] * 0.5    # the middle of the side that stays put
+			var rel: Vector3 = Vector3(hit.x, start.y, hit.z) - fixed
+			var lat := rel.dot(sdir)
+			var min_len := maxf(step, 0.3 if p["type"] == "sidewalk" else 0.1)
+			var length := clampf(snappedf(rel.dot(dir), step), min_len, 200.0)
+			var turn := _slab_end(_drag_piece, _ext_axis) and absf(lat) > width * 0.5 + maxf(0.6, step)
+			if turn:
+				length = maxf(length, width)   # (the corner piece sits across this one's end)
+			var mid := fixed + dir * length * 0.5
+			var s := sz0
+			s[ai] = length
+			p["size"] = [snappedf(s.x, 0.001), snappedf(s.y, 0.001), snappedf(s.z, 0.001)]
+			p["pos"] = [snappedf(mid.x, 0.001), snappedf(mid.y, 0.001), snappedf(mid.z, 0.001)]
+			_refresh_piece(selected)
+			if turn:
+				var run := clampf(snappedf(absf(lat) - width * 0.5, step), min_len, 200.0)
+				var q: Dictionary = _drag_piece.duplicate(true)
+				q.erase("group")
+				var qs := sz0
+				qs[ai] = width
+				qs[oi] = run
+				var at := fixed + dir * (length - width * 0.5) + sdir * signf(lat) * (width * 0.5 + run * 0.5)
+				q["size"] = [snappedf(qs.x, 0.001), snappedf(qs.y, 0.001), snappedf(qs.z, 0.001)]
+				q["pos"] = [snappedf(at.x, 0.001), snappedf(at.y, 0.001), snappedf(at.z, 0.001)]
+				_put_corner(q)
+				_say("%s: %.1f m, then round the corner %.1f m more. Let go to finish (then pull the new end's tab to carry on), Esc to cancel." % [piece_name(p), length, run], 999.0)
+			else:
+				_clear_corner()
+				_say("%s: %.1f m long%s. Let go to finish, Esc to cancel." % [piece_name(p), length, ". Swing out to the side to turn a corner" if _slab_end(_drag_piece, _ext_axis) else ""], 999.0)
 		"rotate":
 			var amount := (mouse_pos.x - _drag_mouse.x) * 0.5
 			if snap:
@@ -1514,29 +1580,33 @@ func _click(at: Vector2) -> void:
 # mouse (15-degree steps; Alt for any angle), as long as the mouse is far. Swing back and the corner goes
 # again. On letting go the new run is selected, so pulling its end tab turns the next corner. Returns how
 # many are in the new run (0: no corner).
-func _line_corner(row_end: Vector3, out_dir: Vector3, w: float, off: Vector3, y: float, snap: bool) -> int:
-	var k := -1
-	if _corner_id != "":
-		for i in map["pieces"].size():
-			if str(piece(i).get("id", "")) == _corner_id:
-				k = i
+# `across`: for a floor, how wide its tiles are across the row (0: a wall or fence). A floor's corner is always
+# square to the row, and its run starts beside the row's last tile, flush with the row's end.
+func _line_corner(row_end: Vector3, out_dir: Vector3, w: float, off: Vector3, y: float, snap: bool, across := 0.0) -> int:
 	var dist := off.length()
 	var turn := dist > w * 0.8 and off.normalized().dot(out_dir) < cos(deg_to_rad(CORNER_ANGLE)) and off.normalized().dot(out_dir) > -0.5
+	var side := off - out_dir * off.dot(out_dir)   # how far out to the side of the row the mouse is
+	if across > 0.0:
+		turn = side.length() > across * 0.5 + w * 0.5 and off.dot(out_dir) > -w
 	if not turn:
-		if k >= 0:
-			_drop_piece(k)
+		_clear_corner()
 		return 0
 	var src := _drag_piece
 	var r: Array = src.get("rot", [0.0, 0.0, 0.0])
 	var sc := MapData.vec(src["size"]) if src.has("size") else Vector3.ONE
 	var ls := Basis.from_euler(Vector3(deg_to_rad(r[0]), 0.0, deg_to_rad(r[2]))) * Models.row_step(src["model"], sc)
-	var yaw := rad_to_deg(atan2(off.x, off.z) - atan2(ls.x, ls.z))
-	if snap:
+	var aim := side if across > 0.0 else off
+	var yaw := rad_to_deg(atan2(aim.x, aim.z) - atan2(ls.x, ls.z))
+	if across > 0.0:
+		yaw = snappedf(yaw, 90.0)
+	elif snap:
 		yaw = snappedf(yaw, 15.0)
 	yaw = wrapf(yaw, -180.0, 180.0)
 	var step := Basis(Vector3.UP, deg_to_rad(yaw)) * ls
 	var d2 := Vector3(step.x, 0.0, step.z).normalized()
 	var n2 := clampi(roundi(off.dot(d2) / w), 1, MapData.MAX_REPEAT)
+	if across > 0.0:
+		n2 = clampi(roundi((off.dot(d2) - across * 0.5) / w), 1, MapData.MAX_REPEAT)
 	var q: Dictionary = src.duplicate(true)
 	q.erase("repeat2")
 	q.erase("group")
@@ -1546,7 +1616,16 @@ func _line_corner(row_end: Vector3, out_dir: Vector3, w: float, off: Vector3, y:
 		q.erase("repeat")
 	q["rot"] = [r[0], snappedf(yaw, 0.01), r[2]]
 	var at := row_end + d2 * w * 0.5
+	if across > 0.0:
+		at = row_end - out_dir * across * 0.5 + d2 * (across * 0.5 + w * 0.5)
 	q["pos"] = [snappedf(at.x, 0.001), snappedf(y, 0.001), snappedf(at.z, 0.001)]
+	_put_corner(q)
+	return n2
+
+
+# The piece a corner started while a tab is being pulled (see _corner_id): put it in the map (or change it)...
+func _put_corner(q: Dictionary) -> void:
+	var k := _corner_index()
 	if _corner_id == "":
 		_corner_id = _new_id()
 	q["id"] = _corner_id
@@ -1557,7 +1636,22 @@ func _line_corner(row_end: Vector3, out_dir: Vector3, w: float, off: Vector3, y:
 	else:
 		map["pieces"][k] = _cleaned_piece(q)
 		_refresh_piece(k)
-	return n2
+
+
+# ...or take it out again (the mouse swung back in line).
+func _clear_corner() -> void:
+	var k := _corner_index()
+	if k >= 0:
+		_drop_piece(k)
+
+
+func _corner_index() -> int:
+	if _corner_id == "":
+		return -1
+	for i in map["pieces"].size():
+		if str(piece(i).get("id", "")) == _corner_id:
+			return i
+	return -1
 
 
 # Take one piece out of the map while something else stays selected (the corner run, swung back in).
@@ -1591,6 +1685,8 @@ func _tabs() -> Array:
 	if selected < 0 or drag != "" or not can_edit:
 		return []
 	var p := piece(selected)
+	if p["type"] in SLABS:
+		return _slab_tabs(p)
 	if p["type"] != "model":
 		return []
 	var steps := _ext_steps(p)
@@ -1611,6 +1707,32 @@ func _tabs() -> Array:
 	return out
 
 
+# A slab's tabs (ground blocks, sidewalks, edgings): one in the middle of each side, [axis, side, where] with
+# axis 2 = its own x and 3 = its own z. None when it's tipped up on its side.
+func _slab_tabs(p: Dictionary) -> Array:
+	var sz := MapData.vec(p["size"])
+	var xf := Transform3D(Basis.from_euler(MapData.rot_rad(p)), MapData.vec(p["pos"]))
+	if (xf.basis * Vector3.UP).y < 0.9:
+		return []
+	var lift := Vector3.UP * (sz.y + 0.2)
+	return [[2, 1, xf * Vector3(sz.x * 0.5, 0, 0) + lift], [2, -1, xf * Vector3(-sz.x * 0.5, 0, 0) + lift],
+			[3, 1, xf * Vector3(0, 0, sz.z * 0.5) + lift], [3, -1, xf * Vector3(0, 0, -sz.z * 0.5) + lift]]
+
+
+# Is this tab at an END of the slab (the end of a run, or any side of a square piece)? Ends can turn corners;
+# the tabs on a run's long sides just make it wider.
+func _slab_end(p: Dictionary, axis_index: int) -> bool:
+	var sz := MapData.vec(p["size"])
+	return (sz.x >= sz.z * 0.95) if axis_index == 2 else (sz.z >= sz.x * 0.95)
+
+
+# Which way a tab points, out from its piece.
+func _tab_out(p: Dictionary, axis_index: int, side: int) -> Vector3:
+	if axis_index >= 2:
+		return Basis.from_euler(MapData.rot_rad(p)) * (Vector3.RIGHT if axis_index == 2 else Vector3.BACK) * float(side)
+	return (_ext_steps(p)[axis_index] as Vector3).normalized() * float(side)
+
+
 func _tab_under(at: Vector2) -> Array:
 	for t in _tabs():
 		if camera.is_position_behind(t[2]):
@@ -1622,13 +1744,64 @@ func _tab_under(at: Vector2) -> Array:
 
 # Grab a pull tab: dragging the mouse adds whole copies at that end (or across, for floors).
 func pull_tab(axis_index: int, side: int) -> void:
-	begin("extend")
-	if drag != "extend":
+	var how := "stretch" if axis_index >= 2 else "extend"
+	begin(how)
+	if drag != how:
 		return
 	_ext_axis = axis_index
 	_ext_side = side
 	_grabbing = true   # (letting go of the mouse finishes it)
 	_say("Extending " + piece_name(piece(selected)) + ": pull it out (or back in), or swing out to the side to turn a corner. Let go to finish, Esc to cancel.", 999.0)
+
+
+# Stone floor tiles: the ones a paving block can stand in for.
+func _is_stone_floor(id: String) -> bool:
+	var name := id.get_slice("/", 1)
+	return Models.is_flat(id) and ("floor_tile" in name or "floor_stone" in name or "cobble" in name)
+
+
+# Swap the selected floor (a tile, a row or a whole grid of them) for one paving block covering the same
+# ground, turned the same way, in the same colour. Sara's town had 4,755 floor tiles under it: a third of the
+# map's triangles, for a floor. `every`: all the floors on the map made of the same tile.
+func to_paving(every: bool) -> void:
+	if selected < 0 or not _may_edit():
+		return
+	var model := str(piece(selected).get("model", ""))
+	if piece(selected)["type"] != "model" or not _is_stone_floor(model):
+		_say("Select a stone floor first.", 3.0)
+		return
+	var which := [selected]
+	for m in members:
+		if piece(m)["type"] == "model" and _is_stone_floor(str(piece(m).get("model", ""))):
+			which.append(m)
+	if every:
+		for i in map["pieces"].size():
+			if not i in which and piece(i)["type"] == "model" and str(piece(i).get("model", "")) == model and _claimed_by_other(piece_id(i)) == 0:
+				which.append(i)
+	_begin_change()
+	var look: int = GroundBlock.KINDS.keys().find("paving")
+	var tiles := 0
+	for i in which:
+		var q := piece(i)
+		var sc := MapData.vec(q["size"]) if q.has("size") else Vector3.ONE
+		var n1 := int(q.get("repeat", 1))
+		var n2 := int(q.get("repeat2", 1))
+		var s1 := Models.row_step(q["model"], sc)
+		var s2 := Models.row_step2(q["model"], sc)
+		var tall := maxf(Models.size(q["model"]).y * sc.y, 0.02)
+		var mid := MapData.vec(q["pos"]) + Basis.from_euler(MapData.rot_rad(q)) * (s1 * (n1 - 1) * 0.5 + s2 * (n2 - 1) * 0.5)
+		var g := {"type": "ground", "look": look, "pos": [snappedf(mid.x, 0.001), snappedf(mid.y, 0.001), snappedf(mid.z, 0.001)],
+				"size": [snappedf(absf(s1.x) * n1 + absf(s2.x) * n2, 0.001), snappedf(tall, 0.001), snappedf(absf(s1.z) * n1 + absf(s2.z) * n2, 0.001)]}
+		for key in ["id", "rot", "group", "color"]:
+			if q.has(key):
+				g[key] = q[key]
+		map["pieces"][i] = _cleaned_piece(g)
+		_refresh_piece(i)
+		tiles += n1 * n2
+	select(selected, true)
+	_sync_inspector()
+	_after_change()
+	_say("%d floor tile%s became %d paving block%s. Pick another paving in Look if you like (Ctrl+Z to undo)." % [tiles, "" if tiles == 1 else "s", which.size(), "" if which.size() == 1 else "s"], 6.0)
 
 
 func _toggle_local() -> void:
@@ -1754,9 +1927,8 @@ func _draw_lines() -> void:
 		_tab_balls[k].visible = k < tabs.size()
 	for k in tabs.size():
 		var t: Array = tabs[k]
-		var steps := _ext_steps(sel_p)
-		var outward: Vector3 = (steps[t[0]] as Vector3).normalized() * t[1]
-		var c := Color(0.4, 1.0, 0.6) if t[0] == 0 else Color(0.5, 0.8, 1.0)
+		var outward := _tab_out(sel_p, t[0], t[1])
+		var c := Color(0.4, 1.0, 0.6) if t[0] == 0 or (t[0] >= 2 and _slab_end(sel_p, t[0])) else Color(0.5, 0.8, 1.0)
 		var rr := 0.14 * maxf(1.0, camera.global_position.distance_to(t[2]) / 8.0)
 		_tab_balls[k].position = t[2]
 		_tab_balls[k].scale = Vector3.ONE * rr
@@ -2738,10 +2910,16 @@ func _build_ui() -> void:
 			bcats = ["Street/Road"]
 		built_in.append([HollowBuildings.KINDS[bk], "building:" + bk, bcats])
 	built_in.append(["Ice (slippery)", "ice", ["Ground"]])
-	built_in.append(["Sidewalk", "sidewalk", ["Ground", "Street/Road"]])
+	# (the old "Sidewalk" piece is the "Sidewalk" ground block now: Nov 28)
 	for gk in GroundBlock.KINDS:
-		built_in.append([GroundBlock.KINDS[gk] + " block", "ground:" + gk,
-				["Ground", "Street/Road"] if gk in GroundBlock.STREET_KINDS else (["Ground", "Plants/landscaping"] if gk in ["grass", "landscaping", "flowerbed"] else ["Ground"])])
+		var gcats := ["Ground"]
+		if gk in GroundBlock.STREET_KINDS:
+			gcats = ["Ground", "Street/Road"]
+		elif gk in GroundBlock.EDGINGS:
+			gcats = ["Ground", "Plants/landscaping", "Fences/pillars/walls"]
+		elif gk in ["grass", "landscaping", "flowerbed"]:
+			gcats = ["Ground", "Plants/landscaping"]
+		built_in.append([GroundBlock.label(gk), "ground:" + gk, gcats])
 	built_in.append(["Light", "light", ["Lighting"]])
 	for group in [["Props", PropLib.type_names().filter(PropLib.in_palette), "prop:"], ["Structures", Models.ids("structure"), "model:"]]:
 		var entries := []   # [label, kind, cats]
@@ -2963,6 +3141,13 @@ func _build_ui() -> void:
 	_small_button(brow, "Turn (R)", func(): begin("rotate"))
 	_small_button(brow, "Size (T)", func(): begin("scale"))
 	_extend_button = _small_button(brow, "Extend (V)", func(): begin("extend"))
+	# Repeated stone floor tiles -> one paving block the same size (Ted, Nov 28)
+	_paving_row = HBoxContainer.new()
+	_inspector.add_child(_paving_row)
+	var pv1 := _small_button(_paving_row, "Turn into paving", func(): to_paving(false))
+	pv1.tooltip_text = "Swap this floor (however many tiles) for one paving block covering the same ground: it never stretches, and it is far lighter to draw"
+	var pv2 := _small_button(_paving_row, "...every floor like it", func(): to_paving(true))
+	pv2.tooltip_text = "The same, for every floor on the map made of this tile"
 	_inspector.add_child(brow)
 	_rows["buttons"] = brow
 	var brow2 := HBoxContainer.new()
@@ -3150,7 +3335,7 @@ func piece_name(p: Dictionary) -> String:
 			return HollowBuildings.KINDS.get(p.get("kind", ""), "Walk-in building")
 		"ground":
 			var gk: Array = GroundBlock.KINDS.keys()
-			return GroundBlock.KINDS[gk[clampi(int(p.get("look", 0)), 0, gk.size() - 1)]] + " block"
+			return GroundBlock.label(gk[clampi(int(p.get("look", 0)), 0, gk.size() - 1)])
 	var title := t
 	for q in PIECES:
 		if q[0] == t:
@@ -3191,7 +3376,8 @@ func _sync_inspector() -> void:
 			_spins[k + str(a)].set_value_no_signal(vals[k][a])
 	_rows["rot"].visible = t in ROTATES
 	_rows["size"].visible = _resizable(p)
-	_extend_button.visible = t == "model"
+	_extend_button.visible = t == "model" or t in SLABS
+	_paving_row.visible = t == "model" and _is_stone_floor(p["model"])
 	_size_title.text = "Scale (× normal)" if t in ["model", "building"] else "Size (m)"
 	_rows["color"].visible = t in ["block", "cylinder", "light", "model", "ground"]
 	if t == "ice":
@@ -3254,4 +3440,4 @@ func _say(text: String, seconds: float) -> void:
 
 
 func _help_text() -> String:
-	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Ctrl+click: select several   Ctrl+G group (Alt+click one of a group)   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend   Shift+wheel turn   Alt+wheel size   Ctrl+wheel look   Arrows nudge (hold to keep going; Shift: slide up against the next piece)   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"
+	return "Hold right mouse: look   WASD: fly   Space/E up   Q down   Shift faster   Click: select   Ctrl+click: select several   Ctrl+G group (Alt+click one of a group)   Drag: move it   G move   R rotate   T resize   Drag the tabs to extend (swing sideways to turn a corner)   Shift+wheel turn   Alt+wheel size   Ctrl+wheel look   Arrows nudge (hold to keep going; Shift: slide up against the next piece)   Ctrl+D copy   Del remove   F fly to it   Ctrl+Z undo   Ctrl+S save"

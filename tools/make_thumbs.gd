@@ -61,7 +61,7 @@ func _run() -> void:
 		jobs.append([file_key("model:" + mid), func(): return Models.instance(mid)])
 	for gk in GroundBlock.KINDS:
 		var g: String = gk
-		jobs.append([file_key("ground:" + g), func(): return GroundBlock.make(g, Vector3(3, 0.6, 3))])
+		jobs.append([file_key("ground:" + g), func(): return GroundBlock.make(g, _ground_thumb_size(g))])
 	for bk in HollowBuildings.KINDS:
 		var hk: String = bk
 		jobs.append([file_key("building:" + hk), func(): return HollowBuildings.make(hk, 0)])
@@ -120,7 +120,7 @@ func _special(kind: String) -> Node3D:
 		"ice":
 			root.add_child(load("res://scripts/main.gd").make_ice({"size": [4, 0.06, 4]}))
 		"sidewalk":
-			root.add_child(load("res://scripts/decor.gd").make_sidewalk({"size": [2.0, 0.18, 3.0]}))
+			root.add_child(GroundBlock.make("sidewalk", Vector3(2.0, 0.18, 3.0)))
 		"window":
 			var w: Node3D = load("res://scripts/decor.gd").make_window({"size": [1.0, 1.4, 0.02], "look": 0})
 			w.position.y = 0.7
@@ -183,3 +183,11 @@ func _frame(node: Node3D) -> void:
 	cam.look_at(center)
 	cam.near = maxf(dist * 0.02, 0.01)
 	cam.far = dist * 4.0
+
+# Ground blocks are pictured as a 3 m square; a sidewalk as three slabs, an edging as its own short run.
+func _ground_thumb_size(g: String) -> Vector3:
+	if g == "sidewalk":
+		return Vector3(1.5, 0.15, 4.5)
+	if g in GroundBlock.EDGINGS:
+		return GroundBlock.DEFAULT_SIZES[g]
+	return Vector3(3, 0.6, 3)

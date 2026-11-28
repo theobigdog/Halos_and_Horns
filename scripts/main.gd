@@ -995,7 +995,7 @@ func _build_map() -> void:
 				var hs := HollowBuildings.size(p["kind"]) * bscale
 				structures.append([Vector2(pos.x, pos.z), maxf(hs.x, hs.z) * 0.5])
 			"sidewalk":
-				var walk := Decor.make_sidewalk(p)
+				var walk := GroundBlock.make("sidewalk", MapData.vec(p["size"]))
 				walk.position = pos
 				walk.rotation = MapData.rot_rad(p)
 				world_root.add_child(walk)

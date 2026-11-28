@@ -231,9 +231,15 @@ func _build_look() -> void:
 				_sparkles.append([mi, Vector3(cos(a), 0, sin(a)) * RADIUS * (0.3 + 0.5 * fmod(i * 0.37, 1.0)), fmod(i * 0.618, 1.0)])
 
 
-# Heaven and hell swirled together as a yin-yang on top of the pad: a starry purple-blue nebula with a bright
-# star on one side, churning fire with flying embers on the other, a dark eye with a glowing rim in each, the
-# whole thing slowly turning. All in the shader (time-driven, no particles), shared by every such pad.
+# Heaven and hell swirled together as a yin-yang on top of the pad (Ted, Nov 27, with a picture; redone Nov 28 to
+# look like it: the first try was pastel clouds). Deep space on one side: near-black, with violet and blue nebula,
+# thin teal and pink filaments, stars of every size and colour (thick as glitter along the seam) and one bright
+# star with long rays. Fire on the other: black char with glowing cracks, tongues of flame from deep red to
+# yellow-white, sparks drifting (a few over the seam into the stars). A dark red eye in each: a smoke ring round
+# the one in the fire, a thin ring of light round the one in the stars. A fine metal band round the lot, silver
+# on the star side and copper on the fire side. The whole picture turns slowly as one. It is drawn as its own
+# light (emission), so it stays dark and rich in full sun. All in the shader (time-driven, no particles), shared
+# by every such pad.
 const YIN_YANG := """
 shader_type spatial;
 render_mode cull_back;
@@ -242,57 +248,125 @@ float h(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 
 float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
 	return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
 float fbm(vec2 p) { float v = 0.0, a = 0.5; for (int k = 0; k < 5; k++) { v += a * n2(p); p = p * 2.03 + 3.1; a *= 0.5; } return v; }
+// one layer of stars: `cells` to the metre, `dens` of the cells lit, each star `size` of its cell across
+float star_layer(vec2 p, float cells, float dens, float size, out vec3 tint) {
+	vec2 g = p * cells;
+	vec2 id = floor(g);
+	float rnd = h(id);
+	vec2 off = vec2(h(id + 7.1), h(id + 13.7)) * 0.6 + 0.2;
+	float d = length(fract(g) - off);
+	float tw = 0.65 + 0.35 * sin(TIME * (1.5 + rnd * 5.0) + rnd * 40.0);
+	float hue = h(id + 3.3);
+	tint = hue < 0.6 ? vec3(1.0, 0.97, 1.0) : (hue < 0.75 ? vec3(0.65, 0.82, 1.0) : (hue < 0.9 ? vec3(1.0, 0.65, 0.95) : vec3(1.0, 0.88, 0.55)));
+	return step(1.0 - dens, rnd) * smoothstep(size, 0.0, d) * tw;
+}
+// sparks: little streaks drifting along `drift`
+float sparks(vec2 p, float cells, vec2 drift, float dens) {
+	vec2 g = p * cells + drift * TIME;
+	vec2 id = floor(g);
+	float rnd = h(id);
+	vec2 off = vec2(h(id + 5.1), h(id + 9.7)) * 0.6 + 0.2;
+	float d = length((fract(g) - off) * vec2(1.0, 0.55));
+	return step(1.0 - dens, rnd) * smoothstep(0.17, 0.0, d) * (0.55 + 0.45 * sin(TIME * 3.0 + rnd * 50.0));
+}
 void vertex() { lp = VERTEX; }
 void fragment() {
-	vec2 p0 = lp.xz / 1.0;   // (the pad's radius is about 1 m)
-	float r = length(p0);
-	float t = TIME * 0.15;
+	vec2 p0 = lp.xz;   // (the pad's radius is about 1 m)
+	float r = length(p0) / 0.9;
+	float t = TIME * 0.12;
 	mat2 rot = mat2(vec2(cos(t), sin(t)), vec2(-sin(t), cos(t)));
 	vec2 p = rot * (p0 / 0.9);
-	// which half: heaven on the left, with the swirl of two half-size circles
+	// which half: the stars on the left with their head at the bottom, the fire on the right with its head on top
 	float heaven = step(p.x, 0.0);
-	if (length(p - vec2(0.0, -0.5)) < 0.5) heaven = 1.0;
-	if (length(p - vec2(0.0, 0.5)) < 0.5) heaven = 0.0;
-	// heaven: nebula and stars
-	vec2 q = p0 * 3.0 + vec2(TIME * 0.03, 0.0);
-	vec3 neb = mix(vec3(0.02, 0.01, 0.07), vec3(0.28, 0.12, 0.5), smoothstep(0.3, 0.8, fbm(q)));
-	neb = mix(neb, vec3(0.2, 0.5, 0.75), smoothstep(0.55, 0.85, fbm(q * 1.7 + 4.0)) * 0.6);
-	neb = mix(neb, vec3(0.85, 0.5, 0.85), smoothstep(0.7, 0.95, fbm(q * 0.8 + 9.0)) * 0.4);
-	vec2 sc = floor(p0 * 40.0);
-	float star = step(0.965, h(sc)) * (0.6 + 0.4 * sin(TIME * (2.0 + h(sc + 3.0) * 4.0) + h(sc) * 30.0));
-	star *= smoothstep(0.35, 0.0, length(fract(p0 * 40.0) - 0.5));
-	vec2 bright = rot * vec2(-0.42, 0.05) * 0.9;
-	float flare = 0.02 / (length(p0 - bright) + 0.01) + 0.004 / (abs((p0 - bright).x) + 0.004) * smoothstep(0.25, 0.0, abs((p0 - bright).y))
-			+ 0.004 / (abs((p0 - bright).y) + 0.004) * smoothstep(0.25, 0.0, abs((p0 - bright).x));
-	vec3 heaven_c = neb + vec3(1.0, 0.95, 1.0) * star + vec3(0.9, 0.85, 1.0) * min(flare * 0.25, 2.0);
-	// hell: fire churning upward and round, embers, dark char
-	vec2 fq = p0 * 3.0;
-	fq += vec2(fbm(fq + vec2(0.0, TIME * 0.5)), fbm(fq + vec2(5.2, TIME * 0.4))) * 1.4;   // (warped: licking flames)
-	float f = fbm(fq + vec2(0.0, -TIME * 0.6));
-	vec3 fire = mix(vec3(0.06, 0.01, 0.0), vec3(0.55, 0.06, 0.01), smoothstep(0.3, 0.55, f));
-	fire = mix(fire, vec3(0.95, 0.35, 0.04), smoothstep(0.52, 0.72, f));
-	fire = mix(fire, vec3(1.0, 0.78, 0.3), smoothstep(0.7, 0.85, f) * 0.8);
-	vec2 ec = floor(p0 * 30.0 + vec2(0.0, -TIME * 2.0));
-	float ember = step(0.975, h(ec)) * smoothstep(0.3, 0.0, length(fract(p0 * 30.0 + vec2(0.0, -TIME * 2.0)) - 0.5));
-	vec3 hell_c = fire + vec3(1.0, 0.5, 0.1) * ember * 2.0;
+	if (length(p - vec2(0.0, 0.5)) < 0.5) heaven = 1.0;
+	if (length(p - vec2(0.0, -0.5)) < 0.5) heaven = 0.0;
+	// how far from the S between them (the left half of the top circle, the right half of the bottom one)
+	float seam = min(abs(length(p - vec2(0.0, -0.5)) - 0.5) + step(0.0, p.x) * 9.0, abs(length(p - vec2(0.0, 0.5)) - 0.5) + step(p.x, 0.0) * 9.0);
+
+	// ---- the stars ----
+	vec2 q = p * 2.4;
+	vec2 nw = vec2(fbm(q + vec2(TIME * 0.02, 3.0)), fbm(q + vec2(7.0, -TIME * 0.015)));
+	float n1 = fbm(q + nw * 1.6);
+	float fil = pow(1.0 - abs(2.0 * fbm(q * 0.9 + nw * 2.2 + 11.0) - 1.0), 3.0);   // soft wisps
+	vec3 neb = vec3(0.012, 0.006, 0.035);
+	neb = mix(neb, vec3(0.17, 0.05, 0.4), smoothstep(0.35, 0.7, n1));
+	neb = mix(neb, vec3(0.07, 0.15, 0.55), smoothstep(0.5, 0.8, fbm(q * 1.5 + 4.0 + nw)) * 0.7);
+	neb += vec3(0.75, 0.3, 0.85) * smoothstep(0.62, 0.9, n1) * 0.35;
+	neb += vec3(0.2, 0.6, 0.8) * fil * 0.22;
+	neb += vec3(0.85, 0.7, 1.0) * pow(fil, 4.0) * 0.3;
+	vec3 tint;
+	vec3 stars = vec3(0.0);
+	float s1 = star_layer(p, 70.0, 0.35, 0.22, tint);
+	stars += tint * s1 * 0.6;
+	float s2 = star_layer(p + 3.7, 34.0, 0.16, 0.26, tint);
+	stars += tint * s2 * 1.3;
+	float s3 = star_layer(p + 9.1, 13.0, 0.12, 0.3, tint);
+	stars += tint * s3 * 2.4;
+	float s4 = star_layer(p + 5.5, 95.0, 0.6, 0.25, tint);
+	stars += tint * s4 * smoothstep(0.26, 0.0, seam) * 1.0;
+	// the bright star: a hot core, four long rays, four short ones, a violet halo
+	vec2 dd = p - vec2(-0.46, 0.06);
+	float core = 0.012 / (dot(dd, dd) + 0.0008);
+	float rays = 0.0035 / (abs(dd.x) + 0.0035) * exp(-abs(dd.y) * 7.0) + 0.0035 / (abs(dd.y) + 0.0035) * exp(-abs(dd.x) * 7.0);
+	vec2 dg = vec2(dd.x + dd.y, dd.x - dd.y) * 0.7071;
+	float short_rays = 0.002 / (abs(dg.x) + 0.002) * exp(-abs(dg.y) * 16.0) + 0.002 / (abs(dg.y) + 0.002) * exp(-abs(dg.x) * 16.0);
+	vec3 flare = vec3(1.0, 0.97, 1.0) * min(core * 0.35, 3.0) + vec3(0.9, 0.85, 1.0) * (rays + short_rays * 0.6) * 1.2
+			+ vec3(0.6, 0.35, 0.95) * exp(-length(dd) * 9.0) * 0.6;
+	flare *= 0.9 + 0.1 * sin(TIME * 2.3);
+	vec3 heaven_c = neb + stars + flare;
+	// a few sparks from the fire over the seam
+	heaven_c += vec3(1.0, 0.45, 0.08) * sparks(p, 26.0, vec2(-0.5, -0.9), 0.3) * smoothstep(0.3, 0.02, seam) * 1.6;
+
+	// ---- the fire ----
+	vec2 fq = p * 2.6;
+	vec2 warp = vec2(fbm(fq * 1.3 + vec2(1.7, -TIME * 0.35)), fbm(fq * 1.3 + vec2(8.3, -TIME * 0.28)));
+	float f = fbm(fq + warp * 1.8 + vec2(0.0, -TIME * 0.25));
+	float ridge = 1.0 - abs(2.0 * fbm(fq * 1.6 + warp * 2.4 + vec2(3.0, -TIME * 0.45)) - 1.0);
+	float burns = smoothstep(0.36, 0.62, fbm(p * 1.5 + vec2(4.0, TIME * 0.05)));   // (the rest is black char)
+	float heat = clamp((f * 1.12 + pow(ridge, 3.0) * 0.5) * burns, 0.0, 1.0);
+	float cracks = pow(1.0 - abs(2.0 * fbm(p * 5.0 + 20.0) - 1.0), 8.0);
+	vec3 fire = vec3(0.035, 0.012, 0.008) + vec3(0.3, 0.035, 0.0) * cracks * 0.6;
+	fire = mix(fire, vec3(0.45, 0.03, 0.0), smoothstep(0.25, 0.45, heat));
+	fire = mix(fire, vec3(0.95, 0.28, 0.02), smoothstep(0.42, 0.6, heat));
+	fire = mix(fire, vec3(1.0, 0.62, 0.12), smoothstep(0.58, 0.75, heat));
+	fire = mix(fire, vec3(1.0, 0.9, 0.55), smoothstep(0.84, 0.98, heat));
+	vec3 hell_c = fire + vec3(1.0, 0.5, 0.1) * (sparks(p, 22.0, vec2(0.3, -1.1), 0.22) * 2.2 + sparks(p + 4.4, 40.0, vec2(-0.6, -1.6), 0.2) * 1.4);
+
 	vec3 col = mix(hell_c, heaven_c, heaven);
-	// the seam between them glows a little
-	// (the S: the right half of one small circle and the left half of the other)
-	float seam = min(abs(length(p - vec2(0.0, -0.5)) - 0.5) + step(p.x, 0.0) * 9.0, abs(length(p - vec2(0.0, 0.5)) - 0.5) + step(0.0, p.x) * 9.0);
-	col += vec3(0.9, 0.7, 0.9) * smoothstep(0.03, 0.0, seam) * 0.5;
-	// the two eyes: dark, with a hot rim
+	// the seam: a thin line of light
+	col += vec3(0.95, 0.8, 1.0) * (0.0035 / (seam + 0.0035)) * 0.35;
+
+	// ---- the two eyes: dark red balls ----
 	for (int k = 0; k < 2; k++) {
-		vec2 ec2 = vec2(0.0, k == 0 ? 0.5 : -0.5);
-		float d = length(p - ec2);
-		col = mix(col, vec3(0.05, 0.01, 0.01), smoothstep(0.15, 0.13, d));
-		col += vec3(0.9, 0.25, 0.05) * smoothstep(0.03, 0.0, abs(d - 0.15)) * 0.8;
+		vec2 ec = vec2(0.0, k == 0 ? -0.5 : 0.5);
+		float d = length(p - ec);
+		float er = 0.14;
+		vec2 nrm = (p - ec) / er;
+		float sph = sqrt(max(0.0, 1.0 - dot(nrm, nrm)));
+		vec3 ball = mix(vec3(0.05, 0.005, 0.005), vec3(0.42, 0.06, 0.03), pow(sph, 1.5) * (0.6 + 0.4 * n2(p * 30.0 + float(k) * 9.0)));
+		ball += vec3(0.5, 0.12, 0.05) * pow(max(0.0, dot(normalize(vec3(nrm, sph)), normalize(vec3(-0.4, -0.5, 0.75)))), 6.0) * 0.4;
+		if (k == 0) {
+			// in the fire: a ring of grey smoke round it
+			float smoke = smoothstep(er + 0.14, er + 0.01, d) * (0.5 + 0.7 * fbm(p * 9.0 + vec2(TIME * 0.1, 0.0)));
+			col = mix(col, vec3(0.2, 0.17, 0.16) * (0.5 + 0.9 * fbm(p * 14.0 + 3.0)), clamp(smoke, 0.0, 0.9));
+			col = mix(col, vec3(0.02, 0.01, 0.01), smoothstep(er + 0.035, er, d) * 0.8);
+		} else {
+			// in the stars: a thin ring of light
+			col += vec3(0.95, 0.85, 1.0) * (0.004 / (abs(d - er - 0.012) + 0.004)) * 0.5 * smoothstep(er + 0.2, er, d);
+		}
+		col = mix(col, ball, smoothstep(er, er - 0.012, d));
 	}
-	// outside the yin-yang: dark
-	col = mix(col, vec3(0.03, 0.03, 0.05), smoothstep(0.99, 1.01, r / 0.9));
-	ALBEDO = col * 0.4;
-	EMISSION = col * 0.7;
-	ROUGHNESS = 0.25;
-	SPECULAR = 0.6;
+	// a fine metal band round it: silver by the stars, copper by the fire
+	vec3 metal = mix(vec3(0.75, 0.72, 0.92), vec3(0.9, 0.48, 0.2), smoothstep(-0.5, 0.5, p.x));
+	float band = smoothstep(0.022, 0.012, abs(r - 1.0));
+	col = mix(col, metal * (0.55 + 0.45 * n2(vec2(atan(p.y, p.x) * 6.0, 2.0))), band);
+	// outside it: dark
+	col = mix(col, vec3(0.02, 0.02, 0.03), smoothstep(1.02, 1.035, r));
+	col = pow(max(col, vec3(0.0)), vec3(2.2));   // (the colours above are as seen; light adds up in linear)
+	ALBEDO = col * 0.12;
+	EMISSION = col * 1.5;
+	ROUGHNESS = 0.35;
+	SPECULAR = 0.3;
 }
 """
 static var _yy_mat: ShaderMaterial

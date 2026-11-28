@@ -35,7 +35,7 @@ func _pick(set_name: String) -> Array:
 		fam = fam.left(-2)
 	match kind:
 		"ids":
-			for id in fam.split(",", false):
+			for id in set_name.substr(4).split(",", false):   # (the whole rest: "building:oak" has a colon of its own)
 				out.append(id)
 		"anim":
 			var PA = load("res://scripts/prop_anims.gd")

@@ -45,9 +45,17 @@ static func make(kind: String, look: int) -> Node3D:
 		cl.mesh = _clumps(kind, look, spots)
 		cl.material_override = ClassicProps._vmat("plant", 0.9)
 		root.add_child(cl)
-	var per := 280 if kind == "oak" else 240   # (Nov 27: fuller, finer crowns)
-	var count: int = spots.size() * (per if look != 3 else per / 4)
-	ClassicProps._foliage(root, "tree_%s_%d" % [kind, look], spots, count, 0.17 if kind == "oak" else 0.13, LEAVES[look], 500 + look * 7 + (0 if kind == "oak" else 50))
+	# Leafy shoots rooted in the clumps (Nov 28: single leaves were a fuzz floating off them). Late autumn has
+	# no clumps to root them in, so what leaves are left hang in bunches at the ends of the branches.
+	var per := 85 if kind == "oak" else 75
+	if look == 3:
+		spots = []
+		for k in int(g["tips"]):
+			spots.append([g["crown"][k][0], float(g["crown"][k][1]) * 0.4])
+		per = 14
+	var count: int = spots.size() * per
+	ClassicProps._foliage(root, "tree_%s_%d" % [kind, look], spots, count, 0.52 if kind == "oak" else 0.4, LEAVES[look], 500 + look * 7 + (0 if kind == "oak" else 50), "spray")
+	spots = g["crown"]
 	if look == 1:
 		ClassicProps._foliage(root, "tree_%s_bloom" % kind, spots, spots.size() * 60, 0.24, [Color(1.0, 0.8, 0.88), Color(1.0, 0.97, 0.97)], 909, "petal")
 	var body := StaticBody3D.new()
@@ -73,7 +81,7 @@ static func _clumps(kind: String, look: int, spots: Array) -> ArrayMesh:
 	return _cache[key]
 
 
-# The trunk and branches (one mesh), and where the leafy clumps go: {bark, crown: [[centre, radius], ...]}.
+# The trunk and branches (one mesh), and where the leafy clumps go: {bark, crown: [[centre, radius], ...], tips}.
 static func _grow(kind: String) -> Dictionary:
 	if _cache.has(kind):
 		return _cache[kind]
@@ -82,6 +90,7 @@ static func _grow(kind: String) -> Dictionary:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var crown := []
+	var tips := 0   # how many of the crown's clumps sit on the ends of branches (the first ones)
 	var oak := kind == "oak"
 	var bark_col := Color(0.3, 0.22, 0.16) if oak else Color(0.88, 0.86, 0.8)
 	var top := Vector3(0, 2.4, 0) if oak else Vector3(0.1, 6.2, -0.05)
@@ -108,6 +117,7 @@ static func _grow(kind: String) -> Dictionary:
 			var base: Vector3 = tpts[n - rng.randi_range(0, 2)]
 			var dir := (d * 0.7 + Vector3.UP * rng.randf_range(0.9, 1.2)).normalized()
 			_limb(st, rng, base, dir, 1.9, 0.18, 2, crown, bark_col, oak)
+		tips = crown.size()
 		_fill(crown, rng, Vector3(0, 4.7, 0), Vector3(2.5, 1.9, 2.5), 30, 0.85, 1.2)
 	else:
 		# short branches up the trunk, angled up, and a narrow crown of clumps along the top half
@@ -117,10 +127,11 @@ static func _grow(kind: String) -> Dictionary:
 			var a := k * 2.4
 			var dir := (Vector3(cos(a), 0, sin(a)) * 0.7 + Vector3.UP * 0.9).normalized()
 			_limb(st, rng, base, dir, lerpf(1.3, 0.7, t), lerpf(0.05, 0.025, t), 1, crown, bark_col, oak)
+		tips = crown.size()
 		_fill(crown, rng, top + Vector3(0, -0.9, 0), Vector3(1.15, 2.4, 1.15), 24, 0.5, 0.72)
 	st.index()
 	st.generate_normals()
-	var out := {"bark": st.commit(), "crown": crown}
+	var out := {"bark": st.commit(), "crown": crown, "tips": tips}
 	_cache[kind] = out
 	return out
 
