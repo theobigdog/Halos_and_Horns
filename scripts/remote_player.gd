@@ -180,6 +180,13 @@ func apply_state(pos: Vector3, yaw: float, new_form: String, new_role: String) -
 		_rebuild()
 
 
+# Host: this demon was caught while invisible. It's an angel now, and angels are never hidden.
+func show_again() -> void:
+	if _vanished:
+		_vanish_left = 0.0
+		_unvanish()
+
+
 func _unvanish() -> void:
 	_vanished = false
 	if _visual:

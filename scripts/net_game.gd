@@ -223,6 +223,8 @@ func c_hello(player_name: String, version: int, angel_skills: Array, demon_skill
 	if not is_host:
 		return
 	var id := multiplayer.get_remote_sender_id()
+	if peers.has(id):
+		return   # (already in: a second hello would hand them a fresh record, full health included)
 	if version != main.game_build:
 		s_kicked.rpc_id(id, "Version mismatch: the host is running version %s. Download that version to join." % main.game_version)
 		get_tree().create_timer(0.5).timeout.connect(func():
@@ -255,7 +257,9 @@ func _on_peer_disconnected(id: int) -> void:
 	build_cams.erase(id)
 	build_can.erase(id)
 	print("[host] %s left" % rec["name"])
+	_solo_waiting.erase(id)
 	if rec["in_round"]:
+		_minion_gone(id, true)   # (it used to wander on, ownerless, until its time ran out)
 		main.authority_release(id, rec["pos"], rec["yaw"])
 		_remove_remote(rec["eid"])
 		for other in _client_ids():
@@ -465,7 +469,7 @@ func _reset_round_mirrors(rec: Dictionary) -> void:
 	rec["active_at"] = now()
 	rec["dash_until"] = 0.0
 	rec["locked_until"] = 0.0
-	for k in ["fast_hatred_until", "quick_throw_until", "quick_skills_until", "sense_until"]:
+	for k in ["fast_hatred_until", "quick_throw_until", "quick_skills_until", "sense_until", "vanish_until"]:
 		rec[k] = 0.0
 	rec["sense_near"] = false
 
@@ -977,7 +981,9 @@ func _client_tick(delta: float) -> void:
 
 func _in_bounds(pos: Vector3) -> bool:
 	var limit: float = main.MAP_HALF + 0.4
-	return absf(pos.x) <= limit and absf(pos.z) <= limit and pos.y > -3.0 and pos.y < 25.0
+	# (up to the map's own ceiling: it was a fixed 25 m, so on a map with a higher one the host kept snapping
+	# joined players back down as soon as they flew or bounced past 25 m)
+	return absf(pos.x) <= limit and absf(pos.z) <= limit and pos.y > -3.0 and pos.y < maxf(float(main.CEILING), 24.0) + 1.0
 
 
 @rpc("any_peer", "call_remote", "unreliable_ordered")
@@ -988,6 +994,8 @@ func c_state(pos: Vector3, yaw: float, form: String, flying: bool, sneaking := f
 	if not peers.has(id) or not peers[id]["in_round"]:
 		return
 	var rec: Dictionary = peers[id]
+	if not pos.is_finite() or not is_finite(yaw):
+		return   # (junk numbers: nothing to check, nothing to pass on)
 	rec["sneak"] = sneaking
 	var t := now()
 	# (Two updates can arrive in the same instant; count at least one update's worth of time.)
@@ -1116,6 +1124,8 @@ func c_throw(origin: Vector3, velocity: Vector3, kind: String, gravity: float, s
 	var rec: Dictionary = peers[id]
 	if not rec["in_round"] or rec["role"] != "angel" or phase != "hunting":
 		return
+	if not origin.is_finite() or not velocity.is_finite() or not is_finite(gravity):
+		return
 	var drop := 4.0 * GameRules.f("throw_drop")
 	if not Blessings.KINDS.has(kind) or velocity.length() > 85.0 * maxf(1.0, GameRules.f("throw_speed")) 			or gravity < minf(3.9, drop - 0.1) or gravity > maxf(16.1, drop + 0.1):
 		return
@@ -1195,7 +1205,7 @@ func c_hit_claim(seq: int, eid: int, point: Vector3) -> void:
 	if not is_host or phase != "hunting":
 		return
 	var id := multiplayer.get_remote_sender_id()
-	if not peers.has(id):
+	if not peers.has(id) or not point.is_finite():
 		return
 	var rec: Dictionary = peers[id]
 	var entry = rec.get("throw_log", {}).get(seq)
@@ -1363,7 +1373,7 @@ func c_minion_state(pos: Vector3, yaw: float) -> void:
 	if not is_host:
 		return
 	var id := multiplayer.get_remote_sender_id()
-	if not minions.has(id):
+	if not minions.has(id) or not pos.is_finite() or not is_finite(yaw):
 		return
 	var m: Dictionary = minions[id]
 	var t := now()
@@ -1503,8 +1513,9 @@ func _catch(id: int, how := "") -> void:
 	main.announce(news)
 	for other in _client_ids():
 		s_announce.rpc_id(other, news)
-		if remotes.has(rec["eid"]):
-			remotes[rec["eid"]].apply_state(rec["pos"], rec["yaw"], "", "angel")
+	if remotes.has(rec["eid"]):
+		remotes[rec["eid"]].show_again()   # (caught while invisible: the new angel isn't hidden any more)
+		remotes[rec["eid"]].apply_state(rec["pos"], rec["yaw"], "", "angel")
 	_broadcast_count()   # count first, so "N left" messages are up to date
 	# Down to the last demon (and there were more to begin with): everyone hears who.
 	if _demons_left() == 1 and _start_demons > 1:
@@ -2018,7 +2029,9 @@ func _relay_chat(id: int, text: String, team_only: bool) -> void:
 	var in_round: bool = phase == "hiding" or phase == "hunting"
 	var sender_role: String = rec["role"] if in_round and rec["in_round"] else ""
 	for to in peers:
-		if team_only and peers[to]["role"] != rec["role"]:
+		# (team chat: teammates in this round only. Roles linger between rounds, so someone waiting in the lobby
+		# or just joined could otherwise read a team's chat.)
+		if team_only and in_round and to != id and (peers[to]["role"] != rec["role"] or not peers[to]["in_round"] or not rec["in_round"]):
 			continue
 		if to == 1:
 			main.show_chat(rec["name"], sender_role, text, team_only)
@@ -2108,6 +2121,8 @@ func c_skill(skill: String, origin: Vector3, dir: Vector3, point: Vector3, index
 	if not is_host:
 		return
 	var id := multiplayer.get_remote_sender_id()
+	if not origin.is_finite() or not dir.is_finite() or not point.is_finite() or dir.length() < 0.001:
+		return
 	if not _skill_allowed(id, skill, origin):
 		return
 	var rec: Dictionary = peers[id]
@@ -2142,6 +2157,8 @@ func c_melee(origin: Vector3, dir: Vector3) -> void:
 	if not is_host:
 		return
 	var id := multiplayer.get_remote_sender_id()
+	if not origin.is_finite() or not dir.is_finite() or dir.length() < 0.001:
+		return
 	if not peers.has(id) or not _melee_allowed(id, origin):
 		return
 	var rec: Dictionary = peers[id]
@@ -2211,7 +2228,7 @@ func request_bump(prop: int, eid: int, push: Vector3) -> void:
 
 @rpc("any_peer", "call_remote", "unreliable")
 func c_bump(prop: int, eid: int, push: Vector3) -> void:
-	if is_host:
+	if is_host and push.is_finite():
 		_bump(multiplayer.get_remote_sender_id(), prop, eid, push)
 
 

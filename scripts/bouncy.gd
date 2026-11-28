@@ -210,6 +210,8 @@ func _build_look() -> void:
 			cc.top_radius = RADIUS * 0.28
 			cc.bottom_radius = RADIUS * 0.28
 			cc.height = 0.01
+			cc.radial_segments = 24
+			cc.rings = 1
 			core.mesh = cc
 			core.material_override = _mat(Color(1.0, 0.9, 1.0), true)
 			core.position.y = 0.065
@@ -311,6 +313,8 @@ func _disc(top_r: float, bottom_r: float, h: float, y: float) -> MeshInstance3D:
 	c.top_radius = top_r
 	c.bottom_radius = bottom_r
 	c.height = h
+	c.radial_segments = 40   # (round to a couple of millimetres at this size; the default is 64 x 4)
+	c.rings = 1
 	mi.mesh = c
 	mi.position.y = y
 	add_child(mi)

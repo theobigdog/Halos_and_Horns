@@ -659,6 +659,8 @@ static func _crown(kind: String, role: String, has_hat: bool, hull := PackedVect
 					cm.top_radius = 0.0
 					cm.bottom_radius = 0.04 if kind == "halo_star" else 0.025
 					cm.height = 0.16 if kind == "halo_star" else 0.12
+					cm.radial_segments = 8   # (Godot's default, 64 x 4, made the eight little spikes 4,600 triangles)
+					cm.rings = 1
 					spike.mesh = cm
 					spike.material_override = gold if kind == "halo_star" else _plain(Color(0.35, 0.25, 0.12))
 					spike.position = Vector3(cos(a) * 0.4, top + 0.25, sin(a) * 0.4)

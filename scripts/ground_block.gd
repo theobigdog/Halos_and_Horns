@@ -697,7 +697,7 @@ static func _build_extras(kind: String, sz: Vector3, q: int) -> Array:
 						xf.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * rng.randf_range(1.0, 1.5), s * 0.6, s)), pos))
 						var v := rng.randf_range(0.8, 1.15)
 						cols.append(Color(0.44 * v, 0.29 * v, 0.18 * v))
-					out.append([_multi(_rock(), xf, cols), _clods_mat(), no_shadow])
+					out.append([_multi(_rock(true), xf, cols), _clods_mat(), no_shadow])
 				# pebbles, and the odd weed pushing through
 				var pn := clampi(int(area * 2.0), 0, 80)
 				var pxf := []
@@ -708,7 +708,7 @@ static func _build_extras(kind: String, sz: Vector3, q: int) -> Array:
 					var gv := rng.randf_range(0.5, 0.75)
 					pcols.append(Color(gv, gv * 0.96, gv * 0.9))
 				if pn >= 1:
-					out.append([_multi(_rock(), pxf, pcols), _stones_mat(), no_shadow])
+					out.append([_multi(_rock(true), pxf, pcols), _stones_mat(), no_shadow])
 				var wn := clampi(int(area * 0.5), 0, 30)
 				if wn >= 1:
 					var wxf := []
@@ -730,7 +730,7 @@ static func _build_extras(kind: String, sz: Vector3, q: int) -> Array:
 						xf.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s * 1.3, s * 0.6, s)), pos))
 						var g := rng.randf_range(0.5, 0.8)
 						cols.append(Color(g, g * rng.randf_range(0.93, 1.0), g * rng.randf_range(0.82, 0.98)))
-					out.append([_multi(_rock(), xf, cols), _stones_mat(), no_shadow])
+					out.append([_multi(_rock(true), xf, cols), _stones_mat(), no_shadow])
 		"landscaping":
 			var edge := 0.16
 			_stone_edging(out, sz, rng, edge)
@@ -791,7 +791,7 @@ static func _stone_edging(out: Array, sz: Vector3, rng: RandomNumberGenerator, w
 			var g := rng.randf_range(0.42, 0.6)
 			cols.append(Color(g, g * rng.randf_range(0.95, 1.0), g * rng.randf_range(0.86, 0.97)))
 	var shadow := GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	out.append([_multi(_rock(), xf, cols), _stones_mat(), shadow])
+	out.append([_multi(_rock(true), xf, cols), _stones_mat(), shadow])   # (hundreds round a big bed: the lighter stone)
 
 
 # Four timber boards standing round the edge (lapped at the corners).
@@ -874,15 +874,22 @@ static func _spot(rng: RandomNumberGenerator, hx: float, hz: float, r: float, ta
 
 # ---- shared meshes ----
 
-# A chunky faceted pebble about 2 units across (scaled per instance).
-static func _rock() -> ArrayMesh:
-	if _rock_mesh != null:
+# A chunky faceted pebble about 2 units across (scaled per instance). `small`: the same with half the facets, for
+# the clods, pebbles and gravel no bigger than a fist that get scattered by the hundred (Nov 27 audit: a dirt
+# block was 7,800 triangles of them).
+static var _pebble_mesh: ArrayMesh
+
+
+static func _rock(small := false) -> ArrayMesh:
+	if small and _pebble_mesh != null:
+		return _pebble_mesh
+	if not small and _rock_mesh != null:
 		return _rock_mesh
 	var sm := SphereMesh.new()
 	sm.radius = 1.0
 	sm.height = 2.0
-	sm.radial_segments = 8
-	sm.rings = 5
+	sm.radial_segments = 6 if small else 8
+	sm.rings = 3 if small else 5
 	var arr := sm.get_mesh_arrays()
 	var verts: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
 	for i in verts.size():
@@ -900,6 +907,9 @@ static func _rock() -> ArrayMesh:
 	st.create_from(tmp, 0)
 	st.deindex()
 	st.generate_normals()     # flat facets
+	if small:
+		_pebble_mesh = st.commit()
+		return _pebble_mesh
 	_rock_mesh = st.commit()
 	return _rock_mesh
 

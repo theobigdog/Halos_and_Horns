@@ -232,6 +232,8 @@ static func _cyl(top_r: float, bottom_r: float, h: float) -> CylinderMesh:
 	c.top_radius = top_r
 	c.bottom_radius = bottom_r
 	c.height = h
+	c.radial_segments = 24
+	c.rings = 1
 	return c
 
 

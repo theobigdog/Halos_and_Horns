@@ -866,7 +866,7 @@ func _overlay_parts(look: String, on: bool) -> void:
 		var g := mi as GeometryInstance3D
 		if not g.has_meta("own_overlay"):
 			g.set_meta("own_overlay", g.material_overlay)
-		g.material_overlay = mat if on else g.get_meta("own_overlay")
+		g.material_overlay = mat if on else g.get_meta("own_overlay", null)   # (Low graphics: no overlay to put back)
 
 
 # ---------- squirts, scribbles, pours ----------

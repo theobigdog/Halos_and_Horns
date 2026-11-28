@@ -69,7 +69,7 @@ static func _clumps(kind: String, look: int, spots: Array) -> ArrayMesh:
 		var shrunk := []
 		for s in spots:
 			shrunk.append([s[0], float(s[1]) * 0.86])
-		_cache[key] = ClassicProps._clumps(shrunk, CLUMP[look], 3 + look)
+		_cache[key] = ClassicProps._clumps(shrunk, CLUMP[look], 3 + look, 10, 5)   # (under thousands of leaves: coarse is plenty)
 	return _cache[key]
 
 

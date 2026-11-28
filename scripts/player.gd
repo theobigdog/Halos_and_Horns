@@ -496,7 +496,7 @@ func _physics_process(delta: float) -> void:
 	else:
 		if flying:
 			# Thrust up against plain gravity; WASD steers like any other time in the air.
-			var g_fly: float = gravity * tuning["gravity_scale"] * GameRules.f("gravity") * GameRules.f("gravity")
+			var g_fly: float = gravity * tuning["gravity_scale"] * GameRules.f("gravity")   # (the rule used to count twice here)
 			# Already falling? Catch yourself much harder, so the fall stops quickly
 			# (taking off from the ground or a jump feels the same as before).
 			var thrust := FLY_THRUST * GameRules.f("fly_lift") * (FLY_CATCH_BOOST if velocity.y < 0.0 else 1.0)
@@ -1208,10 +1208,12 @@ func _ghostly(on: bool) -> void:
 	for n in visual_root.find_children("*", "GeometryInstance3D", true, false):
 		var g := n as GeometryInstance3D
 		if on:
-			g.set_meta("own_material", g.material_override)
+			# (kept in a list: most model parts have no material of their own, and storing "nothing" stores
+			# nothing at all, so they used to stay ghostly on your own screen after the invisibility ran out)
+			g.set_meta("own_material", [g.material_override])
 			g.material_override = ghost_material()
 		elif g.has_meta("own_material"):
-			g.material_override = g.get_meta("own_material")
+			g.material_override = (g.get_meta("own_material") as Array)[0]
 			g.remove_meta("own_material")
 
 

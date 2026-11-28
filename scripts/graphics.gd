@@ -364,6 +364,7 @@ func apply(level: int) -> void:
 	quality = clampi(level, 0, 2)
 	Effects.quality = quality
 	Models.set_grime(quality >= 1)
+	Models.smooth_on = quality >= 1   # (Low keeps the models as they come: fewer triangles)
 	var vp := get_viewport()
 	if _fall:
 		_make_fall(WEATHER[weather]["fall"])   # (more drops on higher settings)

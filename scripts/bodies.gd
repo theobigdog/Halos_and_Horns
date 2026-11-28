@@ -45,6 +45,8 @@ static func make_capsule(role: String) -> Node3D:
 	var capsule := CapsuleMesh.new()
 	capsule.radius = BODY_RADIUS
 	capsule.height = BODY_HEIGHT
+	capsule.radial_segments = 24   # (the default, 64 x 8, is 2,000 triangles)
+	capsule.rings = 6
 	body.mesh = capsule
 	body.position.y = BODY_HEIGHT / 2.0
 	root.add_child(body)
@@ -71,6 +73,8 @@ static func make_capsule(role: String) -> Node3D:
 			cone.top_radius = 0.0
 			cone.bottom_radius = 0.08
 			cone.height = 0.3
+			cone.radial_segments = 12
+			cone.rings = 1
 			horn.mesh = cone
 			horn.material_override = PropLib.mat(Color(0.15, 0.1, 0.1))
 			horn.position = Vector3(0.17 * side, 1.75, 0.0)

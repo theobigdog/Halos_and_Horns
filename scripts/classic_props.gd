@@ -1338,19 +1338,21 @@ static func _foliage(root: Node3D, key: String, spots: Array, count: int, size: 
 	root.add_child(mmi)
 
 
-# Lumpy round clumps (the leafy mass under the cards).
-static func _clumps(spots: Array, col: Color, seed: int) -> ArrayMesh:
+# Lumpy round clumps (the leafy mass under the cards). `sides` round and `rings` up and down: 14 x 8 for a bush
+# you stand next to; crowns high overhead and whole groves use far fewer, since the leaf cards cover them (a
+# grove's clumps alone were 57,000 triangles at full detail: Nov 27 audit).
+static func _clumps(spots: Array, col: Color, seed: int, sides := 14, rings := 8) -> ArrayMesh:
 	var st := _begin()
 	for s in spots:
 		var c: Vector3 = s[0]
 		var r: float = s[1]
 		var prof := []
-		for k in 9:
-			var t := -PI * 0.5 + PI * k / 8.0
+		for k in rings + 1:
+			var t := -PI * 0.5 + PI * k / float(rings)
 			prof.append([cos(t) * r * 0.92, sin(t) * r * 0.85])
 		var ph := float(seed) + c.x * 7.0 + c.z * 3.0
-		_lathe(st, prof, 14, func(i: int, a: float) -> Color: return col.darkened(0.35 * (1.0 - float(i) / 8.0)).lightened(0.1 * sin(a * 3.0 + ph)),
-				c, func(i: int, a: float) -> float: return 1.0 + 0.12 * sin(a * 4.0 + ph + float(i)) * sin(PI * i / 8.0))
+		_lathe(st, prof, sides, func(i: int, a: float) -> Color: return col.darkened(0.35 * (1.0 - float(i) / rings)).lightened(0.1 * sin(a * 3.0 + ph)),
+				c, func(i: int, a: float) -> float: return 1.0 + 0.12 * sin(a * 4.0 + ph + float(i) * 8.0 / rings) * sin(PI * i / float(rings)))
 	return _end(st, true)
 
 

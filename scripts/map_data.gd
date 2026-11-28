@@ -22,7 +22,9 @@ const Models = preload("res://scripts/models.gd")
 
 const FORMAT := 1
 const BUILT_IN := ["res://maps/playground.json"]
-const USER_DIR := "user://maps"
+# (automated runs are headless and keep their maps apart from the player's own: the tests save, autosave and
+# delete maps here)
+static var USER_DIR := "user://maps_headless" if DisplayServer.get_name() == "headless" else "user://maps"
 const MAX_BYTES := 2 * 1024 * 1024
 const MAX_PIECES := 5000
 const MAX_COORD := 500.0

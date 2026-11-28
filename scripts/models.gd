@@ -188,6 +188,7 @@ static func set_grime(on: bool) -> void:
 
 
 static var grime_on := true
+static var smooth_on := true      # Medium and High: the KayKit models are rounded out (model_smooth.gd)
 
 
 const LOOK_NAMES := ["Weathered", "Clean", "Mossy", "Charred", "Aged", "Shadowy", "Icy", "Bloodstained"]
@@ -451,6 +452,18 @@ static func is_ground(id: String) -> bool:
 	return name.begins_with("road_") or name.begins_with("floor_") or name.begins_with("path_") or name.begins_with("sidewalk")
 
 
+# The pieces maps are built out of by the hundred or the thousand: floors, roads, walls, fences, stairs. They're
+# never rounded out (model_smooth.gd): their worn edges are real curves, but a floor tile that goes from 66
+# triangles to 250 took one town map (4,755 tiles) from 1.06 to 1.94 million triangles, to round off edges you
+# look down on from two metres up. (Nov 27 audit, measured on Sara's maps.)
+static func is_building_block(id: String) -> bool:
+	if not is_structure(id):
+		return false
+	var name := id.get_slice("/", 1)
+	return is_ground(id) or name.begins_with("wall") or name.begins_with("fence") or name.begins_with("stairs") \
+			or name.begins_with("barrier") or name.begins_with("bridge")
+
+
 # Its size in metres at scale 1 (already converted to our world).
 static func size(id: String) -> Vector3:
 	if Refined.SIZES.has(id):
@@ -533,6 +546,9 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 	if holder.get_child_count() == 0:
 		return holder
 	var model: Node3D = holder.get_child(0)
+	# (the low-poly KayKit models get the triangles to be properly round: model_smooth.gd; not on Low)
+	if smooth_on and not Refined.has(id) and not is_building_block(id):
+		ModelSmooth.apply(holder, extra_scale, ModelSmooth.TOLERANCE if e.get("kind", "") == "prop" else ModelSmooth.STRUCTURE_MIN_BOW)
 	_mark_windows(id, holder)
 	# (vehicles come clean, like Sara's examples, unless a look is picked; snow still settles on them)
 	_add_grime(model, 1 if look == 0 and is_car(id) else look)
@@ -708,6 +724,7 @@ const Lamp = preload("res://scripts/lamp.gd")
 const Refined = preload("res://scripts/refined_models.gd")
 const NatureLook = preload("res://scripts/nature_look.gd")
 const StructureLook = preload("res://scripts/structure_look.gd")
+const ModelSmooth = preload("res://scripts/model_smooth.gd")
 static var _lamp_cache := {}
 static var _images := {}
 
@@ -928,7 +945,9 @@ static func _scene(path: String) -> PackedScene:
 static func faces(id: String, extra_scale := Vector3.ONE) -> PackedVector3Array:
 	if not _faces.has(id):
 		var out := PackedVector3Array()
-		var node := instance(id)
+		# (the bare model: the same solid shape on every screen whatever the graphics setting, and none of the
+		# trimmings instance() adds, like Christmas lights or painted crosswalk stripes)
+		var node := _raw(id)
 		_collect(node, Transform3D.IDENTITY, out)
 		node.free()
 		if id.begins_with("city/road"):

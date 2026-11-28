@@ -96,7 +96,10 @@ var PROP_COUNT := 45            # random props each round (from the map)
 var MAP_HALF := 28.0
 var ANGEL_SPAWN := Vector3(0, 0.1, -24)
 var DEMON_SPAWN := Vector3(0, 0.1, 0)
-const SETTINGS_PATH := "user://settings.cfg"
+# The player's saved choices. Automated runs (the test suites and the bots all run headless, and no player
+# does) keep theirs in a file of their own, started fresh each run: they used to save over the player's own
+# name, room code, skills and outfits every time the tests ran on this PC.
+static var SETTINGS_PATH := "user://settings.cfg"
 
 enum State { LOBBY, HIDING, HUNTING, ENDED }
 
@@ -276,6 +279,10 @@ const TUNING_SLIDERS := [
 
 func _ready() -> void:
 	add_to_group("main_game")   # (projectiles report demon hits here)
+	if DisplayServer.get_name() == "headless":
+		SETTINGS_PATH = "user://settings_headless.cfg"
+		if FileAccess.file_exists(SETTINGS_PATH):
+			DirAccess.remove_absolute(SETTINGS_PATH)
 	_build_fps_label()
 	if DisplayServer.get_name() != "headless":
 		Taunts.warm_up()   # (synthesized in the background, so the first taunt doesn't stall the game)
@@ -2639,7 +2646,7 @@ func _end_round(message: String) -> void:
 	state = State.ENDED
 	_hush_cherubs()
 	_round_sting(message)
-	_toast(message + "\nR to play again   Tab to switch sides", 9999.0)
+	_toast(message + "\n%s to play again   %s to switch sides" % [Keybinds.key_name("restart"), Keybinds.key_name("switch_role")], 9999.0)
 
 
 func _on_bot_caught(bot) -> void:
@@ -2906,6 +2913,12 @@ func online_back_to_lobby() -> void:
 	state = State.LOBBY
 	center_label.text = ""
 	blind_rect.visible = false
+	# (the round's cherubs and fires went with it: the host used to keep checking the freed cherubs, an error
+	# four times a second until their time ran out)
+	_auth_cherubs.clear()
+	_auth_fires.clear()
+	cherubs.clear()
+	fires.clear()
 	if round_root:
 		round_root.free()
 		round_root = null
@@ -3025,7 +3038,7 @@ func _spawn_my_minion(at: Vector3, form_index: int) -> void:
 	var types: Array = PropLib.type_names()
 	m.form = types[form_index] if form_index >= 0 and form_index < types.size() else ""
 	m.outfit = outfits["demon"]
-	m.fall_gravity = player.gravity * player.tuning["gravity_scale"]
+	m.fall_gravity = player.gravity * player.tuning["gravity_scale"] * GameRules.f("gravity")
 	m.jump_velocity = player.tuning["jump_velocity"]
 	round_root.add_child(m)
 	m.global_position = ground_below(at + Vector3.UP * 1.0)
@@ -3361,6 +3374,8 @@ func _smite_fx(at: Vector3) -> void:
 	cyl.top_radius = 0.5
 	cyl.bottom_radius = 1.1
 	cyl.height = 16.0
+	cyl.radial_segments = 32
+	cyl.rings = 1
 	pillar.mesh = cyl
 	var m := StandardMaterial3D.new()
 	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -3892,7 +3907,7 @@ func _check_cherubs(delta: float) -> void:
 		else:
 			c["burn"] = 0.0
 			# Once it comes to rest, tell everyone where it ended up (tiny drift fix).
-			if node.is_on_floor() and node.velocity.length() < 0.2 and not c.get("rested", true):
+			if node != null and is_instance_valid(node) and node.is_on_floor() and node.velocity.length() < 0.2 and not c.get("rested", true):
 				c["rested"] = true
 				broadcast_fx("cherub_kick", [cid, node.global_position, Vector3.ZERO])
 		var near := false
@@ -4295,7 +4310,8 @@ func _boot_prop(user: Node3D, dir: Vector3, reach: float, strength: float) -> vo
 		var d := Vector2(off.x, off.z).length()
 		if d > reach + 0.6 or d >= best_d or absf(off.y) > 2.0:
 			continue
-		if d > 0.4 and rad_to_deg(Vector2(flat.x, flat.z).angle_to(Vector2(off.x, off.z))) > 50.0:
+		# (the angle is signed: without absf, anything off to one side counted, all the way round behind you)
+		if d > 0.4 and rad_to_deg(absf(Vector2(flat.x, flat.z).angle_to(Vector2(off.x, off.z)))) > 50.0:
 			continue
 		best = i
 		best_d = d

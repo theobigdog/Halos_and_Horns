@@ -53,7 +53,9 @@ static func _bark(st: SurfaceTool, pts: Array, radii: Array, col: Color, sides :
 # ---------------------------------------------------------------- conifers
 
 # One conifer of height h and spread w at `at`, into the trunk and bough surfaces; its needle spots go in `spots`.
-static func _conifer(trunk: SurfaceTool, boughs: SurfaceTool, at: Vector3, h: float, w: float, pal: String, seed: int, spots: Array) -> void:
+# (`undersides`: each bough's dark underside. A grove leaves them out: its boughs are two-sided anyway, and
+# nobody gets under them.)
+static func _conifer(trunk: SurfaceTool, boughs: SurfaceTool, at: Vector3, h: float, w: float, pal: String, seed: int, spots: Array, undersides := true) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var cols: Array = NEEDLES[pal]
@@ -88,7 +90,8 @@ static func _conifer(trunk: SurfaceTool, boughs: SurfaceTool, at: Vector3, h: fl
 				var up := Vector3.UP * 0.04 * reach
 				CP._quad(boughs, p0 - side * w0, p1 - side * w1, p1 + up, p0 + up, col, Vector3.UP + side * -0.3)
 				CP._quad(boughs, p0 + up, p1 + up, p1 + side * w1, p0 + side * w0, col.lightened(0.05), Vector3.UP + side * 0.3)
-				CP._quad(boughs, p0 - side * w0, p0 + side * w0, p1 + side * w1, p1 - side * w1, col.darkened(0.3), Vector3.DOWN)
+				if undersides:
+					CP._quad(boughs, p0 - side * w0, p0 + side * w0, p1 + side * w1, p1 - side * w1, col.darkened(0.3), Vector3.DOWN)
 			spots.append([mid + Vector3.UP * 0.03, reach * 0.32])
 			spots.append([root.lerp(tip, 0.85), reach * 0.22])
 	# the leader at the very top
@@ -112,7 +115,7 @@ static func _pine(root: Node3D, id: String) -> void:
 
 # ---------------------------------------------------------------- broadleaf
 
-static func _broadleaf_tree(trunk: SurfaceTool, at: Vector3, h: float, w: float, seed: int, spots: Array) -> void:
+static func _broadleaf_tree(trunk: SurfaceTool, at: Vector3, h: float, w: float, seed: int, spots: Array, clumps := 16) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var r := w * 0.05
@@ -123,11 +126,12 @@ static func _broadleaf_tree(trunk: SurfaceTool, at: Vector3, h: float, w: float,
 		var tip := fork + Vector3(cos(a) * w * 0.22, h * rng.randf_range(0.25, 0.35), sin(a) * w * 0.22)
 		_bark(trunk, [fork, fork.lerp(tip, 0.5) + Vector3.UP * 0.1, tip], [r * 0.7, r * 0.5, r * 0.25], BARK, 6)
 	var ctr := at + Vector3(0, h * 0.6, 0)
-	for k in 16:
-		var y := 1.0 - 2.0 * (k + 0.5) / 16.0
+	var fatter := sqrt(16.0 / clumps)   # (fewer clumps: each a bit bigger, so the crown is as full)
+	for k in clumps:
+		var y := 1.0 - 2.0 * (k + 0.5) / float(clumps)
 		var ring := sqrt(maxf(0.0, 1.0 - y * y))
 		var a := k * 2.39996
-		spots.append([ctr + Vector3(cos(a) * ring * w * 0.36, y * h * 0.3, sin(a) * ring * w * 0.36), w * rng.randf_range(0.19, 0.25)])
+		spots.append([ctr + Vector3(cos(a) * ring * w * 0.36, y * h * 0.3, sin(a) * ring * w * 0.36), w * rng.randf_range(0.19, 0.25) * fatter])
 
 
 static func _broadleaf(root: Node3D, id: String) -> void:
@@ -136,7 +140,7 @@ static func _broadleaf(root: Node3D, id: String) -> void:
 		var trunk := CP._begin()
 		var spots := []
 		_broadleaf_tree(trunk, Vector3.ZERO, s.y, minf(s.x, s.z), 77, spots)
-		return [CP._end(trunk, true), spots, CP._clumps(spots, Color(0.13, 0.3, 0.1), 9)])
+		return [CP._end(trunk, true), spots, CP._clumps(spots, Color(0.13, 0.3, 0.1), 9, 10, 5)])
 	RM._put(root, parts[0], CP._vmat("wood", 0.95))
 	RM._put(root, parts[2], CP._vmat("plant", 0.9), false)
 	CP._foliage(root, "leaves_" + id, parts[1], parts[1].size() * 70, 0.2, [Color(0.17, 0.38, 0.12), Color(0.22, 0.45, 0.15), Color(0.13, 0.3, 0.09)], 33)
@@ -144,6 +148,10 @@ static func _broadleaf(root: Node3D, id: String) -> void:
 
 
 # A grove: a patch of conifers (A) or round broadleaf trees (B), spaced out over the footprint, tallest in the middle.
+# Up to 27 trees in one piece, and maps plant these by the dozen, so each tree is built lighter than a tree that
+# stands alone: fewer, bigger clumps with coarse leafy masses under the leaves, boughs without undersides, and
+# fewer, bigger needle cards. (Nov 27 audit: a grove was 33,000 to 74,000 triangles, more than anything else in
+# the game; now about 20,000.)
 static func _grove(root: Node3D, id: String) -> void:
 	var s := _size(id)
 	var conifers := id.begins_with("medieval/trees_A")
@@ -169,18 +177,18 @@ static func _grove(root: Node3D, id: String) -> void:
 			var centre := 1.0 - 0.45 * Vector2(p.x / s.x, p.z / s.z).length() * 2.0
 			var h := s.y * clampf(centre, 0.55, 1.0) * rng.randf_range(0.85, 1.0)
 			if conifers:
-				_conifer(trunk, boughs, p, h, h * 0.42, "green", rng.randi() % 1000, spots)
+				_conifer(trunk, boughs, p, h, h * 0.42, "green", rng.randi() % 1000, spots, false)
 			else:
-				_broadleaf_tree(trunk, p, h, h * 0.55, rng.randi() % 1000, spots)
-		var cl: ArrayMesh = null if conifers else CP._clumps(spots, Color(0.13, 0.3, 0.1), 9)
+				_broadleaf_tree(trunk, p, h, h * 0.55, rng.randi() % 1000, spots, 10)
+		var cl: ArrayMesh = null if conifers else CP._clumps(spots, Color(0.13, 0.3, 0.1), 9, 8, 4)
 		return [CP._end(trunk, true), CP._end(boughs, false), spots, cl])
 	RM._put(root, parts[0], CP._vmat("wood", 0.95))
 	if conifers:
 		RM._put(root, parts[1], CP._vmat("plant", 0.85, -1.0, true))
-		CP._foliage(root, "needles_" + id, parts[2], parts[2].size() * 8, 0.18, NEEDLES["green"], hash(id) % 997, "leaf")
+		CP._foliage(root, "needles_" + id, parts[2], parts[2].size() * 5, 0.22, NEEDLES["green"], hash(id) % 997, "leaf")
 	else:
 		RM._put(root, parts[3], CP._vmat("plant", 0.9), false)
-		CP._foliage(root, "leaves_" + id, parts[2], parts[2].size() * 30, 0.24, [Color(0.17, 0.38, 0.12), Color(0.22, 0.45, 0.15), Color(0.13, 0.3, 0.09)], hash(id) % 991)
+		CP._foliage(root, "leaves_" + id, parts[2], parts[2].size() * 40, 0.26, [Color(0.17, 0.38, 0.12), Color(0.22, 0.45, 0.15), Color(0.13, 0.3, 0.09)], hash(id) % 991)
 	_no_collide_foliage(root)
 
 

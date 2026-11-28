@@ -31,6 +31,10 @@ func frames(n: int) -> void:
 
 
 const PROP_TRIANGLES := 14000
+# Structures, walk-in buildings, trees and ground blocks (Nov 27 audit: a tree grove was 74,000). The biggest now
+# is the oak, about 35,000, nearly all of it leaves.
+const STRUCTURE_TRIANGLES := 40000
+const ModelSmooth = preload("res://scripts/model_smooth.gd")
 
 
 # Triangles drawn for this node and everything under it (MultiMeshes count every copy). Spheres and rings
@@ -42,6 +46,10 @@ func triangles(n: Node, defaults: Array, label: String) -> int:
 		total += m.get_faces().size() / 3
 		if (m is SphereMesh and (m as SphereMesh).radial_segments >= 64) or (m is TorusMesh and (m as TorusMesh).rings >= 64):
 			defaults.append(label)
+		# (cylinders and capsules too: 64 sides and 4 or 8 rings unless told otherwise; fine for something a metre
+		# across, hundreds of wasted triangles each on a lamp, a spike or a button)
+		if (m is CapsuleMesh and (m as CapsuleMesh).radial_segments >= 64) 				or (m is CylinderMesh and (m as CylinderMesh).radial_segments >= 64 and maxf((m as CylinderMesh).top_radius, (m as CylinderMesh).bottom_radius) < 0.6):
+			defaults.append(label)
 	elif n is MultiMeshInstance3D and (n as MultiMeshInstance3D).multimesh != null:
 		var mm: MultiMesh = (n as MultiMeshInstance3D).multimesh
 		if mm.mesh != null:
@@ -49,6 +57,47 @@ func triangles(n: Node, defaults: Array, label: String) -> int:
 	for c in n.get_children():
 		total += triangles(c, defaults, label)
 	return total
+
+
+# [length of open edges, bounding box, surface area] of a mesh, its corners welded: a seam torn open shows up as
+# more open edge, a puffed-up or collapsed face as a different box or area.
+func mesh_shape(mesh: ArrayMesh) -> Array:
+	var open_len := 0.0
+	var box := AABB()
+	var first := true
+	var area := 0.0
+	for si in mesh.get_surface_count():
+		var arr := mesh.surface_get_arrays(si)
+		var v: PackedVector3Array = arr[Mesh.ARRAY_VERTEX]
+		var idx = arr[Mesh.ARRAY_INDEX]
+		var n: int = idx.size() if idx != null else v.size()
+		var weld := {}
+		var gid := PackedInt32Array()
+		gid.resize(v.size())
+		for i in v.size():
+			var key := Vector3i((v[i] * 20000.0).round())
+			if not weld.has(key):
+				weld[key] = weld.size()
+			gid[i] = weld[key]
+			box = AABB(v[i], Vector3.ZERO) if first else box.expand(v[i])
+			first = false
+		var edges := {}
+		for t in n / 3:
+			var c := [idx[t * 3] if idx != null else t * 3, idx[t * 3 + 1] if idx != null else t * 3 + 1, idx[t * 3 + 2] if idx != null else t * 3 + 2]
+			area += (v[c[1]] - v[c[0]]).cross(v[c[2]] - v[c[0]]).length() * 0.5
+			for k in 3:
+				var a: int = gid[c[k]]
+				var b: int = gid[c[(k + 1) % 3]]
+				if a == b:
+					continue
+				var key := Vector2i(mini(a, b), maxi(a, b))
+				if not edges.has(key):
+					edges[key] = [0, v[c[k]].distance_to(v[c[(k + 1) % 3]])]
+				edges[key][0] += 1
+		for key in edges:
+			if edges[key][0] == 1:
+				open_len += edges[key][1]
+	return [open_len, box, area]
 
 
 func mesh_box(n: Node3D) -> AABB:
@@ -660,13 +709,96 @@ func _run() -> void:
 		if tris > PROP_TRIANGLES:
 			heavy.append("%s (%d)" % [t, tris])
 		v.free()
+	# Structures, walk-in buildings (trees, gates, signs) and ground blocks: under STRUCTURE_TRIANGLES. Built into
+	# the scene, so the ones that make their own parts when they arrive (traffic lights) count in full.
+	var heavy_s := []
+	var biggest_s := ["", 0]
+	var pieces := []
 	for id in Models.ids("structure"):
-		var s := Models.instance(id)
-		triangles(s, defaults, id)
+		pieces.append([id, Models.instance(id)])
+	for kind in HollowBuildings.KINDS:
+		pieces.append(["building " + kind, HollowBuildings.make(kind, 0)])
+	var GroundBlock = load("res://scripts/ground_block.gd")
+	for kind in GroundBlock.KINDS:
+		pieces.append(["ground " + kind, GroundBlock.make(kind, Vector3(12, 0.3, 12))])
+	for pc in pieces:
+		var s: Node3D = pc[1]
+		root.add_child(s)
+		var tris := triangles(s, defaults, pc[0])
+		if tris > biggest_s[1]:
+			biggest_s = [pc[0], tris]
+		if tris > STRUCTURE_TRIANGLES:
+			heavy_s.append("%s (%d)" % [pc[0], tris])
 		s.free()
 	print("  biggest prop: %s, %d triangles" % biggest)
+	print("  biggest structure: %s, %d triangles" % biggest_s)
 	check(heavy.is_empty(), "every prop is under %d triangles %s" % [PROP_TRIANGLES, str(heavy)])
-	check(defaults.is_empty(), "no sphere or ring is left at Godot's 4,000-triangle default %s" % str(defaults))
+	check(heavy_s.is_empty(), "every structure, tree and ground block is under %d triangles %s" % [STRUCTURE_TRIANGLES, str(heavy_s)])
+	check(defaults.is_empty(), "no sphere, ring, capsule or small cylinder is left at Godot's default detail %s" % str(defaults))
+
+	# ---- Rounder models (model_smooth.gd): the low-poly KayKit models get the triangles to be properly round ----
+	var count := func(n: Node3D) -> int:
+		var total := 0
+		for part in n.find_children("*", "MeshInstance3D", true, false):
+			if (part as MeshInstance3D).mesh != null:
+				total += (part as MeshInstance3D).mesh.get_faces().size() / 3
+		return total
+	var bowl_raw := Models._raw("restaurant/bowl")
+	var bowl := Models.instance("restaurant/bowl")
+	check(count.call(bowl) >= count.call(bowl_raw) * 2, "a bowl is rounded out (%d triangles, from %d)" % [count.call(bowl), count.call(bowl_raw)])
+	bowl_raw.free()
+	bowl.free()
+	var crate_raw := Models._raw("restaurant/crate")
+	var crate_new := Models.instance("restaurant/crate")
+	check(count.call(crate_new) == count.call(crate_raw), "...a flat-sided crate is left exactly as it was (%d triangles)" % count.call(crate_new))
+	crate_raw.free()
+	crate_new.free()
+	var tile_raw := Models._raw("dungeon/floor_tile_small")
+	var tile_new := Models.instance("dungeon/floor_tile_small")
+	check(Models.is_building_block("dungeon/floor_tile_small") and Models.is_building_block("dungeon/wall") and not Models.is_building_block("dungeon/pillar")
+			and count.call(tile_new) == count.call(tile_raw), "...floors and walls, laid by the thousand, aren't rounded (a floor tile: %d triangles)" % count.call(tile_new))
+	tile_raw.free()
+	tile_new.free()
+	var barrel_raw := Models._raw("dungeon/barrel_large")
+	check(Models.faces("dungeon/barrel_large").size() / 3 == count.call(barrel_raw), "...and what's solid is still the model's own shape (a barrel: %d triangles)" % count.call(barrel_raw))
+	barrel_raw.free()
+	Models.smooth_on = false
+	var bowl_low := Models.instance("restaurant/bowl")
+	check(count.call(bowl_low) == 256, "...Low graphics keeps the models as they come")
+	bowl_low.free()
+	Models.smooth_on = true
+	# no model is torn open, puffed up or sunk into the floor by it
+	var torn := []
+	var rounded := 0
+	for id in Models.ids():
+		if Models.Refined.has(id):
+			continue
+		var holder := Models._raw(id)
+		for part in holder.find_children("*", "MeshInstance3D", true, false):
+			var mi: MeshInstance3D = part
+			var src := mi.mesh as ArrayMesh
+			if src == null:
+				continue
+			ModelSmooth.apply(holder)
+			var round_mesh := mi.mesh as ArrayMesh
+			if round_mesh == src:
+				continue
+			rounded += 1
+			var was := mesh_shape(src)
+			var got := mesh_shape(round_mesh)
+			var b0: AABB = was[1]
+			var b1: AABB = got[1]
+			var why := ""
+			if got[0] > was[0] * 1.12 + 0.02:
+				why = "a seam opened"
+			elif (b1.size - b0.size).length() > b0.size.length() * 0.06:
+				why = "it grew %.0f%%" % ((b1.size - b0.size).length() / b0.size.length() * 100.0)
+			elif got[2] > was[2] * 1.2 or got[2] < was[2] * 0.95:
+				why = "its surface changed x%.2f" % (got[2] / maxf(was[2], 0.0001))
+			if why != "":
+				torn.append("%s: %s" % [id, why])
+		holder.free()
+	check(rounded > 300 and torn.is_empty(), "rounding %d model meshes opens no seams and changes no shapes %s" % [rounded, str(torn.slice(0, 5))])
 
 	# Road signs (Ted, Nov 27): every one builds, solid, in a handful of draw calls, and every speed is a look
 	var RoadSigns = load("res://scripts/road_signs.gd")

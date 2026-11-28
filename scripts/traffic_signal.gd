@@ -29,6 +29,8 @@ func _ready() -> void:
 			cyl.top_radius = lamp_radius
 			cyl.bottom_radius = lamp_radius
 			cyl.height = 0.02
+			cyl.radial_segments = 16   # (Godot's default is 64 x 4: 768 triangles for a lamp the size of a saucer;
+			cyl.rings = 1              # they were 85% of a traffic light's 5,400 triangles: Nov 27 audit)
 			mi.mesh = cyl
 			var m := StandardMaterial3D.new()
 			m.albedo_color = COLORS[c].darkened(0.7)

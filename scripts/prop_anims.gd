@@ -202,18 +202,25 @@ static var _islands := {}
 
 
 static func islands(id: String, holder: Node3D) -> Array:
-	if _islands.has(id):
-		return _islands[id]
-	var out := []
+	# (kept per mesh, not just per model: the rounded-out meshes of Medium / High graphics and the plain ones of Low
+	# number their triangles differently, and the setting can change while the game runs)
+	var parts := []
+	var key := id
 	for c in holder.find_children("*", "MeshInstance3D", true, false):
 		var mi: MeshInstance3D = c
 		if not mi.mesh is ArrayMesh or mi.get_parent() is Animator:
 			continue
+		parts.append(mi)
+		key += ":%d" % mi.mesh.get_instance_id()
+	if _islands.has(key):
+		return _islands[key]
+	var out := []
+	for mi: MeshInstance3D in parts:
 		var xf := Models._to_holder(mi, holder)
 		var mesh: ArrayMesh = mi.mesh
 		for si in mesh.get_surface_count():
 			out.append_array(_surface_islands(mesh, si, xf, holder.get_path_to(mi)))
-	_islands[id] = out
+	_islands[key] = out
 	return out
 
 
@@ -310,6 +317,7 @@ static var _meshes := {}
 # mats: the material each surface really draws with (its MeshInstance's override, baked in, since surfaces
 # that end up empty are dropped and the numbering shifts).
 static func sub_mesh(src: ArrayMesh, keep: Dictionary, mats: Array, key: String) -> ArrayMesh:
+	key += "#%d" % src.get_instance_id()   # (cut from this very mesh: see islands())
 	for m in mats:
 		key += ":%d" % (m.get_instance_id() if m != null else 0)
 	if _meshes.has(key):
