@@ -615,7 +615,13 @@ static func head_hull(c: String, hat: bool) -> PackedVector3Array:
 			for v in out:
 				box = box.expand(v)
 			var centre := box.get_center()
-			var reach := box.size.length() * 0.5 * 1.15
+			# (Ted, Nov 27, a screenshot: on the Skeleton Warrior's helmet the horns stood on top of the helmet's own
+			# horn stubs, way above it. Only what's within a little more than the skull's own reach counts: the dome
+			# of a helmet or a hood, not the spikes, stubs or brims sticking out of it.)
+			var skull_r := 0.0
+			for v in out:
+				skull_r = maxf(skull_r, v.distance_to(centre))
+			var reach := skull_r * 1.2
 			for m in _hat(c):
 				var mi := m as MeshInstance3D
 				for v in mi.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:

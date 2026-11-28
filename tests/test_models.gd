@@ -215,6 +215,24 @@ func _run() -> void:
 	await frames(3)
 	check(mixed.anim != null and mixed.anim.is_playing() and mixed.anim.current_animation == "Idle", "...and it's animated (standing about: %s)" % mixed.anim.current_animation)
 	mixed.queue_free()
+	# Horns root on the head (or the dome of its hat), never on a hat's spikes, stubs or brim (Ted, Nov 27: on the
+	# Skeleton Warrior's helmet they stood on its horn stubs, way above it)
+	var far_hats := []
+	for hc in ["Skeleton_Warrior", "Skeleton_Mage", "Skeleton_Rogue", "Skeleton_Minion"]:
+		var bare_pts: PackedVector3Array = Characters.head_hull(hc, false)
+		var hat_pts: PackedVector3Array = Characters.head_hull(hc, true)
+		var hb := AABB(bare_pts[0], Vector3.ZERO)
+		for v in bare_pts:
+			hb = hb.expand(v)
+		var skull := 0.0
+		var furthest := 0.0
+		for v in bare_pts:
+			skull = maxf(skull, v.distance_to(hb.get_center()))
+		for v in hat_pts:
+			furthest = maxf(furthest, v.distance_to(hb.get_center()))
+		if furthest > skull * 1.21:
+			far_hats.append(hc)
+	check(far_hats.is_empty(), "horns root on the head or its hat's dome, not on spikes or brims %s" % [far_hats])
 	var junk := Characters.clean_outfit({"head": "Shrek", "skin": 7, "crown": "horns"}, "angel")
 	check(junk["head"] == "Knight" and junk["skin"] == "natural" and junk["crown"] == "halo", "outfits from files or other players are checked (no Shrek heads, no horns on angels)")
 	var cross_a := Characters.clean_outfit({"head": "Skeleton_Mage", "upper": "Knight", "skin": "zombie"}, "angel")

@@ -935,7 +935,19 @@ func _run() -> void:
 		wander = maxf(wander, absf(player.global_position.x - walk0.x))
 	player.test_input = {}
 	check(wander > 0.4, "...and you can't walk a straight line (%.1f m off course)" % wander)
-	player.global_position = feet + Vector3(6, 0.1, 0)
+	# (step out somewhere clear of every pool: the splash pools land up to 5 m out, and one there kept the angel
+	# burning on some runs)
+	var out_to := feet + Vector3(6, 0.1, 0)
+	for cand in [Vector3(6, 0, 0), Vector3(-6, 0, 0), Vector3(0, 0, 6), Vector3(0, 0, -6), Vector3(8, 0, 8), Vector3(-8, 0, -8), Vector3(9, 0, -9), Vector3(-9, 0, 9)]:
+		var spot: Vector3 = feet + cand + Vector3(0, 0.1, 0)
+		var clear := true
+		for f in main.fires.values():
+			if is_instance_valid(f) and Vector2(f.global_position.x - spot.x, f.global_position.z - spot.z).length() < f.radius + 1.0:
+				clear = false
+		if clear:
+			out_to = spot
+			break
+	player.global_position = out_to
 	await frames(30)
 	check(player.burning > 0.0, "stepping out, you keep burning a moment")
 	await frames(150)   # (FIRE_LINGER is 2 s; a little slack for a busy machine)
