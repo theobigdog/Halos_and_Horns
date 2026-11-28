@@ -5,10 +5,13 @@
 # writes tools/previews/_s_kitchen0.png (the folder is git-ignored). It needs a real window to draw, so always
 # run it through render_hidden.ps1: Ted games while Claude works.
 #   --set=   props:<family>  structs:<family>  buildings  ground  anim  ids:<a,b,c>
+#            (in an id list: "building:oak" for a walk-in building, "ground:paving", and "id@3" for a rug or
+#            vehicle in its preset style 3)
 #            (family: classic, extra, city, dungeon, medieval, restaurant, furniture, halloween; add "+r" or "+k"
 #            for only the hand-built or only the KayKit ones; anim: the KayKit props that do something with E)
 #   --page=N --per=24 --cols=6   which 24 of them, six to a row
 #   --plain                      the KayKit models as they come (no rounding: model_smooth.gd)
+#   --kaykit                     the KayKit models in place of the hand-built ones that replaced them
 #   --press=N                    press E on every animated prop N times first, and let it play
 #   --real                       real sizes, not scaled to fit
 extends SceneTree
@@ -82,7 +85,16 @@ func _make(id: String) -> Array:   # [node, size]
 		var d: Dictionary = PropLib.TYPES[id]
 		var s: Vector3 = d["size"] if d["shape"] == "box" else Vector3(d["radius"] * 2.0, d["height"], d["radius"] * 2.0)
 		return [PropLib.make_visual(id), s]
-	return [Models.instance(id), Models.size(id)]
+	# (a rug's or vehicle's preset style: "furniture/rug_oval_A@3"; add "-" for a rug with no fringe: "@3-")
+	var style := {}
+	if "@" in id:
+		var tail := id.get_slice("@", 1)
+		style = {"style": int(tail), "fringe": not tail.ends_with("-")}
+		id = id.get_slice("@", 0)
+	Models.set_style(style)
+	var made := Models.instance(id)
+	Models.set_style({})
+	return [made, Models.size(id)]
 
 
 func _go() -> void:
@@ -90,6 +102,8 @@ func _go() -> void:
 	for a in OS.get_cmdline_user_args():
 		var kv := a.trim_prefix("--").split("=", true, 1)
 		args[kv[0]] = kv[1] if kv.size() > 1 else "true"
+	if args.has("kaykit"):   # the KayKit models the hand-built ones replaced
+		Refined.disabled = true
 	if args.has("plain"):
 		Models.smooth_on = false
 	var ids := _pick(str(args.get("set", "props:classic")))

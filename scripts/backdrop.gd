@@ -54,6 +54,11 @@ const TOWER_SHADER := """
 shader_type spatial;
 uniform vec3 wall = vec3(0.55, 0.58, 0.65);
 uniform float seed = 0.0;
+// (Sara, Nov 28: "give more variety to the skyscrapers") how its windows are set out: 0 punched windows, 1 a glass
+// curtain wall with thin mullions, 2 ribbon windows running round every floor, 3 tall narrow windows between piers
+uniform int style = 0;
+uniform vec2 pitch = vec2(2.6, 3.4);          // a window bay: width and storey height
+uniform vec3 glass = vec3(0.16, 0.2, 0.27);
 varying vec3 wp;
 varying vec3 wn;
 float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -66,13 +71,16 @@ void fragment() {
 	vec3 e = vec3(0.0);
 	if (abs(wn.y) < 0.5) {
 		float u = abs(wn.x) > abs(wn.z) ? wp.z : wp.x;
-		vec2 cell = vec2(u / 2.6, wp.y / 3.4);
+		vec2 cell = vec2(u, wp.y) / pitch;
 		vec2 id = floor(cell);
 		vec2 f = fract(cell);
-		float win = step(0.18, f.x) * step(f.x, 0.82) * step(0.25, f.y) * step(f.y, 0.85) * step(1.0, wp.y);
+		float win = step(0.18, f.x) * step(f.x, 0.82) * step(0.25, f.y) * step(f.y, 0.85);
+		if (style == 1) { win = step(0.05, f.x) * step(0.1, f.y); }
+		else if (style == 2) { win = step(0.38, f.y) * step(f.y, 0.82); id.x = floor(cell.x * 0.5); }
+		else if (style == 3) { win = step(0.3, f.x) * step(f.x, 0.7) * step(0.08, f.y) * step(f.y, 0.94); }
+		win *= step(1.0, wp.y);
 		float lit = step(0.62, h2(id + seed));
-		vec3 glass = vec3(0.16, 0.2, 0.27);
-		c = mix(c, glass, win);
+		c = mix(c, glass * (0.85 + 0.3 * h2(id * 0.37 + seed)), win);
 		e = vec3(1.0, 0.82, 0.5) * win * lit * (0.6 + 0.6 * h2(id * 1.7 + seed));
 		// a band every few floors
 		c *= 1.0 - 0.15 * step(0.92, fract(wp.y / 13.6));
@@ -80,7 +88,7 @@ void fragment() {
 		c *= 0.75;
 	}
 	ALBEDO = c;
-	ROUGHNESS = 0.55;
+	ROUGHNESS = style == 1 ? 0.25 : 0.55;
 	EMISSION = e * 0.9;
 }
 """
@@ -352,12 +360,19 @@ static func _hills(n: Node3D, half: float, rng: RandomNumberGenerator) -> void:
 
 
 # Little houses (walls, a pitched roof, a chimney), sat on the ground.
-static func _houses(n: Node3D, half: float, rng: RandomNumberGenerator, height: Callable, count: int, near: float, far: float, roads := false) -> void:
+# Returns where they stand: [[centre, radius], ...] (so nothing else is planted on top of them).
+# (Sara, Nov 28: houses stood inside one another and trees grew through them; and "add a limited amount windows
+# and doors": a door and two windows on the front, two windows at the back, one in each gable end.)
+static func _houses(n: Node3D, half: float, rng: RandomNumberGenerator, height: Callable, count: int, near: float, far: float, roads := false) -> Array:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var walls := [Color(0.92, 0.88, 0.78), Color(0.85, 0.75, 0.6), Color(0.78, 0.5, 0.4), Color(0.9, 0.9, 0.88)]
 	var roofs := [Color(0.55, 0.22, 0.16), Color(0.3, 0.3, 0.34), Color(0.45, 0.3, 0.2)]
-	for k in count:
+	var doors := [Color(0.45, 0.2, 0.14), Color(0.2, 0.3, 0.45), Color(0.25, 0.4, 0.28), Color(0.3, 0.22, 0.16)]
+	var placed := []
+	var tries := 0
+	while placed.size() < count and tries < count * 8:
+		tries += 1
 		var at := _around(half, rng, near, far)
 		if roads:   # (along the four roads in)
 			var axis := rng.randi() % 4
@@ -367,6 +382,14 @@ static func _houses(n: Node3D, half: float, rng: RandomNumberGenerator, height: 
 		var y: float = height.call(at.x, at.z)
 		var w := rng.randf_range(6.0, 9.0)
 		var dpt := rng.randf_range(5.0, 7.0)
+		var clear := true
+		for other in placed:
+			if Vector2(at.x - (other[0] as Vector3).x, at.z - (other[0] as Vector3).z).length() < float(other[1]) + w * 0.62 + 4.0:
+				clear = false
+				break
+		if not clear:
+			continue
+		placed.append([Vector3(at.x, y, at.z), w * 0.62])
 		var hh := rng.randf_range(3.0, 5.5)
 		var bas := Basis(Vector3.UP, rng.randf() * TAU if not roads else atan2(at.x, at.z))
 		var wc: Color = walls[rng.randi() % walls.size()]
@@ -388,6 +411,32 @@ static func _houses(n: Node3D, half: float, rng: RandomNumberGenerator, height: 
 		for sx in [-1.0, 1.0]:   # the gable ends
 			var g: Vector3 = hw * sx
 			_tri_up(st, c + g - hd + Vector3.UP * hh, c + g + hd + Vector3.UP * hh, c + g + ridge, wc)
+		# a door and windows: panes a hand's breadth proud of the wall, each in a pale frame
+		var glass := Color(0.2, 0.27, 0.36)
+		var frame := Color(0.95, 0.94, 0.9)
+		var put := func(a: Vector3, b: Vector3, x0: float, x1: float, y0: float, y1: float, col: Color, lift: float) -> void:
+			var dir := (b - a).normalized()
+			var mid := (a + b) * 0.5
+			var out := Vector3(mid.x - c.x, 0, mid.z - c.z)
+			out = (out - dir * out.dot(dir)).normalized() * lift
+			var len := a.distance_to(b)
+			var p0 := mid + dir * x0 + out
+			var p1 := mid + dir * x1 + out
+			_quad_up(st, p0 + Vector3.UP * y0, p1 + Vector3.UP * y0, p1 + Vector3.UP * y1, p0 + Vector3.UP * y1, col)
+		var sill := minf(1.1, hh * 0.3)
+		var head := minf(sill + 1.3, hh - 0.5)
+		var window := func(a: Vector3, b: Vector3, x: float) -> void:
+			put.call(a, b, x - 0.75, x + 0.75, sill - 0.12, head + 0.12, frame, 0.05)
+			put.call(a, b, x - 0.6, x + 0.6, sill, head, glass, 0.09)
+			put.call(a, b, x - 0.04, x + 0.04, sill, head, frame, 0.12)
+		window.call(corners[2], corners[3], -w * 0.28)
+		window.call(corners[2], corners[3], w * 0.28)
+		put.call(corners[2], corners[3], -0.7, 0.7, 0.0, minf(2.3, hh - 0.4), frame, 0.05)
+		put.call(corners[2], corners[3], -0.55, 0.55, 0.0, minf(2.15, hh - 0.5), doors[rng.randi() % doors.size()], 0.09)
+		window.call(corners[0], corners[1], -w * 0.25)
+		window.call(corners[0], corners[1], w * 0.25)
+		window.call(corners[1], corners[2], 0.0)
+		window.call(corners[3], corners[0], 0.0)
 		# a chimney
 		var ch := c + hw * 0.5 + Vector3.UP * (hh + w * 0.2)
 		_quad_up(st, ch - bas.x * 0.4 - bas.z * 0.4, ch + bas.x * 0.4 - bas.z * 0.4, ch + bas.x * 0.4 - bas.z * 0.4 + Vector3.UP * 2.0, ch - bas.x * 0.4 - bas.z * 0.4 + Vector3.UP * 2.0, Color(0.5, 0.35, 0.3))
@@ -402,6 +451,7 @@ static func _houses(n: Node3D, half: float, rng: RandomNumberGenerator, height: 
 	m.roughness = 0.9
 	mi.material_override = m
 	n.add_child(mi)
+	return placed
 
 
 static func _quad_up(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, col: Color) -> void:
@@ -608,33 +658,89 @@ static func _city(n: Node3D, half: float, rng: RandomNumberGenerator) -> void:
 		dmi.multimesh = dashes
 		dmi.material_override = paint
 		n.add_child(dmi)
-	_houses(n, half, rng, flat, 46, 8.0, 120.0, true)
+	var homes := _houses(n, half, rng, flat, 46, 8.0, 120.0, true)
 	var where := _noise(s + 5, 0.02)
-	_forest(n, _woods(half, rng, 260, 8.0, 130.0, flat, where), false, [Color(1, 1, 1), Color(0.9, 1.0, 0.85)])
+	# trees: none in a house, none on a road
+	var grown := []   # (and none inside another)
+	var trees := _woods(half, rng, 260, 8.0, 130.0, flat, where).filter(func(spot) -> bool:
+		var tp: Vector3 = spot[0]
+		if minf(absf(tp.x), absf(tp.z)) < 7.0 and maxf(absf(tp.x), absf(tp.z)) > half:
+			return false
+		for home in homes:
+			if Vector2(tp.x - (home[0] as Vector3).x, tp.z - (home[0] as Vector3).z).length() < float(home[1]) + 5.0:
+				return false
+		for other in grown:
+			if (tp - (other as Vector3)).length() < 4.5:
+				return false
+		grown.append(tp)
+		return true)
+	_forest(n, trees, false, [Color(1, 1, 1), Color(0.9, 1.0, 0.85)])
 	# the skyline: towers in a band, some stepped back as they rise, with rooftop clutter
-	var shades := [Vector3(0.55, 0.58, 0.65), Vector3(0.45, 0.48, 0.55), Vector3(0.66, 0.62, 0.58), Vector3(0.38, 0.4, 0.48), Vector3(0.7, 0.68, 0.62)]
+	# (Sara, Nov 28: "give more variety to the skyscrapers", and none standing inside another. They used to be
+	# five greys of the same punched-window box, some stepped. Now: stone, brick, concrete, steel and glass in
+	# more colours; four ways of setting out the windows (the shader's `style`); slabs, slender towers and low
+	# wide blocks; and tops that are flat, stepped like a ziggurat, pitched, pyramid-capped or spired.)
+	var shades := [Vector3(0.55, 0.58, 0.65), Vector3(0.45, 0.48, 0.55), Vector3(0.66, 0.62, 0.58), Vector3(0.38, 0.4, 0.48), Vector3(0.7, 0.68, 0.62),
+			Vector3(0.52, 0.3, 0.24), Vector3(0.78, 0.72, 0.6), Vector3(0.28, 0.31, 0.36), Vector3(0.84, 0.84, 0.82), Vector3(0.44, 0.36, 0.3)]
+	var glasses := [Vector3(0.16, 0.2, 0.27), Vector3(0.2, 0.36, 0.48), Vector3(0.17, 0.36, 0.33), Vector3(0.38, 0.3, 0.2), Vector3(0.1, 0.12, 0.16)]
 	var bm := BoxMesh.new()
+	var pyramid := CylinderMesh.new()   # (four-sided: a square pyramid, its corners on the axes)
+	pyramid.top_radius = 0.0
+	pyramid.bottom_radius = 0.7071
+	pyramid.height = 1.0
+	pyramid.radial_segments = 4
+	pyramid.rings = 1
+	var gable := PrismMesh.new()
 	var sh := Shader.new()
 	sh.code = TOWER_SHADER
 	var roof := _mat(Color(0.3, 0.3, 0.32), 0.8)
-	for i in 140:
+	var stood := []   # [where, radius]
+	for i in 170:
 		var at := _around(half, rng, 150.0, 260.0)
 		var ang := fposmod(atan2(at.z, at.x), PI / 2.0)
 		if ang < 0.07 or ang > PI / 2.0 - 0.07:
 			continue   # (leave the roads clear)
+		var build := rng.randf()   # which sort: a slender tower, a low wide block, or the usual
 		var w := rng.randf_range(10.0, 22.0)
-		var dpt := w * rng.randf_range(0.7, 1.3)
 		var h := rng.randf_range(25.0, 70.0) * (1.6 if rng.randf() < 0.18 else 1.0)
+		if build < 0.14:
+			w = rng.randf_range(9.0, 12.0)
+			h = rng.randf_range(85.0, 125.0)
+		elif build < 0.3:
+			w = rng.randf_range(24.0, 34.0)
+			h = rng.randf_range(12.0, 22.0)
+		var dpt := w * rng.randf_range(0.7, 1.3)
+		var clear := true
+		for other in stood:
+			if (at - (other[0] as Vector3)).length() < float(other[1]) + maxf(w, dpt) * 0.62 + 2.0:
+				clear = false
+				break
+		if not clear:
+			continue
+		stood.append([at, maxf(w, dpt) * 0.62])
 		var m := ShaderMaterial.new()
 		m.shader = sh
-		m.set_shader_parameter("wall", shades[i % shades.size()])
+		var style := rng.randi() % 4
+		m.set_shader_parameter("wall", shades[rng.randi() % shades.size()])
 		m.set_shader_parameter("seed", float(i) * 3.7)
+		m.set_shader_parameter("style", style)
+		m.set_shader_parameter("pitch", Vector2(rng.randf_range(2.2, 3.4) if style != 1 else rng.randf_range(1.4, 2.0), rng.randf_range(3.2, 4.0)))
+		m.set_shader_parameter("glass", glasses[0] if style == 0 else glasses[rng.randi() % glasses.size()])
 		var yaw := atan2(at.x, at.z)
-		var tiers := 1 if rng.randf() < 0.5 else rng.randi_range(2, 3)
+		var crown := rng.randi() % 5   # 0 flat, 1 stepped (2 or 3 tiers), 2 a ziggurat, 3 pitched or pyramid, 4 a spire
+		var tiers := 1
+		if crown == 1:
+			tiers = rng.randi_range(2, 3)
+		elif crown == 2:
+			tiers = 5
 		var base := 0.0
+		var top_k := 1.0
 		for t in tiers:
-			var th := h * (0.6 if tiers > 1 and t == 0 else 0.4 / maxf(tiers - 1, 1)) if tiers > 1 else h
-			var k := 1.0 - 0.18 * t
+			var th := h
+			if tiers > 1:
+				th = h * (0.6 if t == 0 else 0.4 / (tiers - 1))
+			var k := 1.0 - (0.18 if tiers <= 3 else 0.13) * t
+			top_k = k
 			var mi := MeshInstance3D.new()
 			mi.mesh = bm
 			mi.material_override = m
@@ -643,6 +749,37 @@ static func _city(n: Node3D, half: float, rng: RandomNumberGenerator) -> void:
 			mi.rotation.y = yaw
 			n.add_child(mi)
 			base += th
+		if crown == 3:
+			var cap := MeshInstance3D.new()
+			var cap_h := minf(w, dpt) * rng.randf_range(0.35, 0.8)
+			if absf(w - dpt) < w * 0.12:   # square enough for a pyramid
+				cap.mesh = pyramid
+				cap.scale = Vector3(minf(w, dpt) * top_k, cap_h, minf(w, dpt) * top_k)
+				cap.rotation.y = yaw + PI * 0.25
+			else:
+				cap.mesh = gable
+				cap.scale = Vector3(w * top_k, cap_h * 0.7, dpt * top_k)
+				cap.rotation.y = yaw
+				cap_h *= 0.7
+			cap.material_override = _mat(Color(0.25, 0.33, 0.3) if rng.randf() < 0.5 else Color(0.36, 0.24, 0.2), 0.6)
+			cap.position = at + Vector3.UP * (base + cap_h * 0.5)
+			n.add_child(cap)
+			continue
+		if crown == 4:
+			var spire := MeshInstance3D.new()
+			var sm := CylinderMesh.new()
+			sm.top_radius = 0.0
+			sm.bottom_radius = minf(w, dpt) * top_k * 0.28
+			sm.height = h * rng.randf_range(0.25, 0.45)
+			sm.radial_segments = 6
+			sm.rings = 1
+			spire.mesh = sm
+			spire.material_override = roof
+			spire.position = at + Vector3.UP * (base + sm.height * 0.5)
+			n.add_child(spire)
+			continue
+		w *= top_k
+		dpt *= top_k
 		# rooftop: a water tank, an aerial, a plant room
 		var top := at + Vector3.UP * base
 		var b := Basis(Vector3.UP, yaw)

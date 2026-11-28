@@ -1,14 +1,22 @@
 # Curbs (Sara, Nov 27: "add curbs - straight and 90 degree curves"). Map pieces of type "building" (kinds
-# "curb" and "curb_corner"), placed, turned, resized and coloured in Creative like the signs. A concrete kerb
-# 0.25 m wide and 0.18 m tall with a chamfered edge on the road side (+z for the straight one, the outside of
-# the curve for the corner), the faces a little darker than the top. Solid: you can step up onto it.
+# "curb" and "curb_corner"), placed, turned, resized and coloured in Creative like the signs. Solid: you can
+# step up onto it.
+# Since Nov 28 it IS the kerb the road pieces have built in (Sara: "make the curb match the built in curbs on
+# the various street pieces"), measured off city/road_straight: 0.45 m wide and 0.45 m tall, flat on top for
+# 0.315 m, then sloping down 0.14 m to the road's surface (0.31 m up) and straight down from there; the same
+# smooth blue-grey concrete, the top a shade lighter than the faces, crisp edges. Set against the end or side
+# of a road piece it carries the road's own kerb on. (It was a 0.25 x 0.18 m rounded, rough white stone.) The
+# sloped side is +z for the straight one and the outside of the curve for the corner. Beside a thin asphalt or
+# parking block, make it lower with T.
 extends RefCounted
 
 const Surfaces = preload("res://scripts/surfaces.gd")
 
 const KINDS := {"curb": "Curb (straight)", "curb_corner": "Curb (90° corner)"}
-const W := 0.25
-const H := 0.18
+const W := 0.45
+const H := 0.45
+const SLOPE := 0.135     # how far the sloped face runs across
+const ROAD := 0.31       # the road's surface: where the slope comes down to
 const LENGTH := 2.0
 const RADIUS := 1.5      # the corner's middle radius
 
@@ -30,8 +38,7 @@ static func make(kind: String) -> Node3D:
 		var m := StandardMaterial3D.new()
 		m.vertex_color_use_as_albedo = true
 		m.vertex_color_is_srgb = true
-		m.roughness = 0.9
-		Surfaces.apply(m, "stone")
+		m.roughness = 0.9   # (smooth cast concrete, like the road's: no stone texture)
 		_cache["mat"] = m
 	mi.material_override = _cache["mat"]
 	root.add_child(mi)
@@ -69,10 +76,10 @@ static func _mesh(kind: String) -> ArrayMesh:
 		return _cache[kind]
 	var path := _path(kind)
 	# the cross-section (across, up), across = + toward the road side: a chamfered top edge
-	var prof := [Vector2(-W * 0.5, 0.0), Vector2(-W * 0.5, H), Vector2(W * 0.5 - 0.05, H), Vector2(W * 0.5, H - 0.05), Vector2(W * 0.5, 0.0)]
+	var prof := [Vector2(-W * 0.5, 0.0), Vector2(-W * 0.5, H), Vector2(W * 0.5 - SLOPE, H), Vector2(W * 0.5, ROAD), Vector2(W * 0.5, 0.0)]
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var base := Color(0.74, 0.73, 0.7)
+	var base := Color("7d878c")    # the road kerb's top; its faces are 70797e
 	var along := 0.0
 	for i in path.size() - 1:
 		var a: Vector3 = path[i]
@@ -89,7 +96,7 @@ static func _mesh(kind: String) -> ArrayMesh:
 					b + across * p1.x + Vector3.UP * p1.y, a + across * p1.x + Vector3.UP * p1.y]
 			var mid2 := (p0 + p1) * 0.5
 			var out := across * mid2.x + Vector3.UP * (mid2.y - H * 0.5)
-			var tone := base.darkened(0.06 * float(k % 2))
+			var tone := base if k == 1 else Color("70797e")
 			_quad(st, q, tone, out.normalized())
 		along += seg
 	# ends, and the joints every metre (dark lines across the top and face)
@@ -105,9 +112,8 @@ static func _mesh(kind: String) -> ArrayMesh:
 			c += v
 		c /= pts.size()
 		for k in pts.size():
-			_tri(st, c, pts[k], pts[(k + 1) % pts.size()], base.darkened(0.1), dir)
-	st.index()
-	st.generate_normals()
+			_tri(st, c, pts[k], pts[(k + 1) % pts.size()], Color("70797e"), dir)
+	st.generate_normals()   # (not indexed: flat faces and crisp edges, like the road's kerb)
 	_cache[kind] = st.commit()
 	return _cache[kind]
 

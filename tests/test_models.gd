@@ -747,6 +747,70 @@ func _run() -> void:
 	while ed._undo.size() > pv_undo_mark:
 		ed.undo()
 	check(ed.map["pieces"].size() == pv_pieces_mark, "...and undo takes all of that back (%d pieces left over)" % (ed.map["pieces"].size() - pv_pieces_mark))
+	# ---- Sara's list, Nov 28 ----
+	# plain asphalt and concrete came up solid red in Creative: a block could read another instance's per-instance
+	# shader values. Ground blocks have none now; a coloured block gets its own copy of the material.
+	check(not "instance uniform" in PvGround.SHADER, "ground blocks keep no per-instance shader values (asphalt and concrete came up red)")
+	var s28_a: Node3D = PvGround.make("asphalt", Vector3(6, 0.1, 6))
+	var s28_b: Node3D = PvGround.make("asphalt", Vector3(3, 0.1, 3))
+	var s28_red: Node3D = PvGround.make("asphalt", Vector3(6, 0.1, 6), Color(1, 0, 0))
+	var s28_mat := func(n: Node3D) -> Material: return (n.find_child("Block", true, false) as MeshInstance3D).material_override
+	check(s28_mat.call(s28_a) == s28_mat.call(s28_b) and s28_mat.call(s28_red) != s28_mat.call(s28_a),
+			"...uncoloured blocks of a kind share one material and a coloured one has its own")
+	for s28_n in [s28_a, s28_b, s28_red]:
+		s28_n.free()
+	check(pv_keys.slice(11, 24) == ["paving", "crazy", "cobbles", "pavers", "sidewalk", "edge_rocks", "edge_fence", "edge_logs", "edge_ceramic",
+			"edge_brick", "edge_stone", "edge_hedge", "parking_double"] and PvGround._KIND_ID.has("parking_double"),
+			"the two-row parking lot is a ground kind, added after the ones maps already use %s" % [pv_keys.slice(11, 24)])
+	# town building F's solid core filled its recessed doorway
+	var s28_core: Array = Models._building_core("city/building_F_withoutBase", Vector3.ONE)
+	var s28_door := Vector3(0.0, 1.0, 2.3)
+	var s28_wall := Vector3(-3.0, 1.0, 2.3)
+	var s28_in := func(pt: Vector3) -> bool:
+		for cs in s28_core:
+			var bx: BoxShape3D = (cs as CollisionShape3D).shape
+			var rel: Vector3 = pt - (cs as CollisionShape3D).position
+			if absf(rel.x) < bx.size.x * 0.5 and absf(rel.y) < bx.size.y * 0.5 and absf(rel.z) < bx.size.z * 0.5:
+				return true
+		return false
+	check(s28_core.size() > 1 and not s28_in.call(s28_door) and s28_in.call(s28_wall),
+			"town building F's solid core leaves its set-back doorway open (%d boxes)" % s28_core.size())
+	for cs in s28_core:
+		cs.free()
+	# preset styles: a rug's patterns, a vehicle's paints
+	check(Models.styles("city/car_sedan").size() == 13 and Models.styles("furniture/rug_rectangle_stripes_A").size() == 11
+			and Models.styles("dungeon/wall").is_empty(), "rugs and vehicles have preset styles, nothing else does (%d paints, %d rug patterns)"
+			% [Models.styles("city/car_sedan").size() - 1, Models.styles("furniture/rug_rectangle_stripes_A").size() - 1])
+	var s28_rug: Dictionary = MapData.clean({"pieces": [{"type": "model", "model": "furniture/rug_rectangle_stripes_A", "pos": [0, 0, 0], "style": 3, "fringe": false}]})["pieces"][0]
+	var s28_plain: Dictionary = MapData.clean({"pieces": [{"type": "model", "model": "dungeon/wall", "pos": [0, 0, 0], "style": 3, "fringe": false},
+			{"type": "model", "model": "city/car_sedan", "pos": [0, 0, 0], "style": 99, "fringe": false}]})
+	check(int(s28_rug.get("style", 0)) == 3 and s28_rug.get("fringe", true) == false and not s28_plain["pieces"][0].has("style")
+			and not s28_plain["pieces"][0].has("fringe") and int(s28_plain["pieces"][1]["style"]) == 12 and not s28_plain["pieces"][1].has("fringe"),
+			"a map keeps a rug's style and its missing fringe, a vehicle's paint (within the list), and no style on anything else")
+	Models.set_style({"style": 2})
+	var s28_blue: Node3D = Models.instance("city/car_sedan")
+	Models.set_style({})
+	var s28_own: Node3D = Models.instance("city/car_sedan")
+	var s28_body := func(n: Node3D) -> Mesh: return (n.find_children("*", "MeshInstance3D", true, false)[0] as MeshInstance3D).mesh
+	var s28_glass := func(n: Node3D) -> Material: return (n.find_children("*", "MeshInstance3D", true, false)[1] as MeshInstance3D).material_override
+	check(s28_body.call(s28_blue) != s28_body.call(s28_own) and s28_glass.call(s28_blue) == s28_glass.call(s28_own),
+			"a painted car has its own bodywork and the same glass")
+	s28_blue.free()
+	s28_own.free()
+	# new pieces, and the graveyard back to the KayKit stones
+	var S28Refined = load("res://scripts/refined_models.gd")
+	var S28Props = load("res://scripts/prop_library.gd")
+	check(S28Props.TYPES.has("snowball_bare") and S28Props.TYPES.has("snowball_small") and Models.has("halloween/post_lantern_base")
+			and HollowBuildings.KINDS.has("den") and S28Refined.has("medieval/resource_lumber"),
+			"the plain snowballs, the lantern post on a stone base, the demon den and the rebuilt lumber pile are there")
+	var s28_den: Node3D = HollowBuildings.make("den", 0)
+	check(s28_den.find_children("*", "CollisionShape3D", true, false).size() > 20 and s28_den.find_child("Glow", true, false) is OmniLight3D,
+			"the demon den is solid, with a doorway, and its ember pit glows")
+	s28_den.free()
+	check(not S28Refined.has("halloween/gravestone") and not S28Refined.has("halloween/bench") and S28Refined.has("halloween/post_lantern")
+			and S28Refined.has("halloween/lantern_standing"), "the graveyard's stones and props are the KayKit models again; the lanterns and posts stay hand-built")
+	check(HollowBuildings.size("curb").is_equal_approx(Vector3(2.0, 0.45, 0.45)), "a curb is the road pieces' own kerb: 0.45 m wide and tall (%s)" % HollowBuildings.size("curb"))
+	check(MapData.MAX_GRID >= 1600 and MapData.MAX_REPEAT >= 200, "floors pull out further (%d in a row, %d in a floor)" % [MapData.MAX_REPEAT, MapData.MAX_GRID])
 	# Shift + wheel turns what you're about to place; arrow keys nudge the selected piece
 	ed.placing = "model:dungeon/wall"
 	ed.wheel_turn(15.0)

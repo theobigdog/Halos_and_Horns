@@ -20,6 +20,7 @@ const KINDS := {
 	"shop": "Corner Shop",
 	"barn": "Barn",
 	"chapel": "Chapel",
+	"den": "Demon Den",   # (Sara, Nov 28: "The angels have a chapel. The demons don't have any building.")
 	"ruin": "Ruined House",
 	# Gates (Ted, Nov 26: "make the gate into an actual gate... one closed-gate option, and an opened-gate
 	# option"): not walk-in buildings, but built the same way (Creative lists them on their own).
@@ -243,6 +244,14 @@ static func make(kind: String, look: int = 0) -> Node3D:
 		cs.shape = s[0]
 		cs.transform = s[1]
 		body.add_child(cs)
+	if b["marks"].has("glow"):   # the demon den's fire pit lights the room red
+		var glow := OmniLight3D.new()
+		glow.name = "Glow"
+		glow.light_color = Color(1.0, 0.3, 0.12)
+		glow.light_energy = 1.3
+		glow.omni_range = 5.5
+		glow.position = b["marks"]["glow"]
+		root.add_child(glow)
 	if b["marks"].has("bell"):
 		var bell := ChapelBell.new()
 		bell.name = "Bell"
@@ -266,6 +275,7 @@ static func coplanar_faces(kind: String, look := 0) -> Array:
 		"shop": _shop(b, look)
 		"barn": _barn(b, look)
 		"chapel": _chapel(b, look)
+		"den": _den(b, look)
 		"ruin": _ruin(b, look)
 	var buckets := {}
 	for t in b.tris:
@@ -323,6 +333,7 @@ static func _built(kind: String, look: int) -> Dictionary:
 		"shop": _shop(b, look)
 		"barn": _barn(b, look)
 		"chapel": _chapel(b, look)
+		"den": _den(b, look)
 		"ruin": _ruin(b, look)
 		"gate", "gate_open", "arch_gate", "arch_gate_open":
 			_gate(b, look, kind.begins_with("arch"), kind.ends_with("open"))
@@ -1162,52 +1173,83 @@ static func _gate(b: Bld, look: int, arched: bool, open: bool, leaves := true) -
 		b.cbox(at.call(mid_s, 0.95), Vector3(lw, 1.9, 0.08), bas)
 
 
-# An open dumpster (the town's green one, the same size), hollow so you can climb in and hide among the bags:
-# steel walls with ribs, the two lids flung back against the hinges, fork pockets, wheels, and trash inside.
-const DUMPSTER_PAINT := ["#2f5a3a", "#2f4a6a", "#6a3a2a", "#4a4a4a"]
+# An open dumpster you can climb into and hide among the bags. Since Nov 28 it is the town's shut dumpster with
+# one lid thrown back (Sara: "more in the same style as the other dumpster... one lid up and the other down"):
+# the same green, the front and back leaning in toward the bottom, six ribs, the darker lip round the top, black
+# plastic lids with two ribs each, fork pockets, casters, rust running down from the lip. The left lid hangs
+# down the back from its hinges; the right one is shut (solid: stand on it, or hide under it).
+# (refined_models.gd _dumpster is the shut one: keep the two alike. Drawn with the plain painted material, not
+# IRON: iron's rust blotches made it look like camouflage next to the shut one's clean paint.)
+const DUMPSTER_PAINT := ["#17532d", "#2f4a6a", "#6a3a2a", "#4a4a4a"]
 
 
 static func _dumpster(b: Bld, look: int) -> void:
 	var paint := _c(DUMPSTER_PAINT[clampi(look, 0, 3)])
-	var steel := paint.darkened(0.25)
+	var rib := paint.darkened(0.12)
+	var lip := paint.darkened(0.2)
+	var black := _c("#141416")
 	var w := 2.4
 	var d := 1.45
 	var y0 := 0.2      # its floor (it stands on wheels)
-	var top := 1.3
+	var top := 1.25
 	var t := 0.05
-	# floor and walls (solid: you stand inside), the front sloping in a little at the bottom like the real ones
-	b.ab(IRON, Vector3(-w * 0.5, y0 - 0.06, -d * 0.5), Vector3(w * 0.5, y0, d * 0.5), steel)
+	var hgt := top - y0
+	var lean := atan(0.1 / hgt)   # front and back come in 10 cm at the bottom
+	# floor and end walls (solid: you stand inside)
+	b.ab(PLASTER, Vector3(-w * 0.5, y0 - 0.06, -d * 0.5 + 0.1), Vector3(w * 0.5, y0, d * 0.5 - 0.1), paint.darkened(0.25))
 	for sx in [-1.0, 1.0]:
-		b.ab(IRON, Vector3(sx * w * 0.5 - (t if sx > 0.0 else 0.0), y0, -d * 0.5), Vector3(sx * w * 0.5 + (0.0 if sx > 0.0 else t), top, d * 0.5), paint)
-	b.ab(IRON, Vector3(-w * 0.5 + t, y0, -d * 0.5), Vector3(w * 0.5 - t, top + 0.08, -d * 0.5 + t), paint)   # back (taller: the hinges)
-	b.ab(IRON, Vector3(-w * 0.5 + t, y0, d * 0.5 - t), Vector3(w * 0.5 - t, top - 0.1, d * 0.5), paint)      # front
-	# ribs and a rim round the top
-	for k in 5:
-		var x := -w * 0.5 + w * (k + 0.5) / 5.0
-		b.ab(IRON, Vector3(x - 0.04, y0 + 0.05, d * 0.5), Vector3(x + 0.04, top - 0.14, d * 0.5 + 0.035), steel, false)
-		b.ab(IRON, Vector3(x - 0.04, y0 + 0.05, -d * 0.5 - 0.035), Vector3(x + 0.04, top - 0.02, -d * 0.5), steel, false)
-	b.ab(IRON, Vector3(-w * 0.5 - 0.03, top - 0.16, d * 0.5 + 0.035), Vector3(w * 0.5 + 0.03, top - 0.1, d * 0.5 + 0.07), steel, false)
+		b.ab(PLASTER, Vector3(sx * w * 0.5 - (t if sx > 0.0 else 0.0), y0, -d * 0.5 + 0.03), Vector3(sx * w * 0.5 + (0.0 if sx > 0.0 else t), top, d * 0.5 - 0.03), paint)
+	# front and back: leaning plates with ribs (what you see), and a straight wall each to stop you
+	for sz in [-1.0, 1.0]:
+		var tilt := Basis(Vector3.RIGHT, -sz * lean)
+		var mid := Vector3(0, (y0 + top) * 0.5, sz * (d * 0.5 - 0.05 - t * 0.5))
+		b.box(PLASTER, mid, Vector3(w - 0.01, hgt / cos(lean), t), paint, false, tilt)
+		b.cbox(Vector3(0, (y0 + top) * 0.5, sz * (d * 0.5 - 0.06)), Vector3(w, hgt, 0.08))
+		for k in 6:
+			var x := -w * 0.5 + w * (k + 0.5) / 6.0
+			b.box(PLASTER, mid + Vector3(x, 0, sz * 0.04), Vector3(0.07, hgt - 0.1, 0.07), rib, false, tilt)
+	# the lip round the top (open in the middle), and rust running down the front from it
+	for sz in [-1.0, 1.0]:
+		b.box(PLASTER, Vector3(0, top + 0.02, sz * (d * 0.5 + 0.005)), Vector3(w + 0.08, 0.06, 0.09), lip, false)
+	for sx in [-1.0, 1.0]:
+		b.box(PLASTER, Vector3(sx * (w * 0.5 + 0.005), top + 0.02, 0), Vector3(0.09, 0.06, d + 0.08), lip, false)
+	for k in 6:
+		var rx := -w * 0.45 + w * 0.9 * _dh(k * 7.1)
+		b.box(PLASTER, Vector3(rx, top - 0.15 - 0.1 * _dh(k * 3.3), d * 0.5 + 0.004), Vector3(0.03 + 0.03 * _dh(float(k)), 0.2 + 0.2 * _dh(k * 1.7), 0.004), _c("#4d331a"), false)
 	for sx in [-1.0, 1.0]:   # fork pockets on the ends
 		for z in [-0.4, 0.4]:
-			b.ab(IRON, Vector3(sx * w * 0.5 + (0.0 if sx > 0.0 else -0.06), 0.55, z - 0.14), Vector3(sx * w * 0.5 + (0.06 if sx > 0.0 else 0.0), 0.68, z + 0.14), steel.darkened(0.2), false)
+			b.box(PLASTER, Vector3(sx * (w * 0.5 + 0.04), 0.62, z), Vector3(0.08, 0.14, 0.3), paint.darkened(0.3), false)
 	# wheels (casters)
 	for sx in [-1.0, 1.0]:
 		for sz in [-1.0, 1.0]:
-			var c := Vector3(sx * (w * 0.5 - 0.2), 0.0, sz * (d * 0.5 - 0.2))
-			b.ab(IRON, c + Vector3(-0.05, 0.1, -0.05), c + Vector3(0.05, y0 - 0.06, 0.05), _c("#333338"), false)
-			b.box(IRON, c + Vector3(0, 0.07, 0), Vector3(0.05, 0.14, 0.14), _c("#18181a"), false)
-	# the lids, flung open: hanging down the back from the hinges
-	for sx in [-1.0, 1.0]:
-		var lc := Vector3(sx * w * 0.25, top + 0.08 - 0.68, -d * 0.5 - 0.05)
-		b.box(IRON, lc, Vector3(w * 0.5 - 0.04, 1.4, 0.04), paint.darkened(0.4), false, Basis(Vector3.RIGHT, 0.06))
-	# trash: bags and a box or two in the bottom (bags are knee-high: room to crouch in among them)
+			var c := Vector3(sx * (w * 0.5 - 0.2), 0.0, sz * (d * 0.5 - 0.25))
+			b.ab(PLASTER, c + Vector3(-0.05, 0.1, -0.05), c + Vector3(0.05, y0 - 0.06, 0.05), _c("#4d4d52"), false)
+			b.box(PLASTER, c + Vector3(0, 0.07, 0), Vector3(0.05, 0.14, 0.14), _c("#0d0d0d"), false)
+	# the right lid, shut: sloping a touch to the front like the shut dumpster's, two ribs across it
+	var shut := Basis(Vector3.RIGHT, -0.08)
+	b.box(PLASTER, Vector3(w * 0.25, top + 0.1, 0.02), Vector3(w * 0.5 - 0.03, 0.08, d + 0.04), black, true, shut)
+	for z in [-0.35, 0.35]:
+		b.box(PLASTER, Vector3(w * 0.25, top + 0.15 - z * 0.08, z), Vector3(w * 0.5 - 0.2, 0.03, 0.08), black.lightened(0.05), false, shut)
+	# the left lid, thrown back: hanging down the back from the hinges, its ribs showing
+	var hang := Basis(Vector3.RIGHT, 0.07)
+	var lc := Vector3(-w * 0.25, top + 0.06 - (d + 0.04) * 0.5, -d * 0.5 - 0.09)
+	b.box(PLASTER, lc, Vector3(w * 0.5 - 0.03, d + 0.04, 0.08), black, false, hang)
+	for yy in [-0.35, 0.35]:
+		b.box(PLASTER, lc + Vector3(0, yy, -0.05), Vector3(w * 0.5 - 0.2, 0.08, 0.03), black.lightened(0.05), false, hang)
+	for hx in [-w * 0.42, -w * 0.08]:   # the hinge knuckles
+		b.box(PLASTER, Vector3(hx, top + 0.07, -d * 0.5 - 0.04), Vector3(0.12, 0.07, 0.1), _c("#333338"), false)
+	# trash: bags and a box in the bottom (bags are knee-high: room to crouch in among them)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 33
 	for k in 6:
-		var p := Vector3(rng.randf_range(-0.85, 0.85), y0 + 0.16, rng.randf_range(-0.4, 0.4))
+		var p := Vector3(rng.randf_range(-0.85, 0.85), y0 + 0.16, rng.randf_range(-0.3, 0.3))
 		var bag := Vector3(rng.randf_range(0.36, 0.5), rng.randf_range(0.28, 0.36), rng.randf_range(0.32, 0.45))
 		b.box(BOARDS, p, bag, _c("#151517").lightened(0.05 * (k % 3)), false, Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.RIGHT, rng.randf_range(-0.25, 0.25)))
-	b.box(PLANKS, Vector3(0.7, y0 + 0.2, 0.3), Vector3(0.45, 0.4, 0.35), _c("#a07a4a"), false, Basis(Vector3.UP, 0.4))
+	b.box(PLANKS, Vector3(0.7, y0 + 0.2, 0.25), Vector3(0.45, 0.4, 0.35), _c("#a07a4a"), false, Basis(Vector3.UP, 0.4))
+
+
+static func _dh(x: float) -> float:
+	return fposmod(sin(x * 12.9898) * 43758.5453, 1.0)
 
 
 # A pane of stained glass filling an arched window opening (in the wall's middle), the arch made of the same
@@ -1365,6 +1407,95 @@ static func _chapel(b: Bld, look: int) -> void:
 	for z in [-3.0, 0.0, 3.0]:
 		b.ab(TIMBER, Vector3(-w * 0.5 + T, h - 0.25, z - 0.12), Vector3(w * 0.5 - T, h - 0.02, z + 0.12), wood, false)
 	_step(b, 0.0, d * 0.5, 2.6, wall.darkened(0.1))
+
+
+# The demons' answer to the chapel (Sara, Nov 28: "Please create a demon den... enterable by players"). The same
+# kind of hall, turned wicked: walls of dark basalt, a steep blood-red roof with a spine of spikes down the ridge
+# and a pair of great bone horns curling up off the front gable, fangs hanging in the arch of the doorway, an
+# iron brazier of coals either side of it. Inside: a pit of embers in a ring of stones in the middle of the floor
+# (it lights the room red), four pillars to hide behind, a spiked stone throne on a dais at the back, crates in
+# the corners. Two of the four slit windows are broken down to a low sill, to climb in by.
+const DEN_WALL := ["#3d363b", "#4a3432", "#30353f", "#3f3b30"]
+const DEN_ROOF := ["#5c1f1b", "#2b2428", "#3b2250", "#4d2c15"]
+
+
+static func _den(b: Bld, look: int) -> void:
+	var w := 8.0
+	var d := 10.0
+	var h := 3.8
+	var wall := _c(DEN_WALL[look])
+	var roof := _c(DEN_ROOF[look])
+	var trim := wall.darkened(0.3)
+	var bone := _c("#d8cfb8")
+	var iron := _c("#1c1c20")
+	var ember := _c("#ff5a1e")
+	var ops := {
+		"front": [_op(0.0, 2.4, FLOOR, 3.2, "arch")],
+		"left": [_op(-2.5, 0.8, 1.5, 3.0, "arch"), _op(2.5, 0.8, 0.75, 3.0, "arch")],
+		"right": [_op(-2.5, 0.8, 0.75, 3.0, "arch"), _op(2.5, 0.8, 1.5, 3.0, "arch")],
+	}
+	b.shell(STONE, w, d, 0.0, h, ops, wall, trim, null, true, T, true, TRIM)
+	b.shell(STONE, w + 0.14, d + 0.14, 0.0, 0.5, ops, wall.darkened(0.2), trim, null, false, T + 0.14, false)
+	_floor(b, w, d, FLAG, wall.darkened(0.25))
+	var ridge := b.gable_roof(ROOF, w, d, h, 1.35, 0.4, 0.22, roof, roof.darkened(0.35), true)
+	for sz in [-1.0, 1.0]:
+		b.gable(STONE, true, sz * (d * 0.5 - T), sz * d * 0.5, w * 0.5, h, ridge, wall)
+	# a spine of spikes down the ridge
+	for k in 9:
+		_spike(b, ROOF, Vector3(0.0, ridge + 0.1, -4.0 + k * 1.0), 0.17 + 0.04 * (k % 2), 0.6 + 0.3 * (k % 2), roof.darkened(0.45))
+	# two great horns off the front gable: bone, curling out and then up, each a run of tapering blocks
+	for sx in [-1.0, 1.0]:
+		var at := Vector3(sx * 0.7, ridge - 0.55, d * 0.5 - 0.3)
+		for k in 6:
+			var t := k / 5.0
+			var ang: float = lerpf(1.25, -0.25, t)
+			var dir := Vector3(sx * sin(ang), cos(ang), 0.0)
+			var rad := lerpf(0.26, 0.05, t)
+			var seg := 0.6
+			b.box(TRIM, at + dir * seg * 0.5, Vector3(rad * 2.0, seg * 1.12, rad * 2.0), bone.darkened(0.12 * (1.0 - t)), false, Basis(Vector3(0, 0, 1), -sx * ang))
+			at += dir * seg
+		_spike(b, TRIM, at, 0.05, 0.3, bone, Basis(Vector3(0, 0, 1), sx * 0.25))
+	# fangs in the arch of the doorway
+	for x in [-0.85, -0.45, 0.45, 0.85]:
+		var arch_y := 2.0 + sqrt(maxf(1.44 - x * x, 0.0))
+		_spike(b, TRIM, Vector3(x, arch_y - 0.02, d * 0.5 - T * 0.5), 0.08, 0.38 if absf(x) > 0.6 else 0.5, bone, Basis(Vector3.RIGHT, PI))
+	# a brazier of coals either side of the door
+	for sx in [-1.0, 1.0]:
+		var bc := Vector3(sx * 2.3, 0.0, d * 0.5 + 0.9)
+		for a in 3:
+			var leg := Vector3(cos(TAU * a / 3.0), 0, sin(TAU * a / 3.0)) * 0.22
+			b.box(IRON, bc + leg + Vector3(0, 0.45, 0), Vector3(0.05, 0.92, 0.05), iron, false, Basis(Vector3(-leg.z, 0, leg.x).normalized(), 0.2))
+		b.box(IRON, bc + Vector3(0, 0.95, 0), Vector3(0.62, 0.16, 0.62), iron, true)
+		b.box(GOLD, bc + Vector3(0, 1.05, 0), Vector3(0.5, 0.1, 0.5), ember, false)
+	# inside: the ember pit, in a ring of stones
+	var pit := Vector3(0.0, FLOOR, 0.6)
+	for a in 10:
+		var ang := TAU * a / 10.0
+		b.box(STONE, pit + Vector3(cos(ang) * 1.0, 0.13, sin(ang) * 1.0), Vector3(0.5, 0.26 + 0.05 * (a % 2), 0.36), wall.lightened(0.08), true, Basis(Vector3.UP, -ang + PI * 0.5))
+	b.box(GOLD, pit + Vector3(0, 0.06, 0), Vector3(1.5, 0.08, 1.5), ember, false, Basis(Vector3.UP, 0.4))
+	b.box(STAINED, pit + Vector3(0, 0.12, 0), Vector3(1.0, 0.06, 1.0), _c("#ff9a3a"), false, Basis(Vector3.UP, 1.1))
+	b.marks["glow"] = pit + Vector3(0, 1.3, 0)
+	# four pillars to hide behind
+	for sx in [-1.0, 1.0]:
+		for z in [-1.6, 2.8]:
+			b.ab(STONE, Vector3(sx * 2.4 - 0.28, FLOOR, z - 0.28), Vector3(sx * 2.4 + 0.28, h - 0.3, z + 0.28), wall.lightened(0.05))
+			b.ab(STONE, Vector3(sx * 2.4 - 0.36, FLOOR - 0.02, z - 0.36), Vector3(sx * 2.4 + 0.36, FLOOR + 0.3, z + 0.36), wall.darkened(0.1), false)
+	# the dais and the throne
+	b.ab(FLAG, Vector3(-w * 0.5 + T, FLOOR, -d * 0.5 + T), Vector3(w * 0.5 - T, FLOOR + 0.18, -3.2), wall.darkened(0.1))
+	var ty := FLOOR + 0.18
+	b.ab(STONE, Vector3(-0.6, ty - 0.02, -4.45), Vector3(0.6, ty + 0.55, -3.65), wall.lightened(0.1))   # (sunk a little: no face shares a plane with its neighbours')
+	b.ab(STONE, Vector3(-0.72, ty, -4.72), Vector3(0.72, ty + 2.3, -4.45), wall.lightened(0.06))
+	for sx in [-1.0, 1.0]:
+		b.ab(STONE, Vector3(sx * 0.73 - 0.12, ty - 0.04, -4.43), Vector3(sx * 0.73 + 0.12, ty + 0.95, -3.7), wall.lightened(0.02))
+		_spike(b, STONE, Vector3(sx * 0.5, ty + 2.31, -4.585), 0.1, 0.55, wall.lightened(0.06))
+	_spike(b, STONE, Vector3(0.0, ty + 2.31, -4.585), 0.12, 0.8, wall.lightened(0.06))
+	b.ab(TRIM, Vector3(-0.5, ty + 0.55, -4.44), Vector3(0.5, ty + 0.6, -3.68), _c("#7a1620"), false)   # a blood-red cushion
+	# tie beams, crates in the front corners, the doorstep
+	for z in [-2.5, 0.6, 3.6]:
+		b.ab(TIMBER, Vector3(-w * 0.5 + T, h - 0.25, z - 0.12), Vector3(w * 0.5 - T, h - 0.02, z + 0.12), _c(WOOD_DARK), false)
+	_crate(b, Vector3(-3.1, FLOOR, 4.0))
+	_crate(b, Vector3(3.2, FLOOR, 3.9))
+	_step(b, 0.0, d * 0.5, 3.0, wall.darkened(0.1))
 
 
 static func _ruin(b: Bld, look: int) -> void:

@@ -5533,6 +5533,25 @@
 ]
 },
 {
+"id": "halloween/post_lantern_base",
+"path": "res://assets/kaykit/halloween/post_lantern.gltf",
+"label": "Post lantern (stone base)",
+"cat": "Graveyard",
+"kind": "structure",
+"scale": 0.75,
+"size": [
+0.5,
+2.95,
+1.2
+],
+"offset": [
+0.0,
+-0.0,
+-0.425
+],
+"extra": "built"
+},
+{
 "id": "halloween/post_skull",
 "path": "res://assets/kaykit/halloween/post_skull.gltf",
 "label": "Post skull",

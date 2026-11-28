@@ -8,24 +8,38 @@ extends RefCounted
 const CP = preload("res://scripts/classic_props.gd")
 const RM = preload("res://scripts/refined_models.gd")
 
+# Sara, Nov 28: "The refinement you did to the graveyard props made each piece look way worse and rudimentary."
+# Set side by side with the KayKit models they replaced (tools/contact_sheet.gd --kaykit), she was right: the
+# hand-built stones were lumpy and blotchy with tiny reliefs and stray moss patches (some floating in the air), a
+# jack-o'-lantern's face sat off the pumpkin; the KayKit ones are crisp carved stone with bold skulls. So the
+# graves, stones, crypt, pillars, fences, arches, shrines, plaques, coffins, candles, bones, skulls, pumpkins and
+# benches are the KayKit models again (rounded by model_smooth.gd and finished by structure_look.gd like every other
+# KayKit piece). What stays hand-built: the lanterns and the lantern posts (rebuilt to her pictures) and the dirt
+# and path ground pieces. The shelved builders are still below, listed in SHELVED, should any be redone properly.
 const BUILDERS := {
+	"halloween/lantern_standing": "_lantern_prop", "halloween/lantern_hanging": "_lantern_prop",
+	"halloween/floor_dirt": "_dirt", "halloween/floor_dirt_small": "_dirt", "halloween/floor_dirt_grave": "_dirt",
+	"halloween/path_A": "_path", "halloween/path_B": "_path", "halloween/path_C": "_path", "halloween/path_D": "_path",
+	"halloween/post": "_post", "halloween/post_lantern": "_post", "halloween/post_lantern_base": "_post",
+	"halloween/post_skull": "_post",
+}
+
+const SHELVED := {
 	"halloween/bench_decorated": "_bench_decorated", "halloween/bone_A": "_bone", "halloween/bone_B": "_bone",
 	"halloween/bone_C": "_bone", "halloween/candle": "_candle_prop", "halloween/candle_melted": "_candle_prop",
 	"halloween/candle_thin": "_candle_prop", "halloween/candle_triple": "_candle_prop", "halloween/coffin": "_coffin",
 	"halloween/coffin_decorated": "_coffin", "halloween/grave_A": "_grave", "halloween/grave_A_destroyed": "_grave",
 	"halloween/grave_B": "_grave", "halloween/gravemarker_A": "_marker", "halloween/gravemarker_B": "_marker",
-	"halloween/gravestone": "_grave", "halloween/lantern_standing": "_lantern_prop", "halloween/lantern_hanging": "_lantern_prop",
-	"halloween/pumpkin_orange": "_pumpkin", "halloween/pumpkin_orange_small": "_pumpkin", "halloween/pumpkin_yellow": "_pumpkin",
+	"halloween/gravestone": "_grave", "halloween/pumpkin_orange": "_pumpkin",
+	"halloween/pumpkin_orange_small": "_pumpkin", "halloween/pumpkin_yellow": "_pumpkin",
 	"halloween/pumpkin_yellow_small": "_pumpkin", "halloween/pumpkin_orange_jackolantern": "_pumpkin",
 	"halloween/pumpkin_yellow_jackolantern": "_pumpkin", "halloween/ribcage": "_ribcage", "halloween/shrine": "_shrine",
 	"halloween/shrine_candles": "_shrine", "halloween/skull": "_skull_prop", "halloween/skull_candle": "_skull_prop",
-	"halloween/crypt": "_crypt", "halloween/fence": "_fence", "halloween/fence_broken": "_fence", "halloween/fence_gate": "_fence",
-	"halloween/fence_pillar": "_fence_pillar", "halloween/fence_pillar_broken": "_fence_pillar", "halloween/fence_seperate": "_railing",
-	"halloween/fence_seperate_broken": "_railing", "halloween/floor_dirt": "_dirt", "halloween/floor_dirt_small": "_dirt",
-	"halloween/floor_dirt_grave": "_dirt", "halloween/path_A": "_path", "halloween/path_B": "_path", "halloween/path_C": "_path",
-	"halloween/path_D": "_path", "halloween/pillar": "_pillar", "halloween/plaque": "_plaque", "halloween/plaque_candles": "_plaque",
-	"halloween/post": "_post", "halloween/post_lantern": "_post", "halloween/post_skull": "_post",
-	"halloween/arch": "_arch", "halloween/arch_gate": "_arch",
+	"halloween/crypt": "_crypt", "halloween/fence": "_fence", "halloween/fence_broken": "_fence",
+	"halloween/fence_gate": "_fence", "halloween/fence_pillar": "_fence_pillar",
+	"halloween/fence_pillar_broken": "_fence_pillar", "halloween/fence_seperate": "_railing",
+	"halloween/fence_seperate_broken": "_railing", "halloween/pillar": "_pillar", "halloween/plaque": "_plaque",
+	"halloween/plaque_candles": "_plaque", "halloween/arch": "_arch", "halloween/arch_gate": "_arch",
 }
 
 const STONE := Color(0.56, 0.57, 0.56)
@@ -781,6 +795,46 @@ static func _post(root: Node3D, id: String) -> void:
 		var iron := CP._begin()
 		var glass := CP._begin()
 		var dark := CP._begin()
+		var stone := CP._begin()
+		var spots := []
+		if "lantern" in id:
+			# The lantern posts, after Sara's two pictures (Nov 28): a squared honey-coloured timber post, a
+			# cross-arm let through it near the top (long on the lantern's side, a stub out the other), a brace
+			# under the arm, rope lashed round the arm where the lantern hangs from it, and a black lantern
+			# with glowing panes. "_base": the same post stood on a tapering plinth of dressed stone.
+			var wood := Color(0.6, 0.42, 0.22)
+			var based := id.ends_with("_base")
+			var foot := 0.56 if based else 0.0
+			var top := foot + 2.4
+			if based:
+				for c in 4:   # four courses, each a little narrower, blocks standing proud of the mortar
+					var w := 0.46 - 0.03 * c
+					var cy := 0.07 + 0.14 * c
+					_slab(stone, Vector3(0, cy, 0), Vector3(w, 0.14, w), STONE.darkened(0.22))
+					for side in 4:
+						var n := Vector3(sin(side * PI * 0.5), 0, cos(side * PI * 0.5))
+						var t := Vector3(n.z, 0, -n.x)
+						var x := -w * 0.5 + 0.012
+						var k := 0
+						while x < w * 0.5 - 0.02:
+							var bw := minf(w * (0.3 + 0.25 * CP._h(c * 7.0 + side * 3.0 + k)), w * 0.5 - 0.012 - x)
+							var tone := STONE.lightened(0.1 * CP._h(c + side * 5.0 + k * 2.0)).darkened(0.12 * CP._h(c * 3.0 + side + k * 7.0))
+							CP._box(stone, Vector3(0, cy, 0) + n * (w * 0.5 + 0.004) + t * (x + bw * 0.5), Vector3(absf(t.x) * (bw - 0.014) + absf(n.x) * 0.012, 0.118, absf(t.z) * (bw - 0.014) + absf(n.z) * 0.012), tone)
+							x += bw
+							k += 1
+				_slab(stone, Vector3(0, foot - 0.005, 0), Vector3(0.3, 0.03, 0.3), STONE.lightened(0.06))
+			CP._box(st, Vector3(0, (foot + top) * 0.5, 0), Vector3(0.17, top - foot, 0.17), wood)
+			for k in 7:   # checks in the grain
+				CP._box(dark, Vector3(0.086, foot + 0.3 + 0.28 * k, (CP._h(k) - 0.5) * 0.1), Vector3(0.002, 0.16, 0.005), wood.darkened(0.45))
+			var arm_y := top - 0.2
+			CP._box(st, Vector3(0, arm_y, -0.3), Vector3(0.12, 0.12, 1.15), wood.lightened(0.05))
+			CP._box(st, Vector3(0, arm_y - 0.3, -0.27), Vector3(0.075, 0.075, 0.6), wood.darkened(0.1), Basis(Vector3.RIGHT, -0.82))
+			var hang := Vector3(0, arm_y, -0.68)
+			for k in 3:   # the lashing
+				CP._box(st, hang + Vector3(0, 0, (k - 1) * 0.024), Vector3(0.134, 0.134, 0.02), Color(0.78, 0.66, 0.44).darkened(0.08 * k))
+			CP._tube(st, [hang + Vector3(0, -0.06, 0), hang + Vector3(0, -0.3, 0)], [0.011, 0.011], Color(0.72, 0.6, 0.4), 5)
+			spots.append(_lantern(iron, glass, hang + Vector3(0, -0.92, 0), 1.0))
+			return [CP._end(st, false), CP._end(iron, false), CP._end(glass, false), CP._end(dark, false), spots, CP._end(stone, false)]
 		var x := 0.0
 		CP._box(st, Vector3(x, 1.2, 0.0), Vector3(0.16, 2.4, 0.16), TIMBER)
 		CP._box(st, Vector3(x, 2.3, -0.45), Vector3(0.12, 0.12, 1.0), TIMBER.lightened(0.04))
@@ -788,20 +842,18 @@ static func _post(root: Node3D, id: String) -> void:
 		for k in 8:   # grain splits
 			CP._box(dark, Vector3(x + 0.081, 0.3 + 0.25 * k, (CP._h(k) - 0.5) * 0.1), Vector3(0.002, 0.18, 0.006), TIMBER.darkened(0.4))
 		CP._lathe(st, [[0.0, 2.4], [0.1, 2.4], [0.0, 2.48]], 4, func(_i, _a): return TIMBER.darkened(0.1))   # a little cap
-		var spots := []
 		var hang := Vector3(x, 2.24, -0.85)
 		CP._ring(iron, hang, 0.03, 0.008, IRON, 8, 4)
-		if id.ends_with("lantern"):
-			spots.append(_lantern(iron, glass, hang + Vector3(0, -0.62, 0), 1.0))
-			CP._tube(iron, [hang, hang + Vector3(0, -0.15, 0)], [0.008, 0.008], IRON, 4)
-		elif id.ends_with("skull"):
+		if id.ends_with("skull"):
 			CP._tube(st, [hang, hang + Vector3(0.0, -0.35, 0.01)], [0.012, 0.012], Color(0.55, 0.45, 0.3), 4)
 			_skull(st, dark, hang + Vector3(0, -0.5, 0), 0.13, BONE)
-		return [CP._end(st, false), CP._end(iron, false), CP._end(glass, false), CP._end(dark, false), spots])
+		return [CP._end(st, false), CP._end(iron, false), CP._end(glass, false), CP._end(dark, false), spots, CP._end(stone, false)])
 	RM._put(root, parts[0], _mat_wood())
 	RM._put(root, parts[1], _mat_iron(), false)
 	RM._put(root, parts[2], RM._glow(Color(1.0, 0.82, 0.45), 0.7), false)
 	RM._put(root, parts[3], _mat_soft(), false)
+	if (parts[5] as Mesh).get_surface_count() > 0:
+		RM._put(root, parts[5], _mat_stone())
 
 
 # The graveyard arch (and arch with a gate): the same stonework and ironwork as Creative's Arched Gate, which was

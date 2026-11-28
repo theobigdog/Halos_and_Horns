@@ -26,6 +26,31 @@ const CARS := {
 	"city/car_police": [4.2, 2.5, Color(0.12, 0.25, 0.6), 0.26, 0.66, 1.5],
 }
 
+# Paints (Sara, Nov 28: "a preset list of different colors that appropriately color all parts"): Creative's
+# Style repaints the bodywork only. Glass, tyres, chrome, bumpers, lamps and lettering stay as they are. 0 is
+# the vehicle as it comes.
+const PAINTS := [["Red", Color(0.78, 0.16, 0.14)], ["Blue", Color(0.16, 0.38, 0.82)], ["Green", Color(0.2, 0.55, 0.26)],
+		["Yellow", Color(0.96, 0.78, 0.16)], ["Orange", Color(0.95, 0.5, 0.12)], ["Purple", Color(0.5, 0.26, 0.7)],
+		["Pink", Color(0.95, 0.5, 0.68)], ["Teal", Color(0.1, 0.6, 0.62)], ["White", Color(0.94, 0.94, 0.93)],
+		["Silver", Color(0.68, 0.7, 0.73)], ["Black", Color(0.1, 0.1, 0.11)], ["Brown", Color(0.42, 0.27, 0.16)]]
+
+
+static func paint_names() -> Array:
+	var out := ["As it comes"]
+	for pt in PAINTS:
+		out.append(pt[0])
+	return out
+
+
+# The vehicle's own colour, or the paint Creative's Style picked.
+static func _paint(own: Color) -> Color:
+	return own if RM.style <= 0 else PAINTS[(RM.style - 1) % PAINTS.size()][1]
+
+
+static func _key(id: String) -> String:
+	return "v_%s_%d" % [id, RM.style]
+
+
 const GREY := Color(0.55, 0.56, 0.58)
 const DARK := Color(0.12, 0.12, 0.13)
 const CHROME := Color(0.82, 0.83, 0.85)
@@ -35,7 +60,10 @@ const CHROME := Color(0.82, 0.83, 0.85)
 
 # A box with every edge and corner rounded (radius r), as a moulded shape: each face is a grid, its points pulled
 # in to an inner box and pushed back out round the corners.
-static func soft_box(st: SurfaceTool, c: Vector3, s: Vector3, r: float, col: Color, bas := Basis(), n := 5) -> void:
+# `rake`: how far the top of its front (x) and of its back (y) lean in, in metres: a cabin with a sloping
+# windscreen and rear window (Sara, Nov 28: "I don't like how the front windshields of the cars are completely
+# vertical and not sloped"). The bottom stays where it is.
+static func soft_box(st: SurfaceTool, c: Vector3, s: Vector3, r: float, col: Color, bas := Basis(), n := 5, rake := Vector2.ZERO) -> void:
 	var h := s * 0.5
 	r = minf(r, minf(h.x, minf(h.y, h.z)) - 0.001)
 	var inner := h - Vector3.ONE * r
@@ -52,7 +80,11 @@ static func soft_box(st: SurfaceTool, c: Vector3, s: Vector3, r: float, col: Col
 				var p := (nrm + u * (2.0 * i / n - 1.0) + v * (2.0 * j / n - 1.0)) * h
 				var q := p.clamp(-inner, inner)
 				var d := p - q
-				row.append(q + (d.normalized() * r if d.length() > 0.0001 else Vector3.ZERO))
+				var at := q + (d.normalized() * r if d.length() > 0.0001 else Vector3.ZERO)
+				if rake != Vector2.ZERO:
+					var up := clampf((at.y + h.y) / (2.0 * h.y), 0.0, 1.0)
+					at.z -= (rake.x if at.z > 0.0 else -rake.y) * up * absf(at.z) / h.z
+				row.append(at)
 			pts.append(row)
 		for i in n:
 			for j in n:
@@ -147,7 +179,7 @@ static func _label(root: Node3D, text: String, at: Vector3, yaw: float, size: fl
 # ---------------------------------------------------------------- cars
 
 static func _car(root: Node3D, id: String) -> void:
-	var parts := RM._cached("v_" + id, func() -> Array: return _car_meshes(id))
+	var parts := RM._cached(_key(id), func() -> Array: return _car_meshes(id))
 	RM._put(root, parts[0], RM._paint(Color.WHITE, 0.28, 0.2))
 	RM._put(root, parts[1], _toy_glass(), true)
 	RM._put(root, parts[2], RM._paint(Color.WHITE, 0.45, 0.55), false)
@@ -168,7 +200,7 @@ static func _car_meshes(id: String) -> Array:
 	var spec: Array = CARS[id]
 	var L: float = spec[0]
 	var base: float = spec[1]
-	var paint: Color = spec[2]
+	var paint: Color = _paint(spec[2])
 	var c0: float = spec[3]
 	var c1: float = spec[4]
 	var top: float = spec[5]
@@ -197,18 +229,31 @@ static func _car_meshes(id: String) -> Array:
 	var cz1 := -L * 0.5 + L * c1
 	var cab_c := Vector3(0, (0.9 + top) * 0.5, (cz0 + cz1) * 0.5)
 	var cab_s := Vector3(W * 0.86, top - 0.9 + 0.1, cz1 - cz0)
-	soft_box(body, cab_c, cab_s, 0.2, white if police else paint)
+	# (the windscreen leans back 0.42 m over the cabin's height, about 30 degrees; the rear window less, and
+	# hardly at all on the hatchback and the station wagon, which are square behind)
+	var rake := Vector2(0.42, 0.26 if c0 > 0.2 else 0.1)
+	soft_box(body, cab_c, cab_s, 0.2, white if police else paint, Basis(), 5, rake)
 	var gy0 := 1.0
 	var gy1 := top - 0.1
 	var gx := cab_s.x * 0.5 + 0.004
-	for s: float in [-1.0, 1.0]:   # side windows, split by a pillar
-		var zm := (cz0 + cz1) * 0.5
-		_glass_quad(glass, Vector3(s * gx, gy0, cz0 + 0.2), Vector3(s * gx, gy0, zm - 0.05), Vector3(s * gx, gy1, zm - 0.05), Vector3(s * gx, gy1, cz0 + 0.25), Vector3(s, 0, 0))
-		_glass_quad(glass, Vector3(s * gx, gy0, zm + 0.05), Vector3(s * gx, gy0, cz1 - 0.25), Vector3(s * gx, gy1, cz1 - 0.3), Vector3(s * gx, gy1, zm + 0.05), Vector3(s, 0, 0))
-	var fz := cz1 + 0.004
-	_glass_quad(glass, Vector3(-cab_s.x * 0.42, gy0, fz), Vector3(cab_s.x * 0.42, gy0, fz), Vector3(cab_s.x * 0.4, gy1, fz - 0.02), Vector3(-cab_s.x * 0.4, gy1, fz - 0.02), Vector3(0, 0.3, 1))
-	var bz := cz0 - 0.004
-	_glass_quad(glass, Vector3(-cab_s.x * 0.4, gy0, bz), Vector3(cab_s.x * 0.4, gy0, bz), Vector3(cab_s.x * 0.38, gy1, bz + 0.02), Vector3(-cab_s.x * 0.38, gy1, bz + 0.02), Vector3(0, 0.3, -1))
+	var cab_lo := cab_c.y - cab_s.y * 0.5
+	# where the cabin's front and back faces are at a height (they lean)
+	var front_at := func(y: float) -> float: return cz1 - rake.x * clampf((y - cab_lo) / cab_s.y, 0.0, 1.0)
+	var back_at := func(y: float) -> float: return cz0 + rake.y * clampf((y - cab_lo) / cab_s.y, 0.0, 1.0)
+	var f0: float = front_at.call(gy0)
+	var f1: float = front_at.call(gy1)
+	var b0: float = back_at.call(gy0)
+	var b1: float = back_at.call(gy1)
+	for s: float in [-1.0, 1.0]:   # side windows, split by a pillar, their ends following the lean
+		var zm := (cz0 + cz1) * 0.5 - (rake.x - rake.y) * 0.25
+		_glass_quad(glass, Vector3(s * gx, gy0, b0 + 0.2), Vector3(s * gx, gy0, zm - 0.05), Vector3(s * gx, gy1, zm - 0.05), Vector3(s * gx, gy1, b1 + 0.2), Vector3(s, 0, 0))
+		_glass_quad(glass, Vector3(s * gx, gy0, zm + 0.05), Vector3(s * gx, gy0, f0 - 0.22), Vector3(s * gx, gy1, f1 - 0.2), Vector3(s * gx, gy1, zm + 0.05), Vector3(s, 0, 0))
+	var lean_f := Vector3(0, rake.x / cab_s.y, 1).normalized()
+	_glass_quad(glass, Vector3(-cab_s.x * 0.42, gy0, f0) + lean_f * 0.006, Vector3(cab_s.x * 0.42, gy0, f0) + lean_f * 0.006,
+			Vector3(cab_s.x * 0.4, gy1, f1) + lean_f * 0.006, Vector3(-cab_s.x * 0.4, gy1, f1) + lean_f * 0.006, lean_f)
+	var lean_b := Vector3(0, rake.y / cab_s.y, -1).normalized()
+	_glass_quad(glass, Vector3(-cab_s.x * 0.4, gy0, b0) + lean_b * 0.006, Vector3(cab_s.x * 0.4, gy0, b0) + lean_b * 0.006,
+			Vector3(cab_s.x * 0.38, gy1, b1) + lean_b * 0.006, Vector3(-cab_s.x * 0.38, gy1, b1) + lean_b * 0.006, lean_b)
 	# door lines and handles, mirrors
 	for s: float in [-1.0, 1.0]:
 		var zm := (cz0 + cz1) * 0.5
@@ -256,14 +301,23 @@ static func _cab(body: SurfaceTool, glass: SurfaceTool, trim: SurfaceTool, heads
 		cab_len: float, floor_y: float, top: float, col: Color) -> float:
 	var back_z := front_z - cab_len
 	soft_box(body, Vector3(0, floor_y + 0.32, front_z - cab_len * 0.5), Vector3(W, 0.66, cab_len), 0.2, col)
-	soft_box(body, Vector3(0, (floor_y + 0.62 + top) * 0.5, back_z + cab_len * 0.38), Vector3(W * 0.96, top - floor_y - 0.6, cab_len * 0.74), 0.18, col)
+	# (the upper cab's front leans back 0.34 m: a sloping windscreen, like the cars')
+	var up_h := top - floor_y - 0.6
+	var up_lo := (floor_y + 0.62 + top) * 0.5 - up_h * 0.5
+	var rake := 0.34
+	soft_box(body, Vector3(0, (floor_y + 0.62 + top) * 0.5, back_z + cab_len * 0.38), Vector3(W * 0.96, up_h, cab_len * 0.74), 0.18, col, Basis(), 5, Vector2(rake, 0.0))
 	var gx := W * 0.48 + 0.004
 	var gz0 := back_z + 0.15
-	var gz1 := back_z + cab_len * 0.72
+	var glass_lo := floor_y + 0.72
+	var glass_hi := top - 0.12
+	var face_lo := back_z + cab_len * 0.75 - rake * clampf((glass_lo - up_lo) / up_h, 0.0, 1.0)
+	var face_hi := back_z + cab_len * 0.75 - rake * clampf((glass_hi - up_lo) / up_h, 0.0, 1.0)
 	for s: float in [-1.0, 1.0]:
-		_glass_quad(glass, Vector3(s * gx, floor_y + 0.72, gz0), Vector3(s * gx, floor_y + 0.72, gz1), Vector3(s * gx, top - 0.12, gz1 - 0.05), Vector3(s * gx, top - 0.12, gz0), Vector3(s, 0, 0))
-	var fz := back_z + cab_len * 0.75 + 0.004
-	_glass_quad(glass, Vector3(-W * 0.42, floor_y + 0.72, fz), Vector3(W * 0.42, floor_y + 0.72, fz), Vector3(W * 0.4, top - 0.12, fz - 0.05), Vector3(-W * 0.4, top - 0.12, fz - 0.05), Vector3(0, 0.2, 1))
+		_glass_quad(glass, Vector3(s * gx, glass_lo, gz0), Vector3(s * gx, glass_lo, face_lo - 0.14), Vector3(s * gx, glass_hi, face_hi - 0.12), Vector3(s * gx, glass_hi, gz0), Vector3(s, 0, 0))
+	var lean := Vector3(0, rake / up_h, 1).normalized()
+	_glass_quad(glass, Vector3(-W * 0.42, glass_lo, face_lo) + lean * 0.006, Vector3(W * 0.42, glass_lo, face_lo) + lean * 0.006,
+			Vector3(W * 0.4, glass_hi, face_hi) + lean * 0.006, Vector3(-W * 0.4, glass_hi, face_hi) + lean * 0.006, lean)
+	var gz1 := face_lo - 0.1   # (where the mirrors go)
 	soft_box(trim, Vector3(0, floor_y + 0.1, front_z + 0.05), Vector3(W + 0.06, 0.22, 0.26), 0.08, GREY)
 	soft_box(trim, Vector3(0, floor_y + 0.36, front_z - 0.01), Vector3(W * 0.42, 0.26, 0.06), 0.06, DARK)
 	for k in 3:
@@ -284,13 +338,13 @@ static func _put_parts(root: Node3D, parts: Array) -> void:
 
 # A pickup truck: lifted, chunky, big off-road tyres, a cab and an open bed with low sides and a tailgate. (green)
 static func _pickup(root: Node3D, id: String) -> void:
-	var parts := RM._cached("v_" + id, func() -> Array:
+	var parts := RM._cached(_key(id), func() -> Array:
 		var body := CP._begin()
 		var glass := CP._begin()
 		var trim := CP._begin()
 		var tyres := CP._begin()
 		var heads := CP._begin()
-		var col := Color(0.32, 0.55, 0.28)
+		var col := _paint(Color(0.32, 0.55, 0.28))
 		var W := 2.0
 		var L := 4.6
 		var floor_y := 0.62
@@ -314,7 +368,7 @@ static func _pickup(root: Node3D, id: String) -> void:
 
 # An ambulance: a cab in white with a tall box body behind, a red stripe and red crosses, a light bar. (white)
 static func _ambulance(root: Node3D, id: String) -> void:
-	var parts := RM._cached("v_" + id, func() -> Array:
+	var parts := RM._cached(_key(id), func() -> Array:
 		var body := CP._begin()
 		var glass := CP._begin()
 		var trim := CP._begin()
@@ -322,7 +376,7 @@ static func _ambulance(root: Node3D, id: String) -> void:
 		var heads := CP._begin()
 		var red := CP._begin()
 		var blue := CP._begin()
-		var white := Color(0.95, 0.95, 0.94)
+		var white := _paint(Color(0.95, 0.95, 0.94))
 		var redc := Color(0.85, 0.12, 0.12)
 		var W := 2.1
 		var L := 5.0
@@ -355,7 +409,7 @@ static func _cross(st: SurfaceTool, c: Vector3, n: Vector3, s: float, col: Color
 
 # A fire truck: a red cab, a long red body with lockers, a silver ladder on top, a hose reel, a light. (red)
 static func _firetruck(root: Node3D, id: String) -> void:
-	var parts := RM._cached("v_" + id, func() -> Array:
+	var parts := RM._cached(_key(id), func() -> Array:
 		var body := CP._begin()
 		var glass := CP._begin()
 		var trim := CP._begin()
@@ -363,7 +417,7 @@ static func _firetruck(root: Node3D, id: String) -> void:
 		var heads := CP._begin()
 		var red := CP._begin()
 		var blue := CP._begin()
-		var col := Color(0.82, 0.12, 0.1)
+		var col := _paint(Color(0.82, 0.12, 0.1))
 		var W := 2.3
 		var L := 7.0
 		var floor_y := 0.55
@@ -403,14 +457,14 @@ static func _firetruck(root: Node3D, id: String) -> void:
 # A bus: a long soft body, cream above and yellow below, a row of big windows, a big windscreen, doors, bumpers,
 # and round lamps. (8.5 m)
 static func _bus(root: Node3D, id: String) -> void:
-	var parts := RM._cached("v_" + id, func() -> Array:
+	var parts := RM._cached(_key(id), func() -> Array:
 		var body := CP._begin()
 		var glass := CP._begin()
 		var trim := CP._begin()
 		var tyres := CP._begin()
 		var heads := CP._begin()
 		var cream := Color(0.95, 0.92, 0.78)
-		var yellow := Color(0.92, 0.68, 0.18)
+		var yellow := _paint(Color(0.92, 0.68, 0.18))
 		var W := 2.5
 		var L := 8.5
 		var floor_y := 0.45
@@ -446,13 +500,13 @@ static func _bus(root: Node3D, id: String) -> void:
 # A motorcycle: two chunky wheels, a frame, an orange tank and side panels, a black seat, handlebars and a round
 # headlight. (2.0 m long)
 static func _motorcycle(root: Node3D, id: String) -> void:
-	var parts := RM._cached("v_" + id, func() -> Array:
+	var parts := RM._cached(_key(id), func() -> Array:
 		var body := CP._begin()
 		var glass := CP._begin()
 		var trim := CP._begin()
 		var tyres := CP._begin()
 		var heads := CP._begin()
-		var orange := Color(0.95, 0.5, 0.12)
+		var orange := _paint(Color(0.95, 0.5, 0.12))
 		var r := 0.34
 		for wz: float in [-0.7, 0.72]:
 			wheel(tyres, Vector3(-0.1, r, wz), r, 0.2, -1.0)

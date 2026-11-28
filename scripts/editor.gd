@@ -96,7 +96,7 @@ var _group_btn: Button
 var _ungroup_btn: Button
 var _member_start := {}       # index -> [position, basis] when a move/turn began
 var _member_before := {}      # index -> piece copy (to undo a cancelled drag online)
-const SHARE_KEYS := ["look", "color", "lights", "always", "flicker", "energy", "range", "spot", "angle", "fixed", "no_possess"]
+const SHARE_KEYS := ["look", "color", "lights", "always", "flicker", "energy", "range", "spot", "angle", "fixed", "no_possess", "style", "fringe"]
 var _drag_mouse := Vector2.ZERO
 var _drag_offset := Vector3.ZERO
 var _drag_t0 := 0.0
@@ -143,6 +143,10 @@ var test_role := "demon"          # Test play as a demon or an angel (Ted, Nov 2
 var _test_role_button: Button
 var _extend_button: Button
 var _paving_row: HBoxContainer
+var _style_row: HBoxContainer     # a rug's pattern or a vehicle's paint (Models.styles)
+var _style_pick: OptionButton
+var _styles_for := ""
+var _fringe_check: CheckBox
 var _top_panel: Control
 var _light_range: SpinBox
 var _light_energy: SpinBox
@@ -349,7 +353,9 @@ func _make_node(p: Dictionary, i: int) -> Node3D:
 			n.add_child(body)
 		"model":
 			var msc := MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+			Models.set_style(p)
 			var row := Models.make_row(p["model"], msc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)), false, MapData.rot_rad(p).y)
+			Models.set_style({})
 			if p.has("color"):
 				if Models.is_rug(p["model"]):
 					Models.recolor(row, Color(p["color"]))
@@ -473,6 +479,11 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 	ring.scale.y = 0.3
 	ring.position.y = 0.04
 	n.add_child(ring)
+	# The parts that float above the circle (the halo and wings, the horns) bob gently up and down (Sara, Nov 28):
+	# they hang on this, and _process moves everything in the group.
+	var floaty := Node3D.new()
+	floaty.add_to_group("start_floater")
+	n.add_child(floaty)
 	if angel:
 		# a soft beam of light
 		var beam := MeshInstance3D.new()
@@ -502,7 +513,7 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 		halo.material_override = glow
 		halo.position.y = 2.0
 		halo.rotation.x = 0.25
-		n.add_child(halo)
+		floaty.add_child(halo)
 		# real feathered wings either side of the halo (Ted, Nov 26: they were "single rectangles"), the same
 		# wings the angels wear, folded up a little like they're about to take off
 		for side in [-1.0, 1.0]:
@@ -512,7 +523,7 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 			wing.position = Vector3(0.32 * side, 1.95, 0)
 			wing.scale = Vector3.ONE * 0.95
 			wing.rotation = Vector3(0.0, -0.3 * side, 0.3 * side)
-			n.add_child(wing)
+			floaty.add_child(wing)
 	else:
 		# a five-pointed star in the circle, drawn in glowing red lines
 		var pts := []
@@ -530,27 +541,12 @@ func _add_marker(n: Node3D, angel: bool) -> void:
 			line.position = (p0 + p1) * 0.5
 			line.rotation.y = -atan2(p1.z - p0.z, p1.x - p0.x)
 			n.add_child(line)
-		# a pair of the demons' own devil horns above, over a pair of glowing eyes (Ted, Nov 26: the old cones)
+		# a pair of the demons' own devil horns above (Ted, Nov 26: the old cones). No eyes under them any more
+		# (Sara, Nov 28: "remove the eyeballs from the demon start position").
 		var horns := HornCrowns.make("horns", 0.0)
 		horns.position = Vector3(0, 1.85, 0)
 		horns.scale = Vector3.ONE * 1.2
-		n.add_child(horns)
-		var eye_m := StandardMaterial3D.new()
-		eye_m.albedo_color = Color(1.0, 0.3, 0.1)
-		eye_m.emission_enabled = true
-		eye_m.emission = Color(1.0, 0.3, 0.1)
-		eye_m.emission_energy_multiplier = 3.0
-		for side in [-1.0, 1.0]:
-			var eye := MeshInstance3D.new()
-			var em := SphereMesh.new()
-			em.radial_segments = 12   # (Godot's default is 64 x 32: ~4000 triangles each; Nov 26 audit)
-			em.rings = 6
-			em.radius = 0.06
-			em.height = 0.12
-			eye.mesh = em
-			eye.material_override = eye_m
-			eye.position = Vector3(0.12 * side, 1.62, 0)
-			n.add_child(eye)
+		floaty.add_child(horns)
 	var light := OmniLight3D.new()
 	light.light_color = color
 	light.light_energy = 0.8
@@ -1844,6 +1840,9 @@ func _typing() -> bool:
 
 
 func _process(delta: float) -> void:
+	var bob := sin(Time.get_ticks_msec() / 1000.0 * 1.7) * 0.07
+	for f in get_tree().get_nodes_in_group("start_floater"):
+		(f as Node3D).position.y = bob
 	if active() or testing:
 		_autosave_tick(delta)
 	if not active():
@@ -3027,6 +3026,20 @@ func _build_ui() -> void:
 	_car_lights.toggled.connect(func(on): set_value(selected, "lights", on))
 	look_row.add_child(_car_lights)
 	_inspector.add_child(look_row)
+	# Style: a rug's preset patterns, a vehicle's preset paints (Sara, Nov 28)
+	_style_row = HBoxContainer.new()
+	_label(_style_row, "Style")
+	_style_pick = OptionButton.new()
+	_style_pick.focus_mode = Control.FOCUS_NONE
+	_style_pick.tooltip_text = "A rug's pattern and colours, or a vehicle's paint"
+	_style_pick.item_selected.connect(func(i): set_value(selected, "style", i, "style"))
+	_style_row.add_child(_style_pick)
+	_fringe_check = CheckBox.new()
+	_fringe_check.text = "Fringe"
+	_fringe_check.focus_mode = Control.FOCUS_NONE
+	_fringe_check.toggled.connect(func(on): set_value(selected, "fringe", on))
+	_style_row.add_child(_fringe_check)
+	_inspector.add_child(_style_row)
 	_rows["look"] = look_row
 	var grow := HBoxContainer.new()
 	_group_label = _label(grow, "")
@@ -3380,6 +3393,18 @@ func _sync_inspector() -> void:
 	_paving_row.visible = t == "model" and _is_stone_floor(p["model"])
 	_size_title.text = "Scale (× normal)" if t in ["model", "building"] else "Size (m)"
 	_rows["color"].visible = t in ["block", "cylinder", "light", "model", "ground"]
+	var styles: Array = Models.styles(p["model"]) if t == "model" else []
+	_style_row.visible = not styles.is_empty()
+	if not styles.is_empty():
+		if _styles_for != str(styles):
+			_styles_for = str(styles)
+			_style_pick.clear()
+			for sn in styles:
+				_style_pick.add_item(sn)
+		_style_pick.select(clampi(int(p.get("style", 0)), 0, styles.size() - 1))
+		_fringe_check.visible = Models.is_rug(p["model"])
+		_fringe_check.set_pressed_no_signal(p.get("fringe", true) != false)
+		_rows["color"].visible = p.has("color")   # (styles do this job better; an older map's tint can still be changed)
 	if t == "ice":
 		_size_title.text = "Size (m; ice is always thin)"
 	_rows["look"].visible = t in ["model", "window", "bouncy", "bouncy_once", "bouncy_super", "ground", "building"]

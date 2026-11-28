@@ -639,14 +639,46 @@ static func _pillow(root: Node3D, id: String) -> void:
 				CP._lathe(cl, [[0.0, -0.03], [0.012, -0.02], [0.006, 0.0], [0.0, 0.004]], 6, func(_i, _a): return col.darkened(0.15), Vector3(x, 0.06, z)))
 
 
+# Rug styles (Sara, Nov 28: "several options of patterns/colors that you preset... striped red and white, striped
+# light and dark blue, striped rainbow"): name, the colours its stripes (or braided rings, or field and medallion)
+# run through, the border, the pale trim. Creative's Style picks one; 0 is the rug as it comes.
+const RUG_STYLES := [
+	["As it comes"],
+	["Red and white", [Color("b3261e"), Color("f4efe6")], Color("7a1712"), Color("f4efe6")],
+	["Light and dark blue", [Color("8fc1ea"), Color("1f3f7a")], Color("16294f"), Color("eef3f8")],
+	["Rainbow", [Color("d83a34"), Color("f08a2c"), Color("f2cf3a"), Color("4caa52"), Color("3a7fd0"), Color("7a4db8")], Color("3a3a44"), Color("f4efe6")],
+	["Green and cream", [Color("3f7f4a"), Color("efe6cf")], Color("28502f"), Color("efe6cf")],
+	["Black and white", [Color("1d1d20"), Color("f2f2f0")], Color("1d1d20"), Color("f2f2f0")],
+	["Pink and white", [Color("e88bb0"), Color("fbf3f5")], Color("b9577e"), Color("fbf3f5")],
+	["Purple and gold", [Color("5b2f86"), Color("d9b04a")], Color("3a1c58"), Color("f0e2b0")],
+	["Autumn", [Color("c4621f"), Color("6b3d1e"), Color("d9a53a")], Color("4a2a14"), Color("f0e2c2")],
+	["Teal and sand", [Color("1f8a8c"), Color("e3d2a8")], Color("135557"), Color("efe6cf")],
+	["Grey and charcoal", [Color("a9acb2"), Color("3b3d43")], Color("2a2b30"), Color("e6e6e8")],
+]
+
+
+static func rug_style_names() -> Array:
+	return RUG_STYLES.map(func(st): return st[0])
+
+
 static func _rug(root: Node3D, id: String) -> void:
-	_make(root, id, func(k: Dictionary) -> void:
+	var style := clampi(RM.style, 0, RUG_STYLES.size() - 1)
+	var with_fringe := RM.fringe
+	_make(root, "%s#%d%s" % [id, style, "" if with_fringe else "-plain"], func(k: Dictionary) -> void:
 		var oval := "oval" in id
 		var stripes := "stripes" in id
 		var a := id.ends_with("_A")
 		var main := BLUE if a else ORANGE
 		var deep := main.darkened(0.35)
 		var light := main.lightened(0.45)
+		var CREAM := Color(0.95, 0.92, 0.85)
+		var run := []   # a preset style's colours, in order (none: the rug's own)
+		if style > 0:
+			run = RUG_STYLES[style][1]
+			main = run[0]
+			light = run[1]
+			deep = RUG_STYLES[style][2]
+			CREAM = RUG_STYLES[style][3]
 		var r := _s(k, "rug")
 		var t := 0.025
 		if oval:   # a braided rug: rings of plaited bands round an oval
@@ -656,6 +688,8 @@ static func _rug(root: Node3D, id: String) -> void:
 			var na := 64
 			var ring_col := func(ri: int, ang: float) -> Color:
 				var base: Color = [main, light, deep, main, CREAM][ri % 5]
+				if not run.is_empty():
+					base = run[ri % run.size()]
 				return base.darkened(0.12 * (0.5 + 0.5 * sin(ang * 60.0 + ri * 1.7)))
 			for ri in nr:
 				var f0 := float(ri) / nr
@@ -688,6 +722,8 @@ static func _rug(root: Node3D, id: String) -> void:
 				return CREAM
 			if stripes:
 				var band := int(floorf((x + hx) / 0.18))
+				if not run.is_empty():
+					return run[band % run.size()]
 				return [main, light, main, CREAM, deep][band % 5]
 			var dm := absf(x) / 0.5 + absf(z) / 0.32
 			if dm < 1.0:
@@ -709,6 +745,8 @@ static func _rug(root: Node3D, id: String) -> void:
 		for s: float in [-1.0, 1.0]:
 			CP._quad(r, Vector3(-hx, t, s * hz), Vector3(hx, t, s * hz), Vector3(hx, 0, s * hz), Vector3(-hx, 0, s * hz), deep, Vector3(0, 0, s))
 			CP._quad(r, Vector3(s * hx, t, -hz), Vector3(s * hx, t, hz), Vector3(s * hx, 0, hz), Vector3(s * hx, 0, -hz), deep, Vector3(s, 0, 0))
+			if not with_fringe:
+				continue
 			for f in 40:
 				var z := -hz + 0.04 + (2.0 * hz - 0.08) * f / 39.0
 				CP._box(r, Vector3(s * (hx + 0.028), 0.006, z), Vector3(0.056, 0.006, 0.012), CREAM.darkened(0.05 * float(f % 3)))

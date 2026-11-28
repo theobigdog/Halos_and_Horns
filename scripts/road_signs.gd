@@ -59,7 +59,7 @@ static func make(kind: String, look: int) -> Node3D:
 	match kind:
 		"sign_stop":
 			top = _shape_plate(plate, _ngon(8, 0.38, PI / 8.0), RED, WHITE, wear, 0.38)
-			_text(plate, "STOP", Vector3(0, 0.38, 0), 0.165, WHITE)
+			_text(plate, "STOP", Vector3(0, 0.38, 0), 0.23, WHITE)   # (Sara, Nov 28: larger)
 		"sign_yield":
 			var tri := [Vector2(-0.45, 0.78), Vector2(0.45, 0.78), Vector2(0, 0.0)]
 			top = _shape_plate(plate, tri, WHITE, RED, wear, 0.0, 0.12)

@@ -1016,8 +1016,10 @@ func _build_map() -> void:
 			"model":
 				# A structure from the model catalog: solid in its real shape (doorways, stairs, arches)
 				var sc: Vector3 = MapData.vec(p["size"]) if p.has("size") else Vector3.ONE
+				Models.set_style(p)
 				var body := Models.make_row(p["model"], sc, int(p.get("repeat", 1)), int(p.get("repeat2", 1)), int(p.get("look", 0)),
 						not p.has("color"), MapData.rot_rad(p).y)   # (long rows drawn as one batch: Models._batched_row)
+				Models.set_style({})
 				if p.has("color"):
 					if Models.is_rug(p["model"]):
 						Models.recolor(body, Color(p["color"]))   # a rug in its chosen colour

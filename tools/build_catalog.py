@@ -114,6 +114,13 @@ def main():
                 extra = dict(e)
                 extra.update({"id": vid, "label": vlabel, "size": vsize, "offset": [0.0, 0.0, 0.0], "extra": "built"})
                 out.append(extra)
+        # a lantern post standing on a stone base (refined_graveyard.gd; Sara, Nov 28, with a picture).
+        # (NOTE: running this script puts the extras in a different order from the catalog in the repo, which
+        # changes Creative's list order: this entry was put into catalog.json by hand, next to post_lantern.)
+        if e["id"] == "halloween/post_lantern":
+            extra = dict(e)
+            extra.update({"id": "halloween/post_lantern_base", "label": "Post lantern (stone base)", "size": [0.5, 2.95, 1.2], "extra": "built"})
+            out.append(extra)
         # a street light with a bad bulb that flickers (Ted's wife, Nov 27)
         if e["id"] == "city/streetlight":
             extra = dict(e)

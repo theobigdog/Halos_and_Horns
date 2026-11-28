@@ -28,6 +28,9 @@ const TYPES := {
 	"fern": {"shape": "cylinder", "radius": 0.45, "height": 0.55, "label": "Fern", "hp": 50, "speed": 7.0, "mass": 0.5, "cat": "Village & nature"},
 	# (Ted's wife, Nov 27: big snowballs, a cute snowman, a coconut, a beehive whose bees swarm on E)
 	"snowball": {"shape": "cylinder", "radius": 0.36, "height": 0.7, "label": "Snowball", "hp": 70, "speed": 6.5, "mass": 1.2, "round": true, "cat": "Village & nature"},
+	# (Sara, Nov 28: the same snowball with no drift of snow under it, and a small one)
+	"snowball_bare": {"shape": "cylinder", "radius": 0.36, "height": 0.7, "label": "Snowball (just the ball)", "hp": 70, "speed": 6.5, "mass": 1.2, "round": true, "cat": "Village & nature"},
+	"snowball_small": {"shape": "cylinder", "radius": 0.21, "height": 0.4, "label": "Small snowball (just the ball)", "hp": 40, "speed": 7.0, "mass": 0.5, "round": true, "cat": "Village & nature"},
 	"snowball_big": {"shape": "cylinder", "radius": 0.6, "height": 1.15, "label": "Big snowball", "hp": 130, "speed": 5.0, "mass": 2.6, "round": true, "cat": "Village & nature"},
 	"snowman": {"shape": "cylinder", "radius": 0.45, "height": 1.62, "label": "Snowman", "hp": 130, "speed": 5.0, "mass": 2.2, "cat": "Village & nature"},
 	"snowman_angel": {"shape": "cylinder", "radius": 0.45, "height": 1.72, "label": "Snowman angel", "hp": 130, "speed": 5.0, "mass": 2.2, "cat": "Village & nature"},

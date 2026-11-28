@@ -61,7 +61,13 @@ static func _script_for(id: String) -> GDScript:
 	return null
 
 
+# (for looking at the KayKit model a hand-built one replaced: tools/contact_sheet.gd --kaykit)
+static var disabled := false
+
+
 static func has(id: String) -> bool:
+	if disabled:
+		return false
 	return _script_for(id) != null
 
 
@@ -70,11 +76,28 @@ const BUILDERS := {
 	"city/streetlight": "_streetlight",
 	"city/streetlight_flicker": "_streetlight",
 	"city/dumpster": "_dumpster",
+	"medieval/resource_lumber": "_lumber",
 	"city/bench": "_park_bench",
 	"city/bush": "_potted_bush",
 	"medieval/wheelbarrow": "_wheelbarrow",
-	"halloween/bench": "_grave_bench",
+	# ("halloween/bench": "_grave_bench" is shelved with the rest of the graveyard set: refined_graveyard.gd)
 }
+
+
+# Preset styles (Sara, Nov 28: tinting a rug or a car coloured every part of it the same). A rug has a list of
+# patterns and a vehicle a list of paints; Creative's Style picks one ("style" on the map piece, 0 = as it
+# comes), and a rug's fringe can be left off ("fringe": false). Whoever builds the piece sets these two first
+# (Models.set_style) and clears them after; the builders read them and keep a mesh per style.
+static var style := 0
+static var fringe := true
+
+
+static func styles(id: String) -> Array:
+	if id.begins_with("city/car_") and has(id):
+		return _script_for(id).paint_names()
+	if id.begins_with("furniture/rug_") and has(id):
+		return _furniture().rug_style_names()
+	return []
 
 
 static func build(id: String) -> Node3D:
@@ -521,3 +544,155 @@ static func _grave_bench(root: Node3D, _id: String) -> void:
 			CP._box(st, p, Vector3(0.05 + 0.06 * CP._h(k * 9.3), 0.006, 0.03), Color(0.25, 0.38, 0.15), Basis(Vector3.UP, CP._h(k) * 3.0))   # moss along the edges
 		return [CP._end(st, false)])
 	_put(root, parts[0], CP._vmat("stone", 0.95))
+
+
+# ---------------------------------------------------------------- lumber (Sara, Nov 28)
+# "Resource lumber needs a lot of refining", with a picture of one planed pine board: pale, the grain running its
+# length in fine darker lines that swing out round a knot or two, the corners eased, growth rings on the sawn
+# ends. So the pile is boards like that: nine across and ten deep on two bearers, a sticker between every layer
+# (the way timber is stacked to dry), every board its own length, shade and place in the grain, a few slid out
+# of line, and three loose ones on top. The same footprint as the KayKit pile it replaces (4.1 x 1.26 x 2.0).
+const LUMBER_SHADER := """
+shader_type spatial;
+render_mode cull_back;
+WOOD_GRAIN_GLSL
+varying float seed;
+varying float face;   // 1: a planed face (UV = metres along, metres round the board); 0: a sawn end (UV = across, up)
+void vertex() { seed = UV2.x; face = COLOR.a; }
+void fragment() {
+	vec3 pale = COLOR.rgb;
+	vec3 col;
+	float bump = 0.0;
+	if (face > 0.5) {
+		vec2 g = UV + vec2(seed * 3.7, seed * 1.3);
+		// a knot here and there, the grain swinging out round it
+		vec2 kc = vec2(g.x * 0.8, g.y * 4.0);
+		vec2 cell = floor(kc);
+		vec2 kat = 0.5 + (vec2(wg_h(cell + 3.1), wg_h(cell + 8.7)) - 0.5) * 0.5;
+		vec2 dm = (fract(kc) - kat) / vec2(0.8, 4.0);          // metres from the knot
+		float kr = 0.011 + 0.012 * wg_h(cell + 5.5);
+		float kd = length(dm / vec2(1.7, 1.0)) / kr;
+		float has = step(0.72, wg_h(cell + 1.9));
+		float y = g.y + has * sign(dm.y) * kr * 1.6 * exp(-kd * 0.45);
+		float wander = (wg_n(vec2(g.x * 0.45, g.y * 2.0)) - 0.5) * 0.03;
+		float line = 0.5 + 0.5 * sin((y + wander) * 6.2832 / 0.016 + wg_n(vec2(g.x * 0.3, y * 9.0)) * 3.0);
+		line = smoothstep(0.5, 0.97, line);
+		float broad = wg_n(vec2(g.x * 0.25, y * 11.0));         // wide bands of early and late wood
+		col = pale * (0.93 + 0.12 * broad);
+		col = mix(col, pale * vec3(0.7, 0.56, 0.42), line * (0.35 + 0.35 * broad));
+		col *= 0.97 + 0.05 * wg_n(vec2(g.x * 60.0, g.y * 400.0));   // the pores
+		float in_knot = has * (1.0 - smoothstep(0.75, 1.0, kd));
+		vec3 knot = mix(vec3(0.3, 0.16, 0.08), vec3(0.55, 0.33, 0.17), 0.5 + 0.5 * sin(kd * 10.0));
+		col = mix(col, pale * vec3(0.78, 0.6, 0.42), has * exp(-max(kd - 1.0, 0.0) * 1.4) * 0.6);
+		col = mix(col, knot, in_knot);
+		bump = line * 0.0003 - in_knot * 0.0006;
+	} else {
+		// the sawn end: growth rings round a heart somewhere below or beside the board, and the saw's marks
+		vec2 heart = vec2((wg_h(vec2(seed, 2.0)) - 0.5) * 0.3, -0.03 - wg_h(vec2(seed, 5.0)) * 0.12);
+		float rr = length(UV - heart) + (wg_n(UV * 30.0 + seed) - 0.5) * 0.004;
+		float ring = smoothstep(0.35, 0.95, 0.5 + 0.5 * sin(rr * 6.2832 / 0.007));
+		col = pale * vec3(0.9, 0.8, 0.68);
+		col = mix(col, pale * vec3(0.62, 0.45, 0.3), ring * 0.6);
+		col *= 0.92 + 0.1 * wg_n(vec2(UV.x * 300.0, UV.y * 20.0));
+		bump = ring * 0.0003;
+	}
+	ALBEDO = pow(col, vec3(2.2));   // (the colours above are as seen)
+	ROUGHNESS = 0.7;
+	SPECULAR = 0.25;
+	vec3 dpdx = dFdx(VERTEX);
+	vec3 dpdy = dFdy(VERTEX);
+	vec3 r1 = cross(dpdy, NORMAL);
+	vec3 r2 = cross(NORMAL, dpdx);
+	float det = dot(dpdx, r1);
+	NORMAL = normalize(abs(det) * NORMAL - sign(det) * (dFdx(bump) * r1 + dFdy(bump) * r2));
+}
+"""
+
+
+# One board: `len` long (its own x), `wide` (z) and `thick` (y), the long corners eased, lying where `xf` puts
+# its middle. UVs in metres so the grain is the same size on every board; UV2.x is its place in the grain.
+static func _board(st: SurfaceTool, xf: Transform3D, len: float, wide: float, thick: float, tint: Color, seed: float) -> void:
+	var r := minf(0.008, thick * 0.3)
+	var prof := []    # [z, y, normal z, normal y], round the section
+	for corner in 4:
+		var cz: float = (wide * 0.5 - r) * ([1.0, -1.0, -1.0, 1.0][corner] as float)
+		var cy: float = (thick * 0.5 - r) * ([1.0, 1.0, -1.0, -1.0][corner] as float)
+		for k in 4:
+			var a := PI * 0.5 * corner + PI * 0.5 * k / 3.0
+			prof.append([cz + cos(a) * r, cy + sin(a) * r, cos(a), sin(a)])
+	var planed := Color(tint.r, tint.g, tint.b, 1.0)
+	var sawn := Color(tint.r, tint.g, tint.b, 0.0)
+	var run := 0.0
+	for i in prof.size():
+		var a: Array = prof[i]
+		var b: Array = prof[(i + 1) % prof.size()]
+		var step := Vector2(float(b[0]) - float(a[0]), float(b[1]) - float(a[1])).length()
+		var quad := [[-0.5, a, run], [0.5, a, run], [0.5, b, run + step], [0.5, b, run + step], [-0.5, b, run + step], [-0.5, a, run]]
+		# (wound to face outward: the section runs anticlockwise seen from +x)
+		for v in [quad[0], quad[2], quad[1], quad[3], quad[5], quad[4]]:
+			var pp: Array = v[1]
+			st.set_normal(xf.basis * Vector3(0, pp[3], pp[2]))
+			st.set_color(planed)
+			st.set_uv(Vector2((float(v[0]) + 0.5) * len, float(v[2])))
+			st.set_uv2(Vector2(seed, 0.0))
+			st.add_vertex(xf * Vector3(float(v[0]) * len, pp[1], pp[0]))
+		run += step
+	for e: float in [-1.0, 1.0]:
+		for i in range(1, prof.size() - 1):
+			var tri := [prof[0], prof[i], prof[i + 1]]
+			if e < 0.0:
+				tri = [prof[0], prof[i + 1], prof[i]]
+			for v in [tri[0], tri[2], tri[1]]:
+				var pp: Array = v
+				st.set_normal(xf.basis * Vector3(e, 0, 0))
+				st.set_color(sawn)
+				st.set_uv(Vector2(pp[0], pp[1]))
+				st.set_uv2(Vector2(seed + e * 0.37, 0.0))
+				st.add_vertex(xf * Vector3(e * len * 0.5, pp[1], pp[0]))
+
+
+static func _lumber(root: Node3D, _id: String) -> void:
+	var parts := _cached("lumber", func() -> Array:
+		var st := SurfaceTool.new()
+		st.begin(Mesh.PRIMITIVE_TRIANGLES)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 4711
+		var pine := Color(0.87, 0.71, 0.47)
+		var shade := func() -> Color:
+			var v := rng.randf_range(0.9, 1.06)
+			return Color(clampf(pine.r * v, 0.0, 1.0), clampf(pine.g * v * rng.randf_range(0.96, 1.03), 0.0, 1.0), clampf(pine.b * v * rng.randf_range(0.9, 1.05), 0.0, 1.0))
+		var wide := 0.2
+		var thick := 0.05
+		var gap := 0.012
+		var across := 9
+		var y := 0.0
+		# two bearers on the ground, across the pile
+		for bx: float in [-1.25, 1.25]:
+			_board(st, Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(bx, 0.05, 0.0)), 1.9, 0.1, 0.1, shade.call().darkened(0.12), rng.randf() * 50.0)
+		y = 0.1
+		for layer in 10:
+			if layer > 0:   # stickers between the layers
+				for sx: float in [-1.4, 0.0, 1.4]:
+					_board(st, Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(sx + rng.randf_range(-0.05, 0.05), y + 0.0125, 0.0)), 1.86, 0.04, 0.025,
+							shade.call().darkened(0.06), rng.randf() * 50.0)
+				y += 0.025
+			for k in across:
+				var z := (k - (across - 1) * 0.5) * (wide + gap)
+				var len := rng.randf_range(3.7, 3.95)
+				var slid := rng.randf_range(-0.06, 0.06) + (rng.randf_range(-0.18, 0.18) if rng.randf() < 0.12 else 0.0)
+				var turn := Basis(Vector3.UP, rng.randf_range(-0.004, 0.004))
+				_board(st, Transform3D(turn, Vector3(clampf(slid, -(4.1 - len) * 0.5, (4.1 - len) * 0.5), y + thick * 0.5, z)), len, wide, thick, shade.call(), rng.randf() * 50.0)
+			y += thick
+		# three loose boards on top, not quite straight
+		for k in 3:
+			var turn := Basis(Vector3.UP, [0.07, -0.05, 0.16][k])
+			_board(st, Transform3D(turn, Vector3([-0.1, 0.12, 0.0][k], y + thick * 0.5 + (thick if k == 2 else 0.0), [-0.5, 0.25, -0.1][k])),
+					[3.6, 3.8, 3.3][k], wide, thick, shade.call(), rng.randf() * 50.0)
+		return [st.commit()])
+	if not _cache.has("lumber_mat"):
+		var sh := Shader.new()
+		sh.code = LUMBER_SHADER.replace("WOOD_GRAIN_GLSL", load("res://scripts/wood_grain.gd").GLSL)
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		_cache["lumber_mat"] = m
+	_put(root, parts[0], _cache["lumber_mat"])

@@ -28,8 +28,10 @@ static var USER_DIR := "user://maps_headless" if DisplayServer.get_name() == "he
 const MAX_BYTES := 2 * 1024 * 1024
 const MAX_PIECES := 5000
 const MAX_COORD := 500.0
-const MAX_REPEAT := 100
-const MAX_GRID := 400            # copies in one floor, at most
+# (Sara, Nov 28: "on structures, allow extend to go further in the x and z directions". They were 100 in a row and
+# 400 in a floor: with tiles scaled down to half a metre, a 10 m square was as far as a floor would pull.)
+const MAX_REPEAT := 200
+const MAX_GRID := 1600           # copies in one floor, at most
 
 # Piece types and what each one needs.
 #   block / cylinder: solid shapes (size, rot, color)
@@ -276,6 +278,13 @@ static func clean(raw: Dictionary) -> Dictionary:
 			var look := int(_num(p.get("look"), 0, LOOKS - 1, 0))
 			if look > 0:
 				c["look"] = look   # weathered (0), clean, mossy, charred... (models.gd LOOK_NAMES)
+			var nstyles: int = Models.styles(c["model"]).size()
+			if nstyles > 0:
+				var style := int(_num(p.get("style"), 0, nstyles - 1, 0))
+				if style > 0:
+					c["style"] = style   # a rug's pattern or a vehicle's paint (0: as it comes)
+				if Models.is_rug(c["model"]) and typeof(p.get("fringe")) == TYPE_BOOL and p["fringe"] == false:
+					c["fringe"] = false   # a rug with no fringe
 			var rep2 := int(_num(p.get("repeat2"), 1, MAX_REPEAT, 1))
 			if rep2 > 1 and Models.is_flat(c["model"]):
 				c["repeat2"] = mini(rep2, MAX_GRID / maxi(rep, 1))   # and side by side (a floor pulled out)

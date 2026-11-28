@@ -43,9 +43,10 @@ const KINDS := {
 	"edge_brick": "Edging: bricks on the slant",
 	"edge_stone": "Edging: cut stone kerb",
 	"edge_hedge": "Edging: low box hedge",
+	"parking_double": "Parking lot (two rows)",   # (Sara, Nov 28, with a picture: stalls nose to nose along a centre line)
 }
 const STREET_KINDS := ["parking", "parking_spot", "parking_accessible", "asphalt", "concrete", "paving", "crazy",
-		"cobbles", "pavers", "sidewalk"]   # (Street/Road too)
+		"cobbles", "pavers", "sidewalk", "parking_double"]   # (Street/Road too)
 const PAVINGS := ["paving", "crazy", "cobbles", "pavers"]
 # Edgings: a thin line of rocks, pickets, tiles... along the block's longer side. "size" is still x, y, z: the
 # longer of x and z is the run, the shorter how thick it is, y how tall. No slab under them. Their colour is
@@ -57,7 +58,7 @@ const EDGE_COLORS := {"edge_rocks": Color(0.56, 0.54, 0.5), "edge_fence": Color(
 		"edge_hedge": Color(0.2, 0.42, 0.16)}
 const _KIND_ID := {"grass": 0, "dirt": 1, "gravel": 2, "landscaping": 3, "flowerbed": 4, "sand": 5, "parking": 6,
 		"parking_spot": 7, "parking_accessible": 8, "asphalt": 9, "concrete": 10, "paving": 11, "crazy": 12, "cobbles": 13,
-		"pavers": 14, "sidewalk": 15}
+		"pavers": 14, "sidewalk": 15, "parking_double": 16}
 const END_MARGIN := 0.5   # a lot's plain asphalt past the first and last stalls (Ted's wife, Nov 27)
 # Default sizes for new pieces of these kinds
 const DEFAULT_SIZES := {"parking": Vector3(STALL_W * 5 + END_MARGIN * 2, 0.1, 5.2), "parking_spot": Vector3(STALL_W, 0.1, 5.2),
@@ -66,7 +67,7 @@ const DEFAULT_SIZES := {"parking": Vector3(STALL_W * 5 + END_MARGIN * 2, 0.1, 5.
 		"sidewalk": Vector3(1.5, 0.15, 1.5),   # one slab: pull a tab to run it on, swing sideways to turn a corner
 		"edge_rocks": Vector3(2, 0.14, 0.2), "edge_fence": Vector3(2, 0.3, 0.1), "edge_logs": Vector3(2, 0.22, 0.1),
 		"edge_ceramic": Vector3(2, 0.2, 0.1), "edge_brick": Vector3(2, 0.12, 0.12), "edge_stone": Vector3(2, 0.14, 0.15),
-		"edge_hedge": Vector3(2, 0.38, 0.32)}
+		"edge_hedge": Vector3(2, 0.38, 0.32), "parking_double": Vector3(10.4, 0.1, STALL_W * 5 + END_MARGIN * 2)}
 
 
 # What Creative calls it: "Grass block", but "Sidewalk (concrete slabs)" and "Edging: rocks" as they are.
@@ -85,8 +86,11 @@ shader_type spatial;
 render_mode cull_back;
 
 uniform int kind = 0;
-instance uniform vec3 bsize = vec3(4.0, 0.3, 4.0);   // the block's size (parking: where the stalls go)
-instance uniform vec3 tint = vec3(1.0);              // Creative's colour for the block (white: as it comes)
+// (No per-instance values here. The block's size and colour used to be set per instance, and a block could
+// read another instance's numbers: plain asphalt and concrete came up solid red in Creative. Sara, Nov 28. The
+// size is baked into the mesh now (UV2), and a coloured block gets its own copy of the material.)
+uniform vec3 tint = vec3(1.0);   // Creative's colour for the block (white: as it comes)
+varying vec2 bs;                 // the block's size across: x and z (parking: where the stalls go)
 global uniform float snow_cover;
 
 varying vec3 wp;      // world position (metres)
@@ -199,25 +203,30 @@ void gravel_top(vec2 p, out vec3 c, out float h) {
 #endif
 }
 
+// Mulch (Sara, Nov 28: "needs to have the mulch refined"; it was two layers of big blocky chips): shredded bark,
+// three layers of small slivers lying every which way, darker underneath, each with its grain, the odd pale
+// dry one on top.
 void mulch_top(vec2 p, out vec3 c, out float h) {
-	c = lin(vec3(0.24, 0.13, 0.08)) * (0.8 + 0.35 * fbm(p * 0.8));
+	c = lin(vec3(0.16, 0.085, 0.055)) * (0.75 + 0.4 * fbm(p * 0.8));
 	h = 0.0;
 #ifndef LOW
-	// two layers of wood chips: stretched cells at different angles
-	vec2 q1 = mat2(vec2(0.8, 0.6), vec2(-0.6, 0.8)) * p;
-	vec2 q2 = mat2(vec2(0.3, -0.95), vec2(0.95, 0.3)) * p;
-	vec3 a = cells(vec2(q1.x * 9.0, q1.y * 22.0));
-	vec3 b = cells(vec2(q2.x * 10.0 + 4.0, q2.y * 24.0));
-	float ia = smoothstep(0.0, 0.18, a.y);
-	float ib = smoothstep(0.0, 0.18, b.y) * step(0.45, b.z);
-	vec3 ca = mix(lin(vec3(0.24, 0.15, 0.1)), lin(vec3(0.4, 0.27, 0.17)), a.z);
-	vec3 cb = mix(lin(vec3(0.3, 0.2, 0.12)), lin(vec3(0.47, 0.33, 0.21)), b.z);
-	c = mix(c * 0.55, ca * (0.75 + 0.3 * ia), ia);
-	c = mix(c, cb * (0.8 + 0.3 * ib), ib);
-	h = ia * 0.006 + ib * 0.01;
-	c *= 0.85 + 0.25 * n2(vec2(q1.x * 90.0, q1.y * 20.0));    // grain on the chips
+	for (int k = 0; k < 3; k++) {
+		float fk = float(k);
+		float ang = 0.6 + fk * 1.05;
+		vec2 d = vec2(cos(ang), sin(ang));
+		vec2 q = vec2(dot(p, d), dot(p, vec2(-d.y, d.x)));
+		vec3 a = cells(vec2(q.x * 15.0, q.y * 44.0) + fk * 13.7);
+		float in_chip = smoothstep(0.0, 0.16, a.y) * step(0.22 + 0.12 * fk, a.z);
+		vec3 col = mix(lin(vec3(0.22, 0.12, 0.075)), lin(vec3(0.5, 0.31, 0.18)), fract(a.z * 5.3));
+		col = mix(col, lin(vec3(0.63, 0.46, 0.31)), step(0.9, fract(a.z * 11.7)) * 0.7);
+		col *= 0.8 + 0.3 * n2(vec2(q.x * 140.0, q.y * 30.0));
+		col *= 0.72 + 0.14 * fk;
+		c *= 1.0 - 0.3 * smoothstep(0.3, 0.0, a.y) * step(0.22 + 0.12 * fk, a.z) * (1.0 - in_chip);   // its shadow edge
+		c = mix(c, col, in_chip);
+		h = max(h, in_chip * (0.003 + 0.004 * fk));
+	}
 #else
-	c *= 0.75 + 0.45 * n2(vec2(p.x * 20.0, p.y * 45.0));
+	c *= 0.75 + 0.45 * n2(vec2(p.x * 30.0, p.y * 70.0));
 #endif
 }
 
@@ -249,11 +258,13 @@ void sand_top(vec2 p, out vec3 c, out float h) {
 }
 
 // The road pieces' asphalt (KayKit City's road grey, sampled from its texture) and concrete.
+// (Sara, Nov 28: "make the parking lot texture and color match the street pieces". The road pieces are that flat
+// grey with soft darker patches of wear and next to no grain; this had a salt-and-pepper aggregate over it that
+// made it paler and busier than the road beside it.)
 vec3 asphalt_col(vec2 pw) {
-	vec3 c = lin(vec3(0.435, 0.463, 0.482)) * (0.88 + 0.2 * fbm(pw * 0.4));
-	float g = h2(floor(pw * 90.0));
-	c *= 0.9 + 0.18 * g;                                                       // aggregate
-	return mix(c, lin(vec3(0.55, 0.57, 0.58)), step(0.97, g) * 0.5);
+	vec3 c = lin(vec3(0.431, 0.463, 0.482)) * (0.8 + 0.2 * fbm(pw * 0.45));
+	c *= 1.0 - 0.14 * smoothstep(0.55, 0.8, fbm(pw * 1.3 + 17.0));              // worn, oily patches
+	return c * (0.97 + 0.05 * h2(floor(pw * 90.0)));                           // the faintest grain
 }
 
 // the white (or blue) stall paint; `w` is a line's half width
@@ -268,8 +279,8 @@ float seg(vec2 p, vec2 a, vec2 b) {
 //     it's 10.5 m deep or more); 7 one spot: half a line on each side (two spots side by side make one line);
 //   8 an accessible spot: a 2.6 m stall in blue, a wheelchair sign painted in it, and a striped access aisle.
 void parking_top(out vec3 c, out float h) {
-	vec2 q = op.xz + bsize.xz * 0.5;         // metres from the back-left corner
-	vec2 pw = q + vec2(bsize.x * 0.37, bsize.z * 0.61) + op.y;
+	vec2 q = op.xz + bs * 0.5;         // metres from the back-left corner
+	vec2 pw = q + vec2(bs.x * 0.37, bs.y * 0.61) + op.y;
 	c = asphalt_col(pw);
 	h = n2(pw * 40.0) * 0.003;
 #ifndef LOW
@@ -285,29 +296,42 @@ void parking_top(out vec3 c, out float h) {
 	vec2 sc = vec2(0.0);
 	if (kind == 6) {
 		float m = 0.5;
-		float n = floor((bsize.x - 2.0 * m) / 2.6 + 0.001);
-		float rows = bsize.z >= 10.5 ? 2.0 : 1.0;
-		bool in_row = q.y <= 5.0 || (rows > 1.5 && q.y >= bsize.z - 5.0);
+		float n = floor((bs.x - 2.0 * m) / 2.6 + 0.001);
+		float rows = bs.y >= 10.5 ? 2.0 : 1.0;
+		bool in_row = q.y <= 5.0 || (rows > 1.5 && q.y >= bs.y - 5.0);
 		float x = q.x - m;
 		float u = x - clamp(round(x / 2.6), 0.0, n) * 2.6;
 		paint = in_row ? stripe(abs(u), 0.07) : 0.0;
 		float stall = floor(x / 2.6);
 		in_stall = (in_row && x > 0.0 && stall < n) ? 1.0 : 0.0;
-		sc = vec2(m + (stall + 0.5) * 2.6, q.y < bsize.z * 0.5 ? 2.6 : bsize.z - 2.6);
+		sc = vec2(m + (stall + 0.5) * 2.6, q.y < bs.y * 0.5 ? 2.6 : bs.y - 2.6);
+	} else if (kind == 16) {
+		// two rows of stalls nose to nose: a line down the middle, the stall lines running out from it both ways
+		float m = 0.5;
+		float n = floor((bs.y - 2.0 * m) / 2.6 + 0.001);
+		float z = q.y - m;
+		float u = z - clamp(round(z / 2.6), 0.0, n) * 2.6;
+		bool in_x = q.x > 0.25 && q.x < bs.x - 0.25;
+		bool in_z = z > -0.07 && z < n * 2.6 + 0.07;
+		paint = in_x ? stripe(abs(u), 0.07) : 0.0;
+		paint = max(paint, in_z ? stripe(abs(q.x - bs.x * 0.5), 0.07) : 0.0);
+		float stall = floor(z / 2.6);
+		in_stall = (in_x && z > 0.0 && stall < n) ? 1.0 : 0.0;
+		sc = vec2(q.x < bs.x * 0.5 ? bs.x * 0.25 : bs.x * 0.75, m + (stall + 0.5) * 2.6);
 	} else if (kind == 7) {
 		bool in_row = q.y <= 5.0;
-		paint = in_row ? max(stripe(q.x, 0.07), stripe(bsize.x - q.x, 0.07)) : 0.0;
+		paint = in_row ? max(stripe(q.x, 0.07), stripe(bs.x - q.x, 0.07)) : 0.0;
 		in_stall = in_row ? 1.0 : 0.0;
-		sc = vec2(bsize.x * 0.5, 2.6);
+		sc = vec2(bs.x * 0.5, 2.6);
 	} else {
 		// the stall (left 2.6 m), then the access aisle beside it, striped diagonally
-		float sw = min(2.6, bsize.x);
+		float sw = min(2.6, bs.x);
 		bool in_row = q.y <= 5.0;
-		float edges = max(max(stripe(q.x, 0.07), stripe(abs(q.x - sw), 0.06)), stripe(bsize.x - q.x, 0.07));
+		float edges = max(max(stripe(q.x, 0.07), stripe(abs(q.x - sw), 0.06)), stripe(bs.x - q.x, 0.07));
 		bpaint = in_row ? edges : 0.0;
-		if (in_row && q.x > sw && q.x < bsize.x) {
+		if (in_row && q.x > sw && q.x < bs.x) {
 			float hatch = stripe(abs(fract((q.x + q.y) / 0.6) - 0.5) * 0.6, 0.06);
-			bpaint = max(bpaint, hatch * step(0.2, q.y) * step(q.y, 4.8) * step(sw + 0.15, q.x) * step(q.x, bsize.x - 0.15));
+			bpaint = max(bpaint, hatch * step(0.2, q.y) * step(q.y, 4.8) * step(sw + 0.15, q.x) * step(q.x, bs.x - 0.15));
 		}
 		in_stall = (in_row && q.x < sw) ? 1.0 : 0.0;
 		sc = vec2(sw * 0.5, 2.6);
@@ -337,7 +361,7 @@ void parking_top(out vec3 c, out float h) {
 
 // plain asphalt (9) and plain concrete (10): no markings at all
 void plain_top(vec2 p, out vec3 c, out float h) {
-	vec2 pw = op.xz + bsize.xz * 0.5 + vec2(bsize.x * 0.37, bsize.z * 0.61) + op.y;
+	vec2 pw = op.xz + bs * 0.5 + vec2(bs.x * 0.37, bs.y * 0.61) + op.y;
 	if (kind == 9) {
 		c = asphalt_col(pw);
 		h = n2(pw * 40.0) * 0.003;
@@ -414,18 +438,18 @@ void pavers_top(vec2 p, out vec3 c, out float h) {
 // 1.5 m as fits; a walk wider than about 2.7 m gets them lengthways too), a smooth trowelled margin beside every
 // joint, a broom finish across the rest, the odd hairline crack and stain.
 void sidewalk_top(out vec3 c, out float h) {
-	vec2 q = op.xz + bsize.xz * 0.5;
-	bool lx = bsize.x >= bsize.z;
-	float len = lx ? bsize.x : bsize.z;
-	float wid = lx ? bsize.z : bsize.x;
+	vec2 q = op.xz + bs * 0.5;
+	bool lx = bs.x >= bs.y;
+	float len = lx ? bs.x : bs.y;
+	float wid = lx ? bs.y : bs.x;
 	float a = lx ? q.x : q.y;     // along the walk
 	float b = lx ? q.y : q.x;     // across it
 	float sa = len / max(1.0, floor(len / 1.5 + 0.5));
 	float sb = wid / max(1.0, floor(wid / 1.8 + 0.5));
 	float d = min(abs(a - floor(a / sa + 0.5) * sa), abs(b - floor(b / sb + 0.5) * sb));
 	vec2 slab = vec2(floor(a / sa), floor(b / sb));
-	float rnd = h2(slab + bsize.xz * 3.1);
-	vec2 pw = q + vec2(bsize.x * 0.37, bsize.z * 0.61);
+	float rnd = h2(slab + bs * 3.1);
+	vec2 pw = q + vec2(bs.x * 0.37, bs.y * 0.61);
 	c = lin(vec3(0.74, 0.735, 0.71)) * (0.93 + 0.1 * rnd) * (0.92 + 0.12 * fbm(pw * 0.9));
 	float broom = n2(vec2(a * 260.0, b * 7.0));
 	float margin = smoothstep(0.03, 0.045, d);
@@ -449,7 +473,7 @@ void top_mat(vec2 p, float ac, out vec3 c, out float h) {
 	else if (kind == 2) gravel_top(p, c, h);
 	else if (kind == 3) mulch_top(p, c, h);
 	else if (kind == 4) bed_top(p, c, h);
-	else if (kind >= 6 && kind <= 8) parking_top(c, h);
+	else if ((kind >= 6 && kind <= 8) || kind == 16) parking_top(c, h);
 	else if (kind == 9 || kind == 10) plain_top(p, c, h);
 	else if (kind == 11) flag_top(p, c, h);
 	else if (kind == 12) crazy_top(p, c, h);
@@ -467,7 +491,7 @@ void side_mat(vec2 s, out vec3 c, out float h) {      // s = (along the face, de
 		h = 0.0;
 		return;
 	}
-	if (kind >= 11) {   // the edge of the stones, over their bed of sand and gravel
+	if (kind >= 11 && kind <= 14) {   // the edge of the stones, over their bed of sand and gravel
 		vec3 st = (kind == 14 ? lin(vec3(0.5, 0.27, 0.2)) : lin(vec3(0.5, 0.48, 0.45))) * (0.85 + 0.2 * h2(floor(s * 70.0)));
 		vec3 bed = mix(lin(vec3(0.5, 0.44, 0.34)), lin(vec3(0.36, 0.33, 0.29)), h2(floor(s * 60.0)));
 		c = mix(st, bed, smoothstep(0.06, 0.08, d));
@@ -515,6 +539,7 @@ void side_mat(vec2 s, out vec3 c, out float h) {      // s = (along the face, de
 void vertex() {
 	wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	lp = transpose(mat3(MODEL_MATRIX)) * wp;
+	bs = UV2;
 	op = VERTEX;
 	on = NORMAL;
 	across = UV.x;
@@ -639,11 +664,7 @@ static func make(kind: String, size: Vector3, color := Color.WHITE) -> Node3D:
 	mi.name = "Block"
 	# (paving: next to no rounding, so a path made of several blocks reads as one; a sidewalk: a tooled edge)
 	mi.mesh = _box_mesh(size, 0.006 if kind in PAVINGS else (0.02 if kind == "sidewalk" else 0.0))
-	mi.material_override = _mat(kind, q)
-	mi.set_instance_shader_parameter("bsize", size)
-	# (always written, white included: never left to whatever the per-instance slot held before)
-	var lc := color.srgb_to_linear()
-	mi.set_instance_shader_parameter("tint", Vector3(lc.r, lc.g, lc.b))
+	mi.material_override = _mat(kind, q, color)
 	root.add_child(mi)
 	var body := StaticBody3D.new()
 	body.name = "Body"
@@ -696,12 +717,17 @@ static func _shader(low: bool) -> Shader:
 	return _shaders[k]
 
 
-static func _mat(kind: String, q: int) -> ShaderMaterial:
-	var key := "%s|%d" % [kind, 0 if q == 0 else 1]
+# One material per kind, quality and colour (nearly every block is uncoloured, so nearly all share one).
+static func _mat(kind: String, q: int, color := Color.WHITE) -> ShaderMaterial:
+	var key := "%s|%d|%s" % [kind, 0 if q == 0 else 1, color.to_html(false)]
 	if not _mats.has(key):
+		if _mats.size() > 400:   # (dragging the colour picker makes one per colour passed through)
+			_mats.clear()
 		var m := ShaderMaterial.new()
 		m.shader = _shader(q == 0)
 		m.set_shader_parameter("kind", _KIND_ID[kind])
+		var lc := color.srgb_to_linear()
+		m.set_shader_parameter("tint", Vector3(lc.r, lc.g, lc.b))
 		_mats[key] = m
 	return _mats[key]
 
@@ -726,6 +752,7 @@ static func _box_mesh(sz: Vector3, bevel := 0.0) -> ArrayMesh:
 	rings.append([0.0, 0.0, 1.0, 0.0])
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	_quad_size = Vector2(sz.x, sz.z)
 	# top
 	var t0: float = rings[0][0]
 	_quad(st, [Vector3(-hx + t0, top, -hz + t0), Vector3(hx - t0, top, -hz + t0), Vector3(hx - t0, top, hz - t0), Vector3(-hx + t0, top, hz - t0)],
@@ -761,6 +788,9 @@ static func _box_mesh(sz: Vector3, bevel := 0.0) -> ArrayMesh:
 	return mesh
 
 
+static var _quad_size := Vector2.ZERO
+
+
 # Two triangles, wound so they face along the given normal (Godot: clockwise = front).
 static func _quad(st: SurfaceTool, p: Array, n: Array, top: float, long_x: bool) -> void:
 	var a: Vector3 = p[0]
@@ -774,6 +804,7 @@ static func _quad(st: SurfaceTool, p: Array, n: Array, top: float, long_x: bool)
 		var v: Vector3 = p[i]
 		st.set_normal(n[i])
 		st.set_uv(Vector2(v.z if long_x else v.x, top - v.y))
+		st.set_uv2(_quad_size)   # (the whole block's size: see the shader's `bs`)
 		st.add_vertex(v)
 
 

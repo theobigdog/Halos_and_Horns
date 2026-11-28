@@ -213,6 +213,8 @@ static func make(type_name: String, root: Node3D) -> bool:
 		"flowers_tulips": _tulips(root)
 		"fern": _fern(root)
 		"snowball": _snowball(root, 0.35)
+		"snowball_bare": _snowball(root, 0.35, false)
+		"snowball_small": _snowball(root, 0.2, false)
 		"snowball_big": _snowball(root, 0.58)
 		"snowman": _snowman(root)
 		"snowman_angel": _snowman(root, "angel")
@@ -262,15 +264,17 @@ static func _snow_ball(st: SurfaceTool, at: Vector3, r: float, seed: int) -> voi
 
 
 # (collision: a cylinder as wide as the ball)
-static func _snowball(root: Node3D, r: float) -> void:
-	var key := "snowball_%s" % r
+# `drift`: the little skirt of loose snow round its foot. The bare ones are just the lumpy ball (Sara, Nov 28:
+# "a snowball and small snowball that do not have the puddle of snow beneath them").
+static func _snowball(root: Node3D, r: float, drift := true) -> void:
+	var key := "snowball_%s%s" % [r, "" if drift else "_bare"]
 	var parts := _cached(key, func() -> Array:
 		var st := _begin()
 		_snow_ball(st, Vector3.ZERO, r, 3 if r < 0.5 else 8)
-		# a little drift of loose snow round its foot
-		_lathe(st, [[0.0, 0.0], [r * 1.02, 0.0], [r * 0.96, r * 0.025], [r * 0.86, r * 0.055], [r * 0.7, r * 0.08], [0.0, r * 0.08]], 40,
-				func(_i, a): return Color(0.95, 0.96, 1.0).darkened(0.03 * absf(sin(a * 3.0))), Vector3.ZERO,
-				func(_i, a): return 1.0 + 0.05 * sin(a * 3.0 + r * 9.0) + 0.025 * sin(a * 7.0))
+		if drift:
+			_lathe(st, [[0.0, 0.0], [r * 1.02, 0.0], [r * 0.96, r * 0.025], [r * 0.86, r * 0.055], [r * 0.7, r * 0.08], [0.0, r * 0.08]], 40,
+					func(_i, a): return Color(0.95, 0.96, 1.0).darkened(0.03 * absf(sin(a * 3.0))), Vector3.ZERO,
+					func(_i, a): return 1.0 + 0.05 * sin(a * 3.0 + r * 9.0) + 0.025 * sin(a * 7.0))
 		return [_end(st, true)])
 	_add(root, parts[0], _snow_mat())
 
@@ -392,16 +396,43 @@ static func _snowman(root: Node3D, variant := "") -> void:
 				var q2 := neck + Vector3(cos(a1) * r0, y0 + 0.025, sin(a1) * r0)
 				var q3 := neck + Vector3(cos(a0) * r0, y0 + 0.025, sin(a0) * r0)
 				_quad(scarf, q0, q1, q2, q3, cc, Vector3(cos((a0 + a1) * 0.5), 0, sin((a0 + a1) * 0.5)))
-		for s in [0.07, -0.05]:   # the two hanging ends, striped
-			var top := neck + Vector3(s, -0.02, 0.21)
-			var len := 0.32 if s > 0.0 else 0.24
-			for k in 4:
-				var seg := len / 4.0
-				_box(scarf, top + Vector3(0, -seg * (k + 0.5), 0.11), Vector3(0.09, seg, 0.025), col_a if k % 2 == 0 else col_b,
-						Basis(Vector3.RIGHT, 0.12) * Basis(Vector3.BACK, s * 1.2))
-			for f in 4:
-				var fp := top + Vector3(-0.03 + f * 0.02, -len - 0.03, 0.13)
-				_box(scarf, fp, Vector3(0.008, 0.05, 0.008), col_b, Basis(Vector3.BACK, s * 1.2))
+		# The two ends (Sara, Nov 28: they were stiff, upright pieces hanging in the air in front of him: "the ends
+		# need to connect to the portion that goes around their necks. It should drape on their middle snowball"):
+		# a knot on the band, and from it two striped tails lying down over the curve of the middle snowball to
+		# its widest point, the longer one hanging a little way on from there; a fringe on each.
+		var mid_ball := Vector3(0, 0.6 + 0.29 * 0.82, 0)
+		var mid_ball_r := 0.322   # (the middle snowball, lumps and all, and a finger of room)
+		var scarf_knot := Vector3(0.1, neck.y - 0.025, 0.2)
+		_lathe(scarf, [[0.0, -0.04], [0.032, -0.03], [0.042, 0.0], [0.032, 0.03], [0.0, 0.04]], 10, func(_i, _a): return col_a, scarf_knot)
+		var tail_phi0 := asin(clampf((scarf_knot.y - 0.02 - mid_ball.y) / mid_ball_r, -1.0, 1.0))   # how far up the ball the tails start
+		for tail in [[0.065, 0.36, -0.035], [0.145, 0.27, 0.06]]:   # [x at the knot, how long, how far it splays]
+			var tail_steps := 9
+			var tail_pts := []
+			for k in tail_steps + 1:
+				var tail_f := float(k) / tail_steps
+				var tail_x: float = tail[0] + tail[2] * tail_f
+				var tail_phi: float = tail_phi0 - tail_f * tail[1] / mid_ball_r
+				var tail_y := mid_ball.y + mid_ball_r * sin(maxf(tail_phi, 0.0)) + minf(tail_phi, 0.0) * mid_ball_r   # (past the widest point: straight down)
+				var tail_reach := mid_ball_r * cos(maxf(tail_phi, 0.0))
+				tail_pts.append(Vector3(tail_x, tail_y, sqrt(maxf(tail_reach * tail_reach - tail_x * tail_x, 0.0001))))
+			for k in tail_steps:
+				var tail_p0: Vector3 = tail_pts[k]
+				var tail_p1: Vector3 = tail_pts[k + 1]
+				var tail_along := (tail_p1 - tail_p0).normalized()
+				var tail_nrm := Vector3(tail_p0.x, (tail_p0.y - mid_ball.y) if tail_p0.y > mid_ball.y else 0.0, tail_p0.z).normalized()
+				var tail_across := tail_nrm.cross(tail_along).normalized() * 0.043
+				var tail_col := (col_a if (k / 2) % 2 == 0 else col_b).darkened(0.07 * float(k % 2))
+				var tail_lift := tail_nrm * 0.014
+				_quad(scarf, tail_p0 - tail_across + tail_lift, tail_p0 + tail_across + tail_lift, tail_p1 + tail_across + tail_lift, tail_p1 - tail_across + tail_lift, tail_col, tail_nrm)
+				for e: float in [-1.0, 1.0]:   # its edges, down to the snow
+					_quad(scarf, tail_p0 + tail_across * e + tail_lift, tail_p1 + tail_across * e + tail_lift, tail_p1 + tail_across * e - tail_nrm * 0.004, tail_p0 + tail_across * e - tail_nrm * 0.004, tail_col.darkened(0.15), tail_across * e)
+			var tail_tip: Vector3 = tail_pts[tail_steps]
+			var tail_down := ((tail_pts[tail_steps] as Vector3) - (tail_pts[tail_steps - 1] as Vector3)).normalized()
+			var tail_out := Vector3(tail_tip.x, 0.0, tail_tip.z).normalized()
+			var tail_side := tail_out.cross(tail_down).normalized()
+			for tail_f in 5:
+				_box(scarf, tail_tip + tail_side * (-0.034 + tail_f * 0.017) + tail_down * 0.025 + tail_out * 0.01, Vector3(0.007, 0.05, 0.007), col_b,
+						Basis(tail_side, tail_down, tail_side.cross(tail_down)))
 		# stick arms with twiggy hands (mittens on the plain one; the demon holds a pitchfork)
 		var sticks := _begin()
 		var wood := Color(0.32, 0.21, 0.12)

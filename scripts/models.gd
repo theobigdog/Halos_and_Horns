@@ -912,6 +912,7 @@ static func _add_crosswalk(id: String, holder: Node3D, s: Vector3, extra_scale: 
 # which matters on dusk and night maps.
 const LIT := {"torch_lit": Color(1.0, 0.6, 0.25), "candle_lit": Color(1.0, 0.75, 0.4), "candle_thin_lit": Color(1.0, 0.75, 0.4),
 		"lantern_standing": Color(1.0, 0.7, 0.35), "lantern_hanging": Color(1.0, 0.7, 0.35), "post_lantern": Color(1.0, 0.7, 0.35),
+		"post_lantern_base": Color(1.0, 0.7, 0.35),
 		"pumpkin_orange_jackolantern": Color(1.0, 0.55, 0.15), "pumpkin_yellow_jackolantern": Color(1.0, 0.7, 0.2),
 		"skull_candle": Color(1.0, 0.7, 0.35), "shrine_candles": Color(1.0, 0.75, 0.4), "plaque_candles": Color(1.0, 0.75, 0.4),
 		"streetlight": Color(1.0, 0.9, 0.7), "shelf_small_candles": Color(1.0, 0.75, 0.4)}
@@ -930,7 +931,7 @@ static func _add_glow(id: String, holder: Node3D) -> void:
 	# street lights and lantern posts have a daylight sensor (on at dusk); candles and torches are just lit
 	var lamp := Lamp.new()
 	lamp.position.y = s.y * 0.8
-	lamp.setup(l, name in ["streetlight", "post_lantern", "lantern_standing"], 2.5 if bad_bulb else 0.0)
+	lamp.setup(l, name in ["streetlight", "post_lantern", "post_lantern_base", "lantern_standing"], 2.5 if bad_bulb else 0.0)
 	holder.add_child(lamp)
 
 
@@ -1100,6 +1101,18 @@ void fragment() {
 """
 static var _recolor_shader: Shader
 static var _recolor_vc: Shader
+
+
+# A piece's preset styles (a rug's patterns, a vehicle's paints), by name; none for everything else.
+static func styles(id: String) -> Array:
+	return Refined.styles(id)
+
+
+# Before building a map piece: which style it has (and whether a rug keeps its fringe). Call it again with {}
+# after, so the next thing built comes as it comes.
+static func set_style(p: Dictionary) -> void:
+	Refined.style = int(p.get("style", 0))
+	Refined.fringe = p.get("fringe", true) != false
 
 
 static func is_rug(id: String) -> bool:
@@ -1286,8 +1299,7 @@ static func make_structure(id: String, extra_scale := Vector3.ONE, look := 0) ->
 	if is_stairs(id):
 		body.add_child(_stair_ramp(id, extra_scale))
 	if id.begins_with("city/building"):
-		var core := _building_core(id, extra_scale)
-		if core:
+		for core in _building_core(id, extra_scale):
 			body.add_child(core)
 	return body
 
@@ -1299,19 +1311,110 @@ static func make_structure(id: String, extra_scale := Vector3.ONE, look := 0) ->
 static var _cores := {}
 
 
-static func _building_core(id: String, extra_scale: Vector3) -> CollisionShape3D:
+# The block is cut back wherever the building itself steps in at ground level: a recessed doorway, a porch, an
+# L-shaped front (Sara, Nov 28: "Town building F you can't get near the front door - it behaves as though the
+# building is just a rectangular solid"). So it's a few boxes, not always one.
+static var _core_parts := {}
+
+
+static func _building_core(id: String, extra_scale: Vector3) -> Array:
 	var key := "%s@%s" % [id, extra_scale]
 	if not _cores.has(key):
 		_cores[key] = _measure_core(faces(id, extra_scale))
 	var box: AABB = _cores[key]
 	if box.size.x < 0.5 or box.size.z < 0.5 or box.size.y < 0.5:
-		return null
-	var shape := BoxShape3D.new()
-	shape.size = box.size
-	var cs := CollisionShape3D.new()
-	cs.shape = shape
-	cs.position = box.get_center()
-	return cs
+		return []
+	if not _core_parts.has(key):
+		_core_parts[key] = _carve_core(faces(id, extra_scale), box)
+	var out := []
+	for part in _core_parts[key]:
+		var pb: AABB = part
+		var shape := BoxShape3D.new()
+		shape.size = pb.size
+		var cs := CollisionShape3D.new()
+		cs.shape = shape
+		cs.position = pb.get_center()
+		out.append(cs)
+	return out
+
+
+# The core box with the building's ground-level recesses cut out of it. From each side, rays go in at door
+# heights along strips a quarter of a metre wide; where even the outermost of them stops well inside the wall's
+# face (a doorway set back, not a window: the wall under a window is still at the face), the block stops there
+# too. What's left is covered with as few boxes as it takes.
+static func _carve_core(f: PackedVector3Array, core: AABB) -> Array:
+	const CELL := 0.25
+	const RECESS := 0.3
+	var tm := TriangleMesh.new()
+	tm.create_from_faces(f)
+	var nx := maxi(1, int(round(core.size.x / CELL)))
+	var nz := maxi(1, int(round(core.size.z / CELL)))
+	var dx := core.size.x / nx
+	var dz := core.size.z / nz
+	var x0 := core.position.x
+	var z0 := core.position.z
+	var x1 := x0 + core.size.x
+	var z1 := z0 + core.size.z
+	var heights := [0.5, 1.0, 1.5, 2.0].filter(func(h): return h < core.size.y - 0.2)
+	if heights.is_empty():
+		return [core]
+	# how far in the solid starts, from each side, for every strip (never outside the core's own faces)
+	var from_lo_z := []   # per x strip: the z the solid starts at, coming from -z
+	var from_hi_z := []
+	for i in nx:
+		var x := x0 + (i + 0.5) * dx
+		var lo := z1
+		var hi := z0
+		for h in heights:
+			var a: Dictionary = tm.intersect_ray(Vector3(x, h, z0 - 3.0), Vector3(0, 0, 1))
+			if not a.is_empty():
+				lo = minf(lo, (a["position"] as Vector3).z)
+			var b: Dictionary = tm.intersect_ray(Vector3(x, h, z1 + 3.0), Vector3(0, 0, -1))
+			if not b.is_empty():
+				hi = maxf(hi, (b["position"] as Vector3).z)
+		from_lo_z.append(lo if lo > z0 + RECESS else z0)
+		from_hi_z.append(hi if hi < z1 - RECESS else z1)
+	var from_lo_x := []   # per z strip
+	var from_hi_x := []
+	for j in nz:
+		var z := z0 + (j + 0.5) * dz
+		var lo := x1
+		var hi := x0
+		for h in heights:
+			var a: Dictionary = tm.intersect_ray(Vector3(x0 - 3.0, h, z), Vector3(1, 0, 0))
+			if not a.is_empty():
+				lo = minf(lo, (a["position"] as Vector3).x)
+			var b: Dictionary = tm.intersect_ray(Vector3(x1 + 3.0, h, z), Vector3(-1, 0, 0))
+			if not b.is_empty():
+				hi = maxf(hi, (b["position"] as Vector3).x)
+		from_lo_x.append(lo if lo > x0 + RECESS else x0)
+		from_hi_x.append(hi if hi < x1 - RECESS else x1)
+	# rows of cells along x, each a list of solid runs [first, last]; rows with the same runs stack into one box
+	var out := []
+	var open_runs := []    # the runs of the row before
+	var open_from := 0
+	for j in nz + 1:
+		var runs := []
+		if j < nz:
+			var z := z0 + (j + 0.5) * dz
+			var start := -1
+			for i in nx + 1:
+				var solid := false
+				if i < nx:
+					var x := x0 + (i + 0.5) * dx
+					solid = z >= from_lo_z[i] and z <= from_hi_z[i] and x >= from_lo_x[j] and x <= from_hi_x[j]
+				if solid and start < 0:
+					start = i
+				elif not solid and start >= 0:
+					runs.append([start, i - 1])
+					start = -1
+		if runs != open_runs:
+			for r in open_runs:
+				out.append(AABB(Vector3(x0 + r[0] * dx, core.position.y, z0 + open_from * dz),
+						Vector3((r[1] - r[0] + 1) * dx, core.size.y, (j - open_from) * dz)))
+			open_runs = runs
+			open_from = j
+	return out
 
 
 static func _measure_core(f: PackedVector3Array) -> AABB:
