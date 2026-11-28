@@ -490,9 +490,9 @@ static func make(kind: String, size: Vector3, color := Color.WHITE) -> Node3D:
 	mi.mesh = _box_mesh(size)
 	mi.material_override = _mat(kind, q)
 	mi.set_instance_shader_parameter("bsize", size)
-	if color != Color.WHITE:
-		var lc := color.srgb_to_linear()
-		mi.set_instance_shader_parameter("tint", Vector3(lc.r, lc.g, lc.b))
+	# (always written, white included: never left to whatever the per-instance slot held before)
+	var lc := color.srgb_to_linear()
+	mi.set_instance_shader_parameter("tint", Vector3(lc.r, lc.g, lc.b))
 	root.add_child(mi)
 	var body := StaticBody3D.new()
 	body.name = "Body"

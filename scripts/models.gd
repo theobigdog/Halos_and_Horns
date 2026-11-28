@@ -24,7 +24,10 @@ render_mode blend_mul, unshaded, cull_back, depth_draw_never, shadows_disabled, 
 instance uniform float seed : instance_index(0) = 0.0;
 instance uniform int look : instance_index(1) = 0;
 instance uniform float own_cracks : instance_index(2) = 0.0;   // 1: the structure's own shader draws them (StructureLook)
-instance uniform vec4 tint : source_color, instance_index(3) = vec4(1.0);   // Creative's Colour (Ted's wife, Nov 27)
+// Creative's Colour (Ted's wife, Nov 27). A plain uniform, NOT a per-instance one: v0.7.0 had it as a fourth
+// per-instance value and some pieces read their neighbours' values there instead (bright solid red after a test
+// round; Ted, Nov 27). Coloured pieces get their own copy of this material (Models.tint).
+uniform vec4 tint : source_color = vec4(1.0);
 global uniform float grime_amount;
 varying vec3 lp;
 varying float win;   // 1 on a city building's window glass (marked in the mesh: _mark_windows)
@@ -173,6 +176,8 @@ static func set_snow(cover: float) -> void:
 		g.next_pass = _snow_pass
 	elif cover <= 0.0 and g.next_pass != null:
 		g.next_pass = null
+	for t in _tinted.values():
+		(t as ShaderMaterial).next_pass = g.next_pass
 
 
 # Graphics quality: grime on Medium and High, off on Low.
@@ -371,13 +376,25 @@ static func _add_grime(node: Node, look := 0) -> void:
 # Any structure in a chosen colour (Ted's wife, Nov 27: "give all structure blocks the ability to change their
 # look and/or color"): the grime overlay multiplies it in, per piece, so the shared materials stay shared. Rugs
 # keep their own recolour (recolor(), the pattern turned to the hue). White leaves it as it comes.
+static var _tinted := {}   # colour -> a copy of the grime material with that tint
+
+
 static func tint(node: Node, color: Color, look := 0) -> void:
+	var key := color.to_html(false)
+	if not _tinted.has(key):
+		var g := grime_material()
+		var m := ShaderMaterial.new()
+		m.shader = g.shader
+		m.set_shader_parameter("tint", color)
+		m.next_pass = g.next_pass   # (snow on it too: set_snow keeps these in step)
+		_tinted[key] = m
+	var mat: ShaderMaterial = _tinted[key]
 	for c in node.find_children("*", "GeometryInstance3D", true, false):
 		var gi: GeometryInstance3D = c
-		if gi.material_overlay == null:
-			gi.material_overlay = grime_material()   # (Low graphics has no grime: this still tints)
+		var had := gi.material_overlay != null
+		gi.material_overlay = mat
+		if not had:   # (Low graphics has no grime: this still tints)
 			gi.set_instance_shader_parameter("look", maxi(look, 1))
-		gi.set_instance_shader_parameter("tint", color)
 
 
 static func _load() -> void:

@@ -215,6 +215,20 @@ func _run() -> void:
 	await frames(3)
 	check(mixed.anim != null and mixed.anim.is_playing() and mixed.anim.current_animation == "Idle", "...and it's animated (standing about: %s)" % mixed.anim.current_animation)
 	mixed.queue_free()
+	# Coloured structures get their own tinted copy of the grime overlay; the shared one has no per-instance tint
+	# (Ted, Nov 27: in v0.7.0 pieces turned solid red after a test round, reading their neighbours' values)
+	var plain_row: Node3D = Models.make_row("city/streetlight")
+	var tinted_row: Node3D = Models.make_row("city/streetlight")
+	Models.tint(tinted_row, Color(0.2, 0.4, 1.0))
+	var plain_mi: MeshInstance3D = plain_row.find_children("*", "MeshInstance3D", true, false)[0]
+	var tinted_mi: MeshInstance3D = tinted_row.find_children("*", "MeshInstance3D", true, false)[0]
+	check(not "instance uniform vec4 tint" in Models.GRIME_SHADER and plain_mi.material_overlay == Models.grime_material()
+			and tinted_mi.material_overlay != Models.grime_material()
+			and (tinted_mi.material_overlay as ShaderMaterial).get_shader_parameter("tint") == Color(0.2, 0.4, 1.0),
+			"a coloured structure gets its own tinted overlay; the shared one has no per-piece tint")
+	plain_row.free()
+	tinted_row.free()
+
 	# Horns root on the head (or the dome of its hat), never on a hat's spikes, stubs or brim (Ted, Nov 27: on the
 	# Skeleton Warrior's helmet they stood on its horn stubs, way above it)
 	var far_hats := []
