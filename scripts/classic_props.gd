@@ -215,6 +215,8 @@ static func make(type_name: String, root: Node3D) -> bool:
 		"snowball": _snowball(root, 0.35)
 		"snowball_big": _snowball(root, 0.58)
 		"snowman": _snowman(root)
+		"snowman_angel": _snowman(root, "angel")
+		"snowman_demon": _snowman(root, "demon")
 		"coconut": _coconut(root)
 		"beehive": _beehive(root)
 		_: return false
@@ -226,14 +228,14 @@ static func make(type_name: String, root: Node3D) -> bool:
 # A packed, rolled snowball: lumpy, with the crust of a roll's spiral and a few bits of grass and leaf rolled up
 # in it, a little flattened where it sits. Lit by the snow shader's soft sparkle (vertex colours, matte).
 static func _snow_ball(st: SurfaceTool, at: Vector3, r: float, seed: int) -> void:
-	var rings := 14
-	var around := 24
+	var rings := 20
+	var around := 32
 	var lump := func(u: float, a: float) -> float:
 		return 1.0 + 0.045 * sin(a * 5.0 + u * 9.0 + seed) + 0.03 * sin(a * 11.0 - u * 17.0 + seed * 2.0) \
 				+ 0.02 * sin(u * 40.0 + a * 3.0)
 	var pt := func(u: float, a: float) -> Vector3:
 		var th := PI * u
-		var rr: float = r * lump.call(u, a)
+		var rr: float = r * (1.0 + (lump.call(u, a) - 1.0) * sin(th))   # (no lumps at the poles: no pinch)
 		var p := Vector3(sin(th) * cos(a), -cos(th), sin(th) * sin(a)) * rr
 		if p.y < -r * 0.82:
 			p.y = -r * 0.82 + (p.y + r * 0.82) * 0.25   # sat down: a flattened bottom
@@ -265,73 +267,142 @@ static func _snowball(root: Node3D, r: float) -> void:
 	var parts := _cached(key, func() -> Array:
 		var st := _begin()
 		_snow_ball(st, Vector3.ZERO, r, 3 if r < 0.5 else 8)
+		# a little drift of loose snow round its foot
+		_lathe(st, [[0.0, 0.0], [r * 1.02, 0.0], [r * 0.96, r * 0.025], [r * 0.86, r * 0.055], [r * 0.7, r * 0.08], [0.0, r * 0.08]], 40,
+				func(_i, a): return Color(0.95, 0.96, 1.0).darkened(0.03 * absf(sin(a * 3.0))), Vector3.ZERO,
+				func(_i, a): return 1.0 + 0.05 * sin(a * 3.0 + r * 9.0) + 0.025 * sin(a * 7.0))
 		return [_end(st, true)])
-	_add(root, parts[0], _vmat("plaster", 0.85))
+	_add(root, parts[0], _snow_mat())
 
 
 # A cute snowman: three snowballs, coal eyes and a coal smile, a carrot nose, a knitted scarf with fringed
 # ends, stick arms with twiggy fingers, three coal buttons and a little top hat. (collision: 0.45 x 1.62)
-static func _snowman(root: Node3D) -> void:
-	var parts := _cached("snowman", func() -> Array:
+# Packed snow (Sara, Nov 27: "refine coconut, snowball, and snowmen"): bright, with cool blue in the hollows, a
+# fine crust, and tiny glints that sparkle as the light and your view move over it.
+const SNOW_SHADER := """
+shader_type spatial;
+varying vec3 lp;
+float h(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+void vertex() { lp = VERTEX; }
+void fragment() {
+	vec3 base = COLOR.rgb;
+	float crust = h(floor(lp * 90.0)) * 0.08;
+	vec3 c = base * (0.94 + crust);
+	c = mix(c, vec3(0.78, 0.86, 1.0), 0.12);
+	ALBEDO = c;
+	ROUGHNESS = 0.7;
+	// glints: a few tiny cells catch the light, depending on where you look from
+	vec3 cell = floor(lp * 140.0);
+	float g = step(0.985, h(cell + floor(dot(VIEW, vec3(3.0, 5.0, 7.0)) * 2.0)));
+	SPECULAR = 0.5;
+	EMISSION = vec3(1.0, 1.0, 1.05) * g * 0.6;
+	BACKLIGHT = vec3(0.3, 0.35, 0.45);
+}
+"""
+
+
+static func _snow_mat() -> ShaderMaterial:
+	if not _cache.has("snow_mat"):
+		var sh := Shader.new()
+		sh.code = SNOW_SHADER
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		_cache["snow_mat"] = m
+	return _cache["snow_mat"]
+
+
+# A cute snowman (and his angel and demon cousins: Sara, Nov 27, "make a snowman angel and snowman demon"): three
+# snowballs, coal eyes and a coal smile, a carrot nose, a knitted scarf with fringed ends, stick arms with twiggy
+# fingers, three coal buttons. The plain one has a top hat and red mittens; the angel a gold halo, little feathered
+# wings and a gold-and-white scarf; the demon red horns, small bat wings, glowing ember eyes, a wicked grin, a black
+# and red scarf and a pitchfork. (collision: 0.45 x 1.62)
+static func _snowman(root: Node3D, variant := "") -> void:
+	var parts := _cached("snowman_" + variant, func() -> Array:
 		var snow := _begin()
 		_snow_ball(snow, Vector3.ZERO, 0.4, 11)
 		_snow_ball(snow, Vector3(0, 0.6, 0), 0.29, 12)
 		_snow_ball(snow, Vector3(0, 1.02, 0), 0.21, 13)
+		var angel := variant == "angel"
+		var demon := variant == "demon"
 		var coal := _begin()
+		var glow := _begin()
 		var coal_c := Color(0.07, 0.07, 0.08)
 		var head := Vector3(0, 1.02 + 0.21 * 0.82, 0)
 		var face := func(yaw: float, pitch: float, rad: float) -> Vector3:
 			return head + Vector3(sin(yaw) * cos(pitch), sin(pitch), cos(yaw) * cos(pitch)) * rad
-		for s in [-1.0, 1.0]:   # eyes: shiny round coals
-			_lathe(coal, [[0.0, -0.028], [0.026, -0.012], [0.028, 0.0], [0.022, 0.016], [0.0, 0.024]], 10,
-					func(_i, _a): return coal_c, face.call(s * 0.32, 0.22, 0.2))
-		for k in 7:   # the smile
+		for s in [-1.0, 1.0]:   # eyes: shiny round coals (the demon's glow like embers)
+			_lathe(glow if demon else coal, [[0.0, -0.028], [0.026, -0.012], [0.028, 0.0], [0.022, 0.016], [0.0, 0.024]], 10,
+					func(_i, _a): return Color(1.0, 0.35, 0.05) if demon else coal_c, face.call(s * 0.32, 0.22, 0.2))
+			if demon:   # angry brows
+				_box(coal, face.call(s * 0.3, 0.36, 0.205), Vector3(0.09, 0.02, 0.02), coal_c, Basis(Vector3.BACK, s * 0.5) * Basis(Vector3.UP, s * 0.3))
+		for k in 7:   # the smile (the demon's is a jagged grin)
 			var a := lerpf(-0.55, 0.55, k / 6.0)
+			var dip := 0.12 * cos(a * 2.6) + (0.05 * float(k % 2) if demon else 0.0)
 			_lathe(coal, [[0.0, -0.014], [0.016, -0.006], [0.016, 0.006], [0.0, 0.014]], 8,
-					func(_i, _a): return coal_c, face.call(a, -0.28 - 0.12 * cos(a * 2.6), 0.205))
+					func(_i, _a): return coal_c, face.call(a, -0.28 - dip, 0.205))
 		var mid_c := Vector3(0, 0.6 + 0.29 * 0.82, 0)   # (the middle snowball's centre)
 		for k in 3:   # buttons, down the front of the middle snowball
 			var y: float = mid_c.y - 0.13 + 0.11 * k
 			var bp := Vector3(0, y, sqrt(maxf(0.0, 0.29 * 0.29 - pow(y - mid_c.y, 2.0))) + 0.005)
 			_lathe(coal, [[0.0, -0.03], [0.03, -0.012], [0.032, 0.0], [0.024, 0.02], [0.0, 0.028]], 10,
-					func(_i, _a): return coal_c, bp + Vector3(0, 0, 0.0))
-		# the hat: brim and a short crown, a red band
+					func(_i, _a): return Color(0.85, 0.65, 0.2) if angel else coal_c, bp)
+		# what's on top: a top hat with a red band, a gold halo, or two red horns
 		var hat := _begin()
-		var hat_c := Color(0.08, 0.08, 0.1)
-		_lathe(hat, [[0.0, 0.0], [0.19, 0.0], [0.19, 0.018], [0.12, 0.022], [0.119, 0.06], [0.115, 0.17], [0.0, 0.175]], 20,
-				func(i, _a): return Color(0.62, 0.1, 0.1) if i == 3 else hat_c, head + Vector3(0, 0.15, 0))
+		if angel:
+			_ring(glow, head + Vector3(0, 0.3, 0), 0.13, 0.018, Color(1.0, 0.85, 0.35), 24, 6)
+		elif demon:
+			for s in [-1.0, 1.0]:
+				var root2: Vector3 = face.call(s * 0.75, 0.75, 0.19)
+				_tube(hat, [root2, root2 + Vector3(s * 0.06, 0.08, 0.0), root2 + Vector3(s * 0.05, 0.17, -0.03), root2 + Vector3(s * 0.0, 0.22, -0.05)],
+						[0.035, 0.026, 0.014, 0.002], Color(0.65, 0.08, 0.06), 8)
+		else:
+			var hat_c := Color(0.08, 0.08, 0.1)
+			_lathe(hat, [[0.0, 0.0], [0.19, 0.0], [0.19, 0.018], [0.12, 0.022], [0.119, 0.06], [0.115, 0.17], [0.0, 0.175]], 20,
+					func(i, _a): return Color(0.62, 0.1, 0.1) if i == 3 else hat_c, head + Vector3(0, 0.15, 0))
 		# the carrot nose (pointing out of the face), with grooves
 		var nose := _begin()
 		var tip: Vector3 = face.call(0.0, 0.03, 0.42)
 		var base: Vector3 = face.call(0.0, 0.03, 0.17)
 		_tube(nose, [base, base.lerp(tip, 0.4), base.lerp(tip, 0.75), tip], [0.035, 0.026, 0.014, 0.002], Color(0.95, 0.45, 0.08), 8)
-		# the scarf: a band round the neck and two ends hanging down the front, with fringes
+		for k in 4:   # the grooves round the carrot
+			var at := base.lerp(tip, 0.15 + 0.18 * k)
+			_ring(nose, at, 0.033 - 0.007 * k, 0.003, Color(0.8, 0.35, 0.05), 10, 3)
+		# the scarf: a knitted band round the neck (ribbed stripes) and two ends hanging down the front, with fringes
 		var scarf := _begin()
 		var neck := Vector3(0, 0.6 + 0.29 * 0.82 + 0.25, 0)
-		var red := Color(0.75, 0.12, 0.12)
-		var stripe := Color(0.95, 0.9, 0.8)
-		var n := 18
+		var col_a := Color(0.75, 0.12, 0.12)
+		var col_b := Color(0.95, 0.9, 0.8)
+		if angel:
+			col_a = Color(0.95, 0.78, 0.25)
+			col_b = Color(0.98, 0.97, 0.94)
+		elif demon:
+			col_a = Color(0.08, 0.07, 0.08)
+			col_b = Color(0.7, 0.08, 0.06)
+		var n := 28
 		for k in n:
 			var a0 := TAU * k / n
 			var a1 := TAU * (k + 1) / n
-			var r0 := 0.2
-			var cc := red if k % 3 != 0 else stripe
-			for band in [[-0.05, 0.05]]:
-				var q0 := neck + Vector3(cos(a0) * r0, band[0], sin(a0) * r0)
-				var q1 := neck + Vector3(cos(a1) * r0, band[0], sin(a1) * r0)
-				var q2 := neck + Vector3(cos(a1) * r0, band[1], sin(a1) * r0)
-				var q3 := neck + Vector3(cos(a0) * r0, band[1], sin(a0) * r0)
+			for band in 4:
+				var y0 := -0.05 + band * 0.025
+				var r0 := 0.2 + 0.006 * sin(band * PI * 0.5 + 0.5)
+				var cc := col_a if (k / 3) % 3 != 0 else col_b
+				cc = cc.darkened(0.08 * float(band % 2))
+				var q0 := neck + Vector3(cos(a0) * r0, y0, sin(a0) * r0)
+				var q1 := neck + Vector3(cos(a1) * r0, y0, sin(a1) * r0)
+				var q2 := neck + Vector3(cos(a1) * r0, y0 + 0.025, sin(a1) * r0)
+				var q3 := neck + Vector3(cos(a0) * r0, y0 + 0.025, sin(a0) * r0)
 				_quad(scarf, q0, q1, q2, q3, cc, Vector3(cos((a0 + a1) * 0.5), 0, sin((a0 + a1) * 0.5)))
-		for s in [0.07, -0.05]:   # the two hanging ends
+		for s in [0.07, -0.05]:   # the two hanging ends, striped
 			var top := neck + Vector3(s, -0.02, 0.21)
 			var len := 0.32 if s > 0.0 else 0.24
-			# (hanging forward over the middle snowball's bulge)
-			_box(scarf, top + Vector3(0, -len * 0.5, 0.11), Vector3(0.09, len, 0.025), red,
-					Basis(Vector3.RIGHT, 0.12) * Basis(Vector3.BACK, s * 1.2))
+			for k in 4:
+				var seg := len / 4.0
+				_box(scarf, top + Vector3(0, -seg * (k + 0.5), 0.11), Vector3(0.09, seg, 0.025), col_a if k % 2 == 0 else col_b,
+						Basis(Vector3.RIGHT, 0.12) * Basis(Vector3.BACK, s * 1.2))
 			for f in 4:
 				var fp := top + Vector3(-0.03 + f * 0.02, -len - 0.03, 0.13)
-				_box(scarf, fp, Vector3(0.008, 0.05, 0.008), stripe, Basis(Vector3.BACK, s * 1.2))
-		# stick arms with twiggy hands
+				_box(scarf, fp, Vector3(0.008, 0.05, 0.008), col_b, Basis(Vector3.BACK, s * 1.2))
+		# stick arms with twiggy hands (mittens on the plain one; the demon holds a pitchfork)
 		var sticks := _begin()
 		var wood := Color(0.32, 0.21, 0.12)
 		for side in [-1.0, 1.0]:
@@ -339,17 +410,59 @@ static func _snowman(root: Node3D) -> void:
 			var el := Vector3(side * 0.48, 0.86, 0.04)
 			var hand := Vector3(side * 0.66, 1.05, 0.02)
 			_tube(sticks, [sh, el, hand], [0.02, 0.016, 0.011], wood, 6)
-			for f in 3:
-				var fdir := Vector3(side * (0.06 + 0.02 * f), 0.05 + 0.04 * (f - 1), 0.02 * (f - 1))
-				_tube(sticks, [hand, hand + fdir], [0.008, 0.004], wood, 5)
 			_tube(sticks, [el, el + Vector3(side * 0.05, -0.08, 0.02)], [0.009, 0.004], wood, 5)
-		return [_end(snow, true), _end(coal, true), _end(hat, false), _end(nose, true), _end(scarf, false), _end(sticks, true)])
-	_add(root, parts[0], _vmat("plaster", 0.85))
+			if variant == "":
+				_lathe(scarf, [[0.0, -0.045], [0.035, -0.035], [0.04, 0.0], [0.032, 0.035], [0.0, 0.045]], 10, func(_i, _a): return col_a, hand)
+				_lathe(scarf, [[0.0, -0.02], [0.015, -0.015], [0.016, 0.0], [0.0, 0.02]], 6, func(_i, _a): return col_a, hand + Vector3(-side * 0.03, 0.03, 0.02))
+			else:
+				for f in 3:
+					var fdir := Vector3(side * (0.06 + 0.02 * f), 0.05 + 0.04 * (f - 1), 0.02 * (f - 1))
+					_tube(sticks, [hand, hand + fdir], [0.008, 0.004], wood, 5)
+		if demon:   # the pitchfork, held upright in the right hand
+			var hp := Vector3(0.66, 1.05, 0.02)
+			_tube(hat, [hp + Vector3(0, -0.6, 0), hp + Vector3(0, 0.45, 0)], [0.016, 0.016], Color(0.25, 0.08, 0.06), 6)
+			_box(hat, hp + Vector3(0, 0.47, 0), Vector3(0.18, 0.025, 0.025), Color(0.3, 0.3, 0.32))
+			for px in [-0.08, 0.0, 0.08]:
+				_tube(hat, [hp + Vector3(px, 0.47, 0), hp + Vector3(px, 0.62, 0)], [0.012, 0.002], Color(0.3, 0.3, 0.32), 5)
+		# wings on the back: little feathered ones, or bat wings
+		var wings := _begin()
+		for s in [-1.0, 1.0]:
+			var root3 := mid_c + Vector3(s * 0.1, 0.12, -0.26)
+			if angel:
+				for f in 6:
+					var a := 0.2 + f * 0.22
+					var tipw: Vector3 = root3 + Vector3(s * cos(a) * 0.34, sin(a) * 0.28, -0.05)
+					var side_v := Vector3(0, 0, 1).cross(tipw - root3).normalized() * 0.035
+					_quad(wings, root3 - side_v, tipw - side_v * 0.4, tipw + side_v * 0.4, root3 + side_v, Color(0.98, 0.97, 0.93).darkened(0.04 * float(f % 2)), Vector3(0, 0, -1))
+			elif demon:
+				var elbow: Vector3 = root3 + Vector3(s * 0.2, 0.18, -0.04)
+				var tips := [root3 + Vector3(s * 0.42, 0.2, -0.06), root3 + Vector3(s * 0.4, 0.0, -0.06), root3 + Vector3(s * 0.28, -0.12, -0.05)]
+				_tube(wings, [root3, elbow, tips[0]], [0.012, 0.01, 0.004], Color(0.15, 0.05, 0.05), 5)
+				var prev: Vector3 = root3
+				for t in tips:
+					_tube(wings, [elbow, t], [0.008, 0.003], Color(0.15, 0.05, 0.05), 4)
+				for i in tips.size():
+					var a2: Vector3 = tips[i]
+					var b2: Vector3 = tips[i + 1] if i + 1 < tips.size() else root3 + Vector3(0, -0.1, 0)
+					_tri(wings, elbow, a2, b2, Color(0.45, 0.06, 0.06), Vector3(0, 0, -1))
+					_tri(wings, elbow, b2, a2, Color(0.35, 0.04, 0.04), Vector3(0, 0, 1))
+		return [_end(snow, true), _end(coal, true), _end(hat, false), _end(nose, true), _end(scarf, false), _end(sticks, true),
+				_end(glow, false), _end(wings, false)])
+	_add(root, parts[0], _snow_mat())
 	_add(root, parts[1], _vmat("stone", 0.35))
-	_add(root, parts[2], _vmat("cloth", 0.7))
+	_add(root, parts[2], _vmat("cloth", 0.7) if variant == "" else _vmat("metal", 0.4, 0.3))
 	_add(root, parts[3], _vmat("plant", 0.6))
 	_add(root, parts[4], _vmat("cloth", 0.95))
 	_add(root, parts[5], _vmat("wood", 0.9))
+	if variant != "":
+		var g := StandardMaterial3D.new()
+		g.vertex_color_use_as_albedo = true
+		g.vertex_color_is_srgb = true
+		g.emission_enabled = true
+		g.emission = Color(1.0, 0.55, 0.15) if variant == "demon" else Color(1.0, 0.85, 0.4)
+		g.emission_energy_multiplier = 1.6
+		_add(root, parts[6], g)
+		_add(root, parts[7], _vmat("cloth", 0.8, -1.0, true))
 
 
 # A coconut: a slightly egg-shaped brown nut with coarse fibres streaking it lengthwise, three dark "eyes" at
@@ -373,8 +486,32 @@ static func _coconut(root: Node3D) -> void:
 		var ridge := func(i: int, a: float) -> float:
 			return 1.0 + 0.04 * absf(sin(a * 1.5)) + 0.012 * sin(a * 41.0 + i)
 		_lathe(st, prof, 30, col, Vector3.ZERO, ridge)
-		return [_end(st, true)])
+		# the three eyes: real sunken dimples, dark and a little shiny
+		var eyes := _begin()
+		for k in 3:
+			var ea := TAU * k / 3.0
+			var ep := Vector3(cos(ea) * 0.034, 0.207, sin(ea) * 0.034)
+			_lathe(eyes, [[0.0, -0.006], [0.014, -0.002], [0.016, 0.003], [0.0, 0.004]], 10,
+					func(_i, _a): return Color(0.1, 0.06, 0.035), ep)
+		# shaggy husk fibres: short wiry strands lying along the shell, frayed out more near the ends
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 4242
+		for k in 150:
+			var t := rng.randf_range(0.05, 0.95)
+			var a := rng.randf() * TAU
+			var y := 0.218 * t
+			var rr := 0.115 * sin(PI * t) * 1.02 + 0.004
+			var p0 := Vector3(cos(a) * rr, y, sin(a) * rr)
+			var outw := Vector3(cos(a), 0.0, sin(a))
+			var along := Vector3(0, 1, 0).rotated(outw, rng.randf_range(-0.5, 0.5))
+			var fray := 0.25 + 0.75 * absf(t - 0.5) * 2.0
+			var len := rng.randf_range(0.025, 0.05)
+			var p1 := p0 + along * len * (1.0 if rng.randf() < 0.5 else -1.0) + outw * len * 0.45 * fray
+			var fc := Color(0.5, 0.34, 0.18).lerp(Color(0.66, 0.5, 0.3), rng.randf())
+			_tube(st, [p0, p1], [0.0035, 0.0012], fc, 3)
+		return [_end(st, true), _end(eyes, true)])
 	_add(root, parts[0], _vmat("wood", 0.92))
+	_add(root, parts[1], _vmat("stone", 0.4))
 
 
 # A beehive: an old straw skep (a dome of coiled straw rope, stitched), on a little wooden stand, with an
@@ -841,8 +978,8 @@ static func _pickle(root: Node3D) -> void:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 7
 		var bumps := []
-		for k in 70:
-			bumps.append([rng.randf_range(0.06, 0.94), rng.randf() * TAU, rng.randf_range(0.6, 1.0)])
+		for k in 58:
+			bumps.append([rng.randf_range(0.08, 0.92), rng.randf() * TAU, rng.randf_range(0.4, 1.0)])
 		var rings := 56
 		var around := 36
 		var rmax := 0.19
@@ -907,8 +1044,45 @@ static func _pickle(root: Node3D) -> void:
 					st.add_vertex(pb)
 					st.set_color(cc)
 					st.add_vertex(pc)
-		return [_end(st, true)])
+		# real warts (Sara, Nov 27, with two example pickles: "needs warts"): round nubs standing out of the skin,
+		# each a little dome sunk a third of its height into it (so none floats), paler and shinier than the skin
+		var warts := _begin()
+		for b in bumps:
+			var u: float = b[0]
+			var a: float = b[1]
+			var n := Vector3(cos(a), sin(a), 0.0)
+			var p: Vector3 = center.call(u) + n * (radius.call(u, a) as float)
+			var r := 0.016 + 0.014 * float(b[2])
+			var tone := Color(0.32, 0.5, 0.14).lerp(Color(0.5, 0.64, 0.24), _h(u * 31.0 + a))
+			_dome(warts, p - n * r * 0.35, n, r, r * 0.95, tone)
+		return [_end(st, true), _end(warts, true)])
 	_add(root, parts[0], _vmat("glossy", 0.22))
+	_add(root, parts[1], _vmat("glossy", 0.15))
+
+
+# A small dome (radius r, height h) standing on `at`, facing along `n`.
+static func _dome(st: SurfaceTool, at: Vector3, n: Vector3, r: float, h: float, col: Color) -> void:
+	var y := n.normalized()
+	var x := y.cross(Vector3.UP if absf(y.y) < 0.9 else Vector3.RIGHT).normalized()
+	var z := x.cross(y)
+	var rings := 3
+	var sides := 8
+	var pt := func(i: int, j: int) -> Vector3:
+		var t := float(i) / rings           # 0 base .. 1 top
+		var ang := TAU * j / sides
+		var rr := r * cos(t * PI * 0.5)
+		return at + (x * cos(ang) + z * sin(ang)) * rr + y * h * sin(t * PI * 0.5)
+	for i in rings:
+		for j in sides:
+			var a: Vector3 = pt.call(i, j)
+			var b: Vector3 = pt.call(i, j + 1)
+			var c: Vector3 = pt.call(i + 1, j + 1)
+			var d: Vector3 = pt.call(i + 1, j)
+			var out := ((a + c) * 0.5 - at).normalized()
+			var shade := col.lightened(0.12 * float(i) / rings)
+			_tri(st, a, b, c, shade, out)
+			if i < rings - 1:
+				_tri(st, a, c, d, shade, out)
 
 
 # ---------------------------------------------------------------- new street and garden props
@@ -916,75 +1090,166 @@ static func _pickle(root: Node3D) -> void:
 # A galvanised steel garbage can: ribbed sides, a rolled rim, a domed lid with a handle, side handles.
 # (collision: cylinder r 0.3, h 0.85)
 static func _trash_can(root: Node3D) -> void:
-	var parts := _cached("trash_can", func() -> Array:
+	var parts := _cached("trash_can2", func() -> Array:
 		var st := _begin()
-		var zinc := Color(0.62, 0.64, 0.64)
+		var zinc := Color(0.64, 0.66, 0.66)
+		# galvanised spangle: patches of slightly different grey, plus a darker grime band near the foot
 		var col := func(i: int, a: float) -> Color:
-			return zinc.lerp(Color(0.5, 0.52, 0.53), _h(floor(a * 6.0) + float(i) * 0.3) * 0.35)
-		var prof := [[0.0, 0.0], [0.24, 0.0], [0.25, 0.02], [0.245, 0.04]]
-		for k in 7:   # the ribs
-			var y := 0.08 + k * 0.1
-			prof.append([0.25, y - 0.03])
-			prof.append([0.262, y - 0.01])
-			prof.append([0.262, y + 0.01])
-			prof.append([0.25, y + 0.03])
-		prof.append_array([[0.26, 0.76], [0.27, 0.775], [0.265, 0.79], [0.25, 0.785], [0.0, 0.785]])
-		_lathe(st, prof, 36, col)
-		for side in [-1.0, 1.0]:   # side handles
+			var sp := _h(floor(a * 9.0) * 3.1 + floor(float(i) * 0.5) * 1.7)
+			var cc := zinc.lerp(Color(0.52, 0.54, 0.55), sp * 0.4)
+			return cc.darkened(0.12) if i < 6 else cc
+		# a foot ring, the body with its corrugated ribs, and a rolled top rim
+		var prof := [[0.0, 0.0], [0.225, 0.0], [0.235, 0.006], [0.24, 0.02], [0.236, 0.035], [0.243, 0.05]]
+		prof.append([0.25, 0.07])
+		for k in 7:   # pressed ribs: narrow raised bands with plain wall between
+			var y := 0.11 + k * 0.095
+			prof.append([0.25, y - 0.02])
+			prof.append([0.257, y - 0.01])
+			prof.append([0.259, y])
+			prof.append([0.257, y + 0.01])
+			prof.append([0.25, y + 0.02])
+		prof.append_array([[0.25, 0.75], [0.258, 0.758], [0.268, 0.766], [0.272, 0.776], [0.266, 0.786], [0.254, 0.784], [0.24, 0.776], [0.0, 0.776]])
+		# a couple of knocks in it (it has had a life)
+		var dent := func(i: int, a: float) -> float:
+			var d := 0.0
+			for dd in [[2.2, 0.35, 0.03], [4.6, 0.62, 0.02]]:
+				var da := absf(wrapf(a - dd[0], -PI, PI))
+				var dy := absf(float(i) / prof.size() - dd[1])
+				d += dd[2] * maxf(0.0, 1.0 - da / 0.35) * maxf(0.0, 1.0 - dy / 0.15)
+			return 1.0 - d
+		_lathe(st, prof, 48, col, Vector3.ZERO, dent)
+		# side handles: riveted bracket plates and a round bar between them
+		var trim := _begin()
+		for side in [-1.0, 1.0]:
+			for z in [-0.075, 0.075]:
+				_box(trim, Vector3(side * 0.262, 0.6, z), Vector3(0.012, 0.06, 0.035), zinc.darkened(0.08))
+				_lathe(trim, [[0.0, 0.0], [0.007, 0.0], [0.006, 0.004], [0.0, 0.006]], 6, func(_i, _a): return zinc.darkened(0.2),
+						Vector3(side * 0.269, 0.6, z))
 			var pts := []
 			var rad := []
-			for k in 7:
-				var t := PI * k / 6.0
-				pts.append(Vector3(side * (0.262 + 0.035 * sin(t)), 0.6, -0.07 + 0.14 * k / 6.0))
-				rad.append(0.009)
-			_tube(st, pts, rad, zinc.darkened(0.1), 6)
-		_lathe(st, [[0.0, 0.79], [0.29, 0.79], [0.295, 0.8], [0.28, 0.815], [0.2, 0.835], [0.1, 0.845], [0.0, 0.848]], 36, col)
-		_box(st, Vector3(0, 0.855, 0), Vector3(0.18, 0.016, 0.03), zinc.darkened(0.1))
-		for side in [-1.0, 1.0]:
-			_box(st, Vector3(side * 0.08, 0.848, 0), Vector3(0.02, 0.012, 0.03), zinc.darkened(0.15))
-		return [_end(st, true)])
-	_add(root, parts[0], _vmat("metal", 0.45, 0.7))
+			for k in 9:
+				var t := PI * k / 8.0
+				pts.append(Vector3(side * (0.268 + 0.045 * sin(t)), 0.6 - 0.02 * sin(t), -0.075 + 0.15 * k / 8.0))
+				rad.append(0.011)
+			_tube(trim, pts, rad, zinc.darkened(0.05), 8)
+		# the lid: a lip that fits over the rim, a shallow dome with ribs, and an arched handle on two feet
+		var lid := [[0.0, 0.77], [0.285, 0.77], [0.292, 0.778], [0.293, 0.8], [0.285, 0.81], [0.26, 0.816], [0.2, 0.836],
+				[0.19, 0.84], [0.17, 0.838], [0.12, 0.852], [0.06, 0.86], [0.0, 0.862]]
+		_lathe(st, lid, 48, col)
+		for k in 8:   # pressed ribs radiating on the dome
+			var ra := TAU * k / 8.0 + 0.2
+			var d := Vector3(cos(ra), 0, sin(ra))
+			_tube(trim, [d * 0.08 + Vector3.UP * 0.857, d * 0.17 + Vector3.UP * 0.842, d * 0.255 + Vector3.UP * 0.82], [0.006, 0.006, 0.004], zinc, 5)
+		var hp := []
+		var hr := []
+		for k in 11:
+			var t := PI * k / 10.0
+			hp.append(Vector3(-0.09 * cos(t), 0.862 + 0.055 * sin(t), 0.0))
+			hr.append(0.012)
+		_tube(trim, hp, hr, zinc.darkened(0.12), 8)
+		for s in [-1.0, 1.0]:
+			_lathe(trim, [[0.0, 0.0], [0.022, 0.0], [0.016, 0.012], [0.0, 0.014]], 10, func(_i, _a): return zinc.darkened(0.15), Vector3(s * 0.09, 0.856, 0))
+		return [_end(st, true), _end(trim, true)])
+	_add(root, parts[0], _vmat("metal", 0.5, 0.7))
+	_add(root, parts[1], _vmat("metal", 0.4, 0.75))
 
 
-# A wheelie bin: a moulded green body tapering to the bottom, a hinged lid with a lip, axle and wheels at the
-# back, a handle bar. (collision: box 0.6 x 1.05 x 0.72)
+# A rounded-rectangle loft: rows of [y, half_x, half_z, corner_radius], each a rounded rectangle round the y axis
+# (centred on x = 0, z = zc), joined into a smooth moulded shell (for plastic bins and the like).
+static func _rrect_loft(st: SurfaceTool, rows: Array, col: Callable, seg := 4, zc := 0.0) -> void:
+	var rings := []
+	for r in rows:
+		var y: float = r[0]
+		var hx: float = r[1]
+		var hz: float = r[2]
+		var rc: float = minf(r[3], minf(hx, hz) - 0.001)
+		var ring := []
+		for q in 4:
+			var cx := (hx - rc) * (1.0 if q == 0 or q == 3 else -1.0)
+			var cz := (hz - rc) * (1.0 if q < 2 else -1.0)
+			for k in seg + 1:
+				var a := PI * 0.5 * q + PI * 0.5 * k / seg
+				ring.append(Vector3(cx + cos(a) * rc, y, zc + cz + sin(a) * rc))
+		rings.append(ring)
+	for i in rings.size() - 1:
+		var r0: Array = rings[i]
+		var r1: Array = rings[i + 1]
+		for k in r0.size():
+			var k1 := (k + 1) % r0.size()
+			var a: Vector3 = r0[k]
+			var b: Vector3 = r0[k1]
+			var cc: Vector3 = r1[k1]
+			var d: Vector3 = r1[k]
+			var mid := (a + b + cc + d) * 0.25
+			var out := Vector3(mid.x, 0.0, mid.z - zc)
+			if out.length() < 0.001:
+				out = Vector3.UP if a.y > rows[0][0] else Vector3.DOWN
+			if (a - b).length() < 0.0001 and (cc - d).length() < 0.0001:
+				continue
+			_quad(st, a, b, cc, d, col.call(i, mid), out)
+
+
+# A wheelie bin: a moulded body (rounded corners, a stacking rim round the top, ribs down the sides and front, a
+# recessed front panel with a little label), a hinged lid with a lip and a finger grip, a handle bar across the
+# back, an axle housing and two chunky wheels. (collision: box 0.6 x 1.05 x 0.72)
 static func _wheelie_bin(root: Node3D) -> void:
-	var parts := _cached("wheelie_bin", func() -> Array:
+	var parts := _cached("wheelie_bin2", func() -> Array:
+		var Vehicles = load("res://scripts/vehicles.gd")
 		var st := _begin()
 		var green := Color(0.15, 0.38, 0.2)
-		var b0 := [Vector3(-0.25, 0.06, -0.26), Vector3(0.25, 0.06, -0.26), Vector3(0.25, 0.06, 0.28), Vector3(-0.25, 0.06, 0.28)]
-		var b1 := [Vector3(-0.29, 0.98, -0.32), Vector3(0.29, 0.98, -0.32), Vector3(0.29, 0.98, 0.33), Vector3(-0.29, 0.98, 0.33)]
-		for k in 4:
-			var a0: Vector3 = b0[k]
-			var a1: Vector3 = b0[(k + 1) % 4]
-			var c0: Vector3 = b1[k]
-			var c1: Vector3 = b1[(k + 1) % 4]
-			var mid := (a0 + a1 + c0 + c1) * 0.25
-			_quad(st, a0, a1, c1, c0, green.darkened(0.06 * (k % 2)), Vector3(mid.x, 0.0, mid.z))
-		_quad(st, b0[0], b0[1], b0[2], b0[3], green.darkened(0.2), Vector3.DOWN)
-		# moulded ribs down the front
-		for x in [-0.15, 0.0, 0.15]:
-			_box(st, Vector3(x, 0.55, 0.31), Vector3(0.03, 0.75, 0.03), green.lightened(0.04), Basis(Vector3.RIGHT, -0.065))
-		# the lid
-		_box(st, Vector3(0, 1.0, 0.0), Vector3(0.6, 0.04, 0.7), green.lightened(0.05))
-		_box(st, Vector3(0, 0.975, 0.345), Vector3(0.6, 0.06, 0.02), green)
-		# handle bar and hinge at the back
-		_box(st, Vector3(0, 0.95, -0.34), Vector3(0.5, 0.04, 0.05), Color(0.12, 0.12, 0.12))
-		# axle and wheels
-		var dark := _begin()
-		_box(dark, Vector3(0, 0.1, -0.27), Vector3(0.56, 0.03, 0.03), Color(0.2, 0.2, 0.2))
+		var shade := func(i: int, p: Vector3) -> Color:
+			return green.darkened(0.08 if i == 0 else 0.0).lerp(Color(0.12, 0.3, 0.16), 0.15 * (0.5 + 0.5 * sin(p.y * 40.0)) * 0.0)
+		# body: closed rounded bottom, tapered walls, a thickened stacking rim
+		_rrect_loft(st, [[0.06, 0.001, 0.001, 0.0], [0.06, 0.2, 0.21, 0.05], [0.075, 0.24, 0.25, 0.06], [0.11, 0.252, 0.262, 0.065],
+				[0.86, 0.285, 0.31, 0.07], [0.88, 0.3, 0.325, 0.075], [0.93, 0.3, 0.325, 0.075], [0.94, 0.29, 0.315, 0.07],
+				[0.94, 0.001, 0.001, 0.0]], shade, 5)
+		var trim := _begin()
+		# moulded ribs down each side and the front, following the taper
 		for side in [-1.0, 1.0]:
-			var wheel := []
-			for k in 13:
-				var a := TAU * k / 12.0
-				wheel.append(Vector3(side * 0.29, 0.1 + sin(a) * 0.1, -0.27 + cos(a) * 0.1))
-			for k in 12:
-				_tri(dark, Vector3(side * 0.31, 0.1, -0.27), wheel[k] + Vector3(side * 0.02, 0, 0), wheel[k + 1] + Vector3(side * 0.02, 0, 0), Color(0.08, 0.08, 0.08), Vector3(side, 0, 0))
-				_quad(dark, wheel[k] - Vector3(side * 0.02, 0, 0), wheel[k + 1] - Vector3(side * 0.02, 0, 0), wheel[k + 1] + Vector3(side * 0.02, 0, 0), wheel[k] + Vector3(side * 0.02, 0, 0),
-						Color(0.1, 0.1, 0.1), (wheel[k] + wheel[k + 1]) * 0.5 - Vector3(side * 0.29, 0.1, -0.27))
-		return [_end(st, false), _end(dark, false)])
+			for z in [-0.14, 0.0, 0.14]:
+				var p0 := Vector3(side * 0.254, 0.16, z)
+				var p1 := Vector3(side * 0.283, 0.82, z * 1.15)
+				Vehicles.soft_box(trim, (p0 + p1) * 0.5, Vector3(0.026, p0.distance_to(p1), 0.035), 0.01, green.lightened(0.04),
+						Basis(Vector3.BACK, side * atan2(p1.x - p0.x, p1.y - p0.y) * -1.0), 3)
+		for x in [-0.17, 0.17]:
+			var p0 := Vector3(x, 0.16, 0.264)
+			var p1 := Vector3(x * 1.1, 0.82, 0.308)
+			Vehicles.soft_box(trim, (p0 + p1) * 0.5, Vector3(0.035, p0.distance_to(p1), 0.026), 0.01, green.lightened(0.04),
+					Basis(Vector3.RIGHT, -atan2(p1.z - p0.z, p1.y - p0.y)), 3)
+		# a white label on the front panel
+		var tilt := Basis(Vector3.RIGHT, -atan2(0.044, 0.66))
+		Vehicles.soft_box(trim, Vector3(0, 0.62, 0.297), Vector3(0.16, 0.11, 0.006), 0.002, Color(0.92, 0.92, 0.88), tilt, 2)
+		Vehicles.soft_box(trim, Vector3(0, 0.635, 0.3), Vector3(0.1, 0.018, 0.004), 0.001, Color(0.2, 0.45, 0.25), tilt, 1)
+		Vehicles.soft_box(trim, Vector3(0, 0.605, 0.3), Vector3(0.07, 0.012, 0.004), 0.001, Color(0.4, 0.42, 0.42), tilt, 1)
+		# the lid: overhangs a little, a lip at the front with a finger grip, ribs across the top, hinge knuckles
+		var lid := green.lightened(0.05)
+		Vehicles.soft_box(trim, Vector3(0, 0.965, -0.005), Vector3(0.63, 0.05, 0.69), 0.02, lid, Basis(), 4)
+		Vehicles.soft_box(trim, Vector3(0, 0.95, 0.345), Vector3(0.6, 0.08, 0.03), 0.012, lid, Basis(), 3)
+		Vehicles.soft_box(trim, Vector3(0, 0.915, 0.36), Vector3(0.24, 0.02, 0.04), 0.008, lid.darkened(0.1), Basis(), 2)
+		for z in [-0.16, 0.0, 0.16]:
+			Vehicles.soft_box(trim, Vector3(0, 0.993, z), Vector3(0.5, 0.012, 0.04), 0.005, lid.lightened(0.03), Basis(), 2)
+		var dark := _begin()
+		var black := Color(0.1, 0.1, 0.11)
+		for x in [-0.22, -0.07, 0.07, 0.22]:
+			_tube(dark, [Vector3(x - 0.05, 0.955, -0.345), Vector3(x + 0.05, 0.955, -0.345)], [0.022, 0.022], green.darkened(0.15), 8)
+		# the handle bar across the back, on two moulded brackets
+		for x in [-0.24, 0.24]:
+			Vehicles.soft_box(trim, Vector3(x, 0.89, -0.335), Vector3(0.05, 0.08, 0.06), 0.015, green.darkened(0.05), Basis(), 3)
+		_tube(dark, [Vector3(-0.27, 0.9, -0.37), Vector3(0.27, 0.9, -0.37)], [0.02, 0.02], black, 10)
+		# axle housing and wheels at the back bottom
+		Vehicles.soft_box(trim, Vector3(0, 0.13, -0.27), Vector3(0.5, 0.1, 0.09), 0.025, green.darkened(0.1), Basis(), 3)
+		_tube(dark, [Vector3(-0.3, 0.1, -0.29), Vector3(0.3, 0.1, -0.29)], [0.014, 0.014], Color(0.35, 0.35, 0.36), 8)
+		var wheels := _begin()
+		for side in [-1.0, 1.0]:
+			Vehicles.wheel(wheels, Vector3(side * 0.285, 0.1, -0.29), 0.1, 0.05, side)
+		# two little feet at the front
+		for x in [-0.15, 0.15]:
+			Vehicles.soft_box(dark, Vector3(x, 0.035, 0.18), Vector3(0.07, 0.07, 0.05), 0.015, black, Basis(), 2)
+		return [_end(st, true), _end(trim, true), _end(dark, true), _end(wheels, true)])
 	_add(root, parts[0], _vmat("glossy", 0.55))
-	_add(root, parts[1], _vmat("", 0.8))
+	_add(root, parts[1], _vmat("glossy", 0.55))
+	_add(root, parts[2], _vmat("", 0.75))
+	_add(root, parts[3], _vmat("", 0.8))
 
 
 # ---- leaves and flowers: small cards with a cut-out leaf, many of them (MultiMesh), round lumpy clumps ----

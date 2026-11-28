@@ -88,6 +88,8 @@ func _process(delta: float) -> void:
 func _build() -> void:
 	_built = true
 	var isl := [] if id in _hand_built() else PropAnims.islands(id, holder)
+	if Refined.has(id) and _named_parts():
+		return
 	match e["kind"]:
 		"light": _build_light(isl)
 		"lamp": _build_lamp(isl)
@@ -175,6 +177,78 @@ func _build() -> void:
 			_p["seat"] = _lift_each(seat)
 		"scribble", "picture", "squirt", "unroll", "burners", "drain":
 			_p["isl"] = isl
+
+
+# Refined furniture (refined_furniture.gd) names the parts its animation moves, so they're taken as they are
+# (moved under the animator, in holder space) instead of being found as triangle islands by colour.
+func _named_parts() -> bool:
+	var take := func(pattern: String) -> Array:
+		var out := []
+		for c in holder.find_children(pattern, "MeshInstance3D", true, false):
+			var mi: MeshInstance3D = c
+			if mi.get_parent() == self:
+				continue
+			var xf := Models._to_holder(mi, holder)
+			mi.get_parent().remove_child(mi)
+			add_child(mi)
+			mi.transform = xf
+			mi.set_meta("box", xf * mi.get_aabb())
+			mi.set_meta("col", Color(0.6, 0.6, 0.6))
+			out.append(mi)
+		return out
+	match e["kind"]:
+		"bed":
+			_p["pillows"] = take.call("Pillow*")
+			_p["blankets"] = take.call("Blanket*")
+			var pc := Vector3.ZERO
+			for mi in _p["pillows"]:
+				pc += (mi.get_meta("box") as AABB).get_center()
+			_p["foot"] = -signf(pc.z) if pc.z != 0.0 else 1.0
+		"sofabed":
+			_p["seat"] = take.call("Seat*")
+		"recline":
+			pass
+		"lamp":
+			var shade: Array = take.call("LampShade")
+			var bulb: Array = take.call("LampBulb")
+			if shade.is_empty() or bulb.is_empty():
+				return false
+			_p["shade"] = shade[0]
+			_p["bulb"] = bulb[0]
+			(bulb[0] as MeshInstance3D).set_meta("own_mat", (bulb[0] as MeshInstance3D).material_override)
+			var l := OmniLight3D.new()
+			l.light_color = Color(1.0, 0.82, 0.55)
+			l.light_energy = 0.9
+			l.omni_range = 5.0
+			l.position = ((bulb[0] as MeshInstance3D).get_meta("box") as AABB).get_center()
+			add_child(l)
+			_p["lights"] = [l]
+		"picture":
+			var pic := holder.find_child("Picture", true, false) as MeshInstance3D
+			if pic == null:
+				return false
+			var xf := Models._to_holder(pic, holder)
+			var box := pic.get_aabb()
+			# (the painting is drawn facing its frame's front: +z before the frame's own tilt)
+			var u := xf.basis.x
+			var w := xf.basis.y
+			var front := (xf.basis * Vector3.BACK).normalized()
+			var corners := []
+			for i in 8:
+				corners.append(box.get_endpoint(i))
+			var lo := Vector2(INF, INF)
+			var hi := Vector2(-INF, -INF)
+			var c := xf * box.get_center()
+			for p in corners:
+				var q: Vector3 = xf * p - c
+				var uv := Vector2(q.dot(u.normalized()), q.dot(w.normalized()))
+				lo = Vector2(minf(lo.x, uv.x), minf(lo.y, uv.y))
+				hi = Vector2(maxf(hi.x, uv.x), maxf(hi.y, uv.y))
+			_p["page"] = [c, front, hi - lo, u.normalized(), w.normalized()]
+			_p["isl"] = []
+		_:
+			return false
+	return true
 
 
 func _hand_built() -> Array:
@@ -432,7 +506,8 @@ func _set_lit(on: bool) -> void:
 			_bulb_mat.emission_enabled = true
 			_bulb_mat.emission = Color(1.0, 0.85, 0.55)
 			_bulb_mat.emission_energy_multiplier = 2.5
-		(_p["bulb"] as MeshInstance3D).material_override = _bulb_mat if on else null
+		var bm := _p["bulb"] as MeshInstance3D
+		bm.material_override = _bulb_mat if on else bm.get_meta("own_mat", null)
 	if _p.get("face") != null:
 		(_p["face"] as GeometryInstance3D).set_instance_shader_parameter("lit", 1.0 if on else 0.0)
 
@@ -915,7 +990,7 @@ func _scribble() -> void:
 
 func _picture(n: int) -> void:
 	if not _p.has("pic"):
-		var pg := _page(_p["isl"])
+		var pg: Array = _p["page"] if _p.has("page") else _page(_p["isl"])
 		if pg.is_empty():
 			return
 		var q := Look.quad(pg[2] * 0.98, "picture")

@@ -2734,7 +2734,7 @@ func _build_ui() -> void:
 			bcats = ["Plants/landscaping"]
 		elif bk in HollowBuildings.SIGNS:
 			bcats = ["Signs", "Street/Road"]
-		elif bk == "dumpster_open":
+		elif bk == "dumpster_open" or bk in HollowBuildings.CURBS:
 			bcats = ["Street/Road"]
 		built_in.append([HollowBuildings.KINDS[bk], "building:" + bk, bcats])
 	built_in.append(["Ice (slippery)", "ice", ["Ground"]])

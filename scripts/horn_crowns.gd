@@ -134,25 +134,28 @@ static func make(kind: String, top: float, hull := PackedVector3Array()) -> Node
 	n.position.y = top + ROOT_DROP
 	n.scale = Vector3.ONE * SCALE
 	for part in _parts(kind):
-		var off := _root_shift(kind, part, n.position, hull)
-		for side in [-1.0, 1.0]:
+		for side: float in [-1.0, 1.0]:
+			# (each side finds its own spot: heads and helmets aren't quite symmetric, and a mirrored left horn
+			# floated a little on the Skeleton Warrior's helmet; Ted, Nov 27)
+			var off := _root_shift(kind, part, n.position, hull, side)
 			var mi := MeshInstance3D.new()
 			mi.mesh = _mesh(kind, part, side)
 			mi.material_override = material(kind)
-			mi.position = Vector3(off.x * side, off.y, off.z)
+			mi.position = off
 			n.add_child(mi)
 	return n
 
 
 # How far to move one (right-hand) horn, in the horns' own scaled space, to plant its root in the head.
-static func _root_shift(kind: String, part: int, origin: Vector3, hull: PackedVector3Array) -> Vector3:
+static func _root_shift(kind: String, part: int, origin: Vector3, hull: PackedVector3Array, side := 1.0) -> Vector3:
 	if hull.is_empty():
 		return Vector3.ZERO
 	var box := AABB(hull[0], Vector3.ZERO)
 	for v in hull:
 		box = box.expand(v)
 	var centre := box.get_center()
-	var root := origin + _path(kind, part, 0.0) * SCALE
+	var p0 := _path(kind, part, 0.0)
+	var root := origin + Vector3(p0.x * side, p0.y, p0.z) * SCALE
 	var dir := (root - centre).normalized()
 	# the head's surface that way: the farthest point within a narrow cone around it
 	var reach := -1.0

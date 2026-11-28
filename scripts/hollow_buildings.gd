@@ -43,18 +43,23 @@ const KINDS := {
 	"sign_demons": "Demon crossing sign",
 	# (Ted's wife, Nov 27: "a version of dumpster that is open and can be entered by angels and demons")
 	"dumpster_open": "Dumpster (open, climb in)",
+	# (Sara, Nov 27: curbs, straight and 90 degree: curbs.gd)
+	"curb": "Curb (straight)",
+	"curb_corner": "Curb (90° corner)",
 }
 const GATES := ["gate", "gate_open", "arch_gate", "arch_gate_open"]
 const TREES := ["oak", "birch"]
 const SIGNS := ["sign_stop", "sign_yield", "sign_speed", "sign_noentry", "sign_oneway", "sign_noparking",
 		"sign_crossing", "sign_deadend", "sign_railroad", "sign_demons"]
 const RoadSigns = preload("res://scripts/road_signs.gd")
+const Curbs = preload("res://scripts/curbs.gd")
+const CURBS := ["curb", "curb_corner"]
 
 
 # Gates, trees and signs can be resized in Creative (Ted's wife, Nov 27: "make the gates resizable"): "size" is a
 # scale on each axis, like a structure's. (Walk-in buildings keep their size: floors and stairs are made to fit.)
 static func scalable(kind: String) -> bool:
-	return kind in GATES or kind in TREES or kind in SIGNS
+	return kind in GATES or kind in TREES or kind in SIGNS or kind in CURBS
 const Trees = preload("res://scripts/trees.gd")
 const ChapelBell = preload("res://scripts/chapel_bell.gd")
 
@@ -207,6 +212,8 @@ static func size(kind: String) -> Vector3:
 		return Trees.size(kind)
 	if kind in SIGNS:
 		return RoadSigns.size(kind)
+	if kind in CURBS:
+		return Curbs.size(kind)
 	var b: Dictionary = _built(kind, 0)
 	return b["size"]
 
@@ -216,6 +223,8 @@ static func make(kind: String, look: int = 0) -> Node3D:
 		return Trees.make(kind, look)
 	if kind in SIGNS:
 		return RoadSigns.make(kind, look)
+	if kind in CURBS:
+		return Curbs.make(kind)
 	if not KINDS.has(kind):
 		kind = "cottage"
 	var b: Dictionary = _built(kind, clampi(look, 0, 3))
@@ -238,6 +247,7 @@ static func make(kind: String, look: int = 0) -> Node3D:
 		var bell := ChapelBell.new()
 		bell.name = "Bell"
 		bell.position = b["marks"]["bell"]
+		bell.scale = Vector3.ONE * 0.72   # (Sara, Nov 27: it was too long and hung into the roofline)
 		root.add_child(bell)
 	return root
 
@@ -246,7 +256,7 @@ static func make(kind: String, look: int = 0) -> Node3D:
 # faces facing the same way lie in (almost) one plane and overlap, which flicker as the camera moves.
 # Returns [[where, material a, material b, overlap m2], ...].
 static func coplanar_faces(kind: String, look := 0) -> Array:
-	if kind in TREES or kind in SIGNS:
+	if kind in TREES or kind in SIGNS or kind in CURBS:
 		return []   # (no boxes in a tree; a sign's layers are millimetres apart on purpose, not coplanar)
 	var b := Bld.new()
 	b.record = true

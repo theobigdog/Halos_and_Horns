@@ -17,6 +17,27 @@ static func setup_bus() -> void:
 	var idx := AudioServer.bus_count - 1
 	AudioServer.set_bus_name(idx, BUS)
 	AudioServer.set_bus_send(idx, "Master")
+	_add_effects(idx)
+
+
+# Sound effects went silent for good for one player, mid-game (Ted, Nov 27; music still played). One bad sample
+# (not-a-number) poisons a reverb for ever, so the bus's effects are made fresh at the start of every round, and
+# whenever its level reads as not-a-number (main.gd checks every couple of seconds).
+static func heal_bus(force := false) -> bool:
+	var idx := AudioServer.get_bus_index(BUS)
+	if idx == -1:
+		return false
+	var peak := AudioServer.get_bus_peak_volume_left_db(idx, 0) + AudioServer.get_bus_peak_volume_right_db(idx, 0)
+	var bad := is_nan(peak) or (is_inf(peak) and peak > 0.0)
+	if not force and not bad:
+		return false
+	while AudioServer.get_bus_effect_count(idx) > 0:
+		AudioServer.remove_bus_effect(idx, 0)
+	_add_effects(idx)
+	return true
+
+
+static func _add_effects(idx: int) -> void:
 	var lowpass := AudioEffectLowPassFilter.new()
 	lowpass.cutoff_hz = 3200.0
 	AudioServer.add_bus_effect(idx, lowpass)

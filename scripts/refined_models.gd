@@ -11,6 +11,9 @@ const CP = preload("res://scripts/classic_props.gd")
 
 static var _cache := {}
 
+# Models rebuilt bigger than the KayKit original (Models.size uses these, so a prop's box fits too)
+const SIZES := {"city/bench": Vector3(1.8, 0.9, 0.72)}
+
 
 static var _grave: GDScript
 
@@ -30,9 +33,27 @@ static func _tree_script() -> GDScript:
 	return _trees
 
 
+static var _furn: GDScript
+
+
+static func _furniture() -> GDScript:
+	if _furn == null:
+		_furn = load("res://scripts/refined_furniture.gd")
+	return _furn
+
+
+static var _vehicles: GDScript
+
+
 static func _script_for(id: String) -> GDScript:
+	if id.begins_with("city/car_"):
+		if _vehicles == null:
+			_vehicles = load("res://scripts/vehicles.gd")
+		return _vehicles if _vehicles.BUILDERS.has(id) else null
 	if BUILDERS.has(id):
 		return load("res://scripts/refined_models.gd")
+	if id.begins_with("furniture/") and _furniture().BUILDERS.has(id):
+		return _furniture()
 	if (id.begins_with("halloween/") or id.begins_with("medieval/")) and _tree_script().BUILDERS.has(id):
 		return _tree_script()
 	if id.begins_with("halloween/") and _graveyard().BUILDERS.has(id):
@@ -51,11 +72,6 @@ const BUILDERS := {
 	"city/dumpster": "_dumpster",
 	"city/bench": "_park_bench",
 	"city/bush": "_potted_bush",
-	"city/car_sedan": "_car",
-	"city/car_hatchback": "_car",
-	"city/car_stationwagon": "_car",
-	"city/car_taxi": "_car",
-	"city/car_police": "_car",
 	"medieval/wheelbarrow": "_wheelbarrow",
 	"halloween/bench": "_grave_bench",
 }
@@ -140,6 +156,37 @@ static func _glow(c: Color, energy := 2.0) -> StandardMaterial3D:
 		m.emission_enabled = true
 		m.emission = c
 		m.emission_energy_multiplier = energy
+		_cache[key] = m
+	return _cache[key]
+
+
+# The police light bar (Sara, Nov 27: "flash blue and red like it's pulling someone over"): red and blue take turns,
+# each a quick double blink, bright when on and a dim coloured lens when off. Time-driven: no script per car.
+const FLASH_SHADER := """
+shader_type spatial;
+render_mode unshaded;
+uniform vec4 col : source_color = vec4(1.0, 0.0, 0.0, 1.0);
+uniform float half_cycle = 0.0;   // 0: red's turn first, 1: blue's
+void fragment() {
+	float t = fract(TIME * 1.6 + half_cycle * 0.5);          // one cycle: red's half, then blue's
+	float mine = step(t, 0.5);
+	float k = fract(t * 2.0);                                // where we are in our half
+	float blink = step(k, 0.22) + step(0.32, k) * step(k, 0.54);
+	float on = mine * clamp(blink, 0.0, 1.0);
+	ALBEDO = col.rgb * mix(0.25, 3.5, on);
+}
+"""
+
+
+static func _flasher(c: Color, phase: float) -> ShaderMaterial:
+	var key := "flash_%s_%s" % [c.to_html(), phase]
+	if not _cache.has(key):
+		var sh := Shader.new()
+		sh.code = FLASH_SHADER
+		var m := ShaderMaterial.new()
+		m.shader = sh
+		m.set_shader_parameter("col", c)
+		m.set_shader_parameter("half_cycle", phase)
 		_cache[key] = m
 	return _cache[key]
 
@@ -337,25 +384,39 @@ static func _dumpster(root: Node3D, _id: String) -> void:
 # A park bench: five slatted boards (three on the seat, two on the back) on two cast-iron ends with scrolls,
 # armrests, and bolt heads. (1.8 x 0.45 x 0.68: the KayKit bench is a low seat; ours keeps its size)
 static func _park_bench(root: Node3D, _id: String) -> void:
-	var parts := _cached("park_bench", func() -> Array:
+	# (Sara, Nov 27: "refine the bench... make a higher backrest": a proper sit-down height and a back to lean on)
+	var parts := _cached("park_bench2", func() -> Array:
 		var wood := CP._begin()
 		var iron := CP._begin()
 		var w := 1.8
-		var seat := 0.3
-		var ic := Color(0.1, 0.1, 0.1)
-		for k in 3:
-			var z := -0.2 + k * 0.17
-			_rbox(wood, Vector3(0, seat, z + 0.05), Vector3(w - 0.04, 0.035, 0.13), 0.015, Color(0.55, 0.36, 0.2).darkened(0.05 * k))
-		for k in 2:
-			_rbox(wood, Vector3(0, 0.36 + k * 0.05, -0.27), Vector3(w - 0.04, 0.035, 0.1), 0.015, Color(0.52, 0.34, 0.19), Basis(Vector3.RIGHT, -1.25))
+		var seat := 0.44
+		var ic := Color(0.09, 0.1, 0.09)
+		var slat := Color(0.56, 0.37, 0.2)
+		for k in 4:   # the seat: four rounded slats with gaps
+			var z := 0.2 - k * 0.125
+			_rbox(wood, Vector3(0, seat, z), Vector3(w - 0.04, 0.04, 0.105), 0.018, slat.darkened(0.04 * float(k % 2)))
+		var lean := Basis(Vector3.RIGHT, -0.24)
+		for k in 3:   # the back: three slats, leaning back a little
+			var y := 0.56 + k * 0.13
+			var z := -0.27 - (y - 0.5) * 0.24
+			_rbox(wood, Vector3(0, y, z), Vector3(w - 0.04, 0.1, 0.035), 0.016, slat.darkened(0.03 * float(k)), lean)
+		# bolt heads along the slats
+		for k in 4:
+			for x: float in [-0.62, 0.62]:
+				_rbox(iron, Vector3(x, seat + 0.022, 0.2 - k * 0.125), Vector3(0.022, 0.008, 0.022), 0.008, Color(0.35, 0.35, 0.34))
+		# cast-iron ends: front leg, back leg rising into the back support, an armrest with a scroll
 		for sx: float in [-1.0, 1.0]:
-			var x := sx * (w * 0.5 - 0.18)
-			CP._tube(iron, [Vector3(x, 0.0, 0.25), Vector3(x, 0.15, 0.22), Vector3(x, seat - 0.02, 0.16)], [0.022, 0.02, 0.02], ic, 8)
-			CP._tube(iron, [Vector3(x, 0.0, -0.25), Vector3(x, 0.2, -0.24), Vector3(x, 0.45, -0.3)], [0.022, 0.02, 0.018], ic, 8)
-			CP._tube(iron, [Vector3(x, seat - 0.02, 0.22), Vector3(x, seat - 0.02, -0.26)], [0.02, 0.02], ic, 8)
-			CP._tube(iron, [Vector3(x, 0.15, 0.22), Vector3(x, 0.3, 0.27), Vector3(x, 0.38, 0.2), Vector3(x, 0.4, -0.05)], [0.016, 0.016, 0.016, 0.014], ic, 6)
-			for k in 4:   # a scroll curling under the seat
-				CP._ring(iron, Vector3(x, 0.14 + 0.012 * k, 0.03), 0.04 - 0.008 * k, 0.007, ic, 10, 4)
+			var x := sx * (w * 0.5 - 0.12)
+			CP._tube(iron, [Vector3(x, 0.0, 0.26), Vector3(x, 0.2, 0.25), Vector3(x, seat - 0.03, 0.22)], [0.026, 0.024, 0.022], ic, 8)
+			CP._tube(iron, [Vector3(x, 0.0, -0.22), Vector3(x, 0.25, -0.24), Vector3(x, seat, -0.27), Vector3(x, 0.66, -0.31), Vector3(x, 0.86, -0.37)],
+					[0.026, 0.024, 0.022, 0.022, 0.02], ic, 8)
+			CP._tube(iron, [Vector3(x, seat - 0.03, 0.26), Vector3(x, seat - 0.03, -0.28)], [0.022, 0.022], ic, 8)
+			CP._tube(iron, [Vector3(x, seat - 0.02, 0.24), Vector3(x, 0.6, 0.27), Vector3(x, 0.66, 0.18), Vector3(x, 0.65, -0.2), Vector3(x, 0.62, -0.31)],
+					[0.02, 0.02, 0.022, 0.022, 0.02], ic, 6)
+			for k in 4:   # the scroll under the arm
+				CP._ring(iron, Vector3(x, 0.56 - 0.01 * k, 0.2), 0.045 - 0.009 * k, 0.008, ic, 10, 4)
+			CP._tube(iron, [Vector3(x - 0.05, 0.02, 0.26), Vector3(x + 0.05, 0.02, 0.26)], [0.02, 0.02], ic, 5)   # feet
+			CP._tube(iron, [Vector3(x - 0.05, 0.02, -0.22), Vector3(x + 0.05, 0.02, -0.22)], [0.02, 0.02], ic, 5)
 		return [CP._end(wood, false), CP._end(iron, true)])
 	_put(root, parts[0], CP._vmat("wood", 0.8))
 	_put(root, parts[1], _paint(Color.WHITE, 0.5, 0.6))
@@ -510,8 +571,8 @@ static func _car(root: Node3D, id: String) -> void:
 		back.position.z = -0.02
 		root.add_child(back)
 	if id == "city/car_police":
-		_put(root, parts[6], _glow(Color(0.9, 0.1, 0.1), 1.2), false)
-		_put(root, parts[7], _glow(Color(0.15, 0.3, 1.0), 1.2), false)
+		_put(root, parts[6], _flasher(Color(1.0, 0.08, 0.06), 0.0), false)
+		_put(root, parts[7], _flasher(Color(0.12, 0.3, 1.0), 1.0), false)
 
 
 # A car wheel, turned about y (the axle), the outside up: tyre with sidewall and tread, a rim dish with five spokes

@@ -270,6 +270,101 @@
 ]
 },
 {
+"id": "city/car_pickup",
+"path": "res://assets/kaykit/city/car_sedan.gltf",
+"label": "Pickup truck",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+2.4,
+2.1,
+4.9
+],
+"offset": [
+0.0,
+0.0,
+0.0
+],
+"extra": "built"
+},
+{
+"id": "city/car_motorcycle",
+"path": "res://assets/kaykit/city/car_sedan.gltf",
+"label": "Motorcycle",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+0.7,
+1.1,
+2.1
+],
+"offset": [
+0.0,
+0.0,
+0.0
+],
+"extra": "built"
+},
+{
+"id": "city/car_bus",
+"path": "res://assets/kaykit/city/car_sedan.gltf",
+"label": "Bus",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+2.6,
+3.0,
+8.7
+],
+"offset": [
+0.0,
+0.0,
+0.0
+],
+"extra": "built"
+},
+{
+"id": "city/car_ambulance",
+"path": "res://assets/kaykit/city/car_sedan.gltf",
+"label": "Ambulance",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+2.4,
+2.6,
+5.3
+],
+"offset": [
+0.0,
+0.0,
+0.0
+],
+"extra": "built"
+},
+{
+"id": "city/car_firetruck",
+"path": "res://assets/kaykit/city/car_sedan.gltf",
+"label": "Fire truck",
+"cat": "Town",
+"kind": "structure",
+"scale": 4.5,
+"size": [
+2.6,
+2.8,
+7.3
+],
+"offset": [
+0.0,
+0.0,
+0.0
+],
+"extra": "built"
+},
+{
 "id": "city/car_stationwagon",
 "path": "res://assets/kaykit/city/car_stationwagon.gltf",
 "label": "Car station wagon",

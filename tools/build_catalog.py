@@ -106,6 +106,14 @@ def main():
             extra = dict(e)
             extra.update({"id": "city/road_crossing_end", "label": "Road crossing (at the end)", "extra": "crosswalk_end"})
             out.append(extra)
+        # vehicles built in code (vehicles.gd; Sara, Nov 27): pickup, motorcycle, bus, ambulance, fire truck
+        if e["id"] == "city/car_sedan":
+            for vid, vlabel, vsize in [("city/car_pickup", "Pickup truck", [2.4, 2.1, 4.9]), ("city/car_motorcycle", "Motorcycle", [0.7, 1.1, 2.1]),
+                    ("city/car_bus", "Bus", [2.6, 3.0, 8.7]), ("city/car_ambulance", "Ambulance", [2.4, 2.6, 5.3]),
+                    ("city/car_firetruck", "Fire truck", [2.6, 2.8, 7.3])]:
+                extra = dict(e)
+                extra.update({"id": vid, "label": vlabel, "size": vsize, "offset": [0.0, 0.0, 0.0], "extra": "built"})
+                out.append(extra)
         # a street light with a bad bulb that flickers (Ted's wife, Nov 27)
         if e["id"] == "city/streetlight":
             extra = dict(e)

@@ -30,6 +30,8 @@ const TYPES := {
 	"snowball": {"shape": "cylinder", "radius": 0.36, "height": 0.7, "label": "Snowball", "hp": 70, "speed": 6.5, "mass": 1.2, "round": true, "cat": "Village & nature"},
 	"snowball_big": {"shape": "cylinder", "radius": 0.6, "height": 1.15, "label": "Big snowball", "hp": 130, "speed": 5.0, "mass": 2.6, "round": true, "cat": "Village & nature"},
 	"snowman": {"shape": "cylinder", "radius": 0.45, "height": 1.62, "label": "Snowman", "hp": 130, "speed": 5.0, "mass": 2.2, "cat": "Village & nature"},
+	"snowman_angel": {"shape": "cylinder", "radius": 0.45, "height": 1.72, "label": "Snowman angel", "hp": 130, "speed": 5.0, "mass": 2.2, "cat": "Village & nature"},
+	"snowman_demon": {"shape": "cylinder", "radius": 0.45, "height": 1.72, "label": "Snowman demon", "hp": 130, "speed": 5.0, "mass": 2.2, "cat": "Village & nature"},
 	"coconut": {"shape": "cylinder", "radius": 0.12, "height": 0.22, "label": "Coconut", "hp": 35, "speed": 8.0, "mass": 0.4, "round": true, "cat": "Village & nature"},
 	"beehive": {"shape": "cylinder", "radius": 0.33, "height": 0.95, "label": "Beehive", "hp": 80, "speed": 6.0, "mass": 1.0, "cat": "Village & nature"},
 }
@@ -241,11 +243,13 @@ static func _tnt(root: Node3D) -> void:
 	var wood := _mat(Color(0.66, 0.48, 0.28), "wood")
 	var dark := _mat(Color(0.4, 0.27, 0.15), "wood")
 	_add(root, _box(Vector3(0.8, 0.5, 0.6)), wood, Vector3(0.0, 0.25, 0.0))
-	for y in [0.03, 0.47]:   # rails round the top and bottom
-		_add(root, _box(Vector3(0.82, 0.06, 0.62)), dark, Vector3(0.0, y, 0.0))
-	for x in [-0.38, 0.38]:
-		for z in [-0.28, 0.28]:
-			_add(root, _box(Vector3(0.06, 0.5, 0.06)), dark, Vector3(x, 0.25, z))
+	# (Sara, Nov 27: it flickered as you went past. The posts' faces lay in the rails' planes and the rail's top in
+	# the crate's: everything sits a few millimetres apart now)
+	for y in [0.03, 0.478]:   # rails round the top and bottom
+		_add(root, _box(Vector3(0.84, 0.06, 0.64)), dark, Vector3(0.0, y, 0.0))
+	for x in [-0.385, 0.385]:
+		for z in [-0.285, 0.285]:
+			_add(root, _box(Vector3(0.05, 0.49, 0.05)), dark, Vector3(x, 0.25, z))
 	# black-and-yellow warning band and the stencilled TNT on the front and sides
 	_add(root, _box(Vector3(0.805, 0.08, 0.605)), _mat(Color(0.95, 0.75, 0.1), "", 0.6), Vector3(0.0, 0.12, 0.0))
 	for side in [[Vector3(0.0, 0.3, 0.302), 0.0], [Vector3(0.0, 0.3, -0.302), PI], [Vector3(0.402, 0.3, 0.0), PI * 0.5], [Vector3(-0.402, 0.3, 0.0), -PI * 0.5]]:

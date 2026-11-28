@@ -453,6 +453,8 @@ static func is_ground(id: String) -> bool:
 
 # Its size in metres at scale 1 (already converted to our world).
 static func size(id: String) -> Vector3:
+	if Refined.SIZES.has(id):
+		return Refined.SIZES[id]
 	var s: Array = entry(id).get("size", [1, 1, 1])
 	return Vector3(s[0], s[1], s[2])
 
@@ -532,7 +534,8 @@ static func instance(id: String, extra_scale := Vector3.ONE, look := 0) -> Node3
 		return holder
 	var model: Node3D = holder.get_child(0)
 	_mark_windows(id, holder)
-	_add_grime(model, look)
+	# (vehicles come clean, like Sara's examples, unless a look is picked; snow still settles on them)
+	_add_grime(model, 1 if look == 0 and is_car(id) else look)
 	if festive:
 		_add_festive(id, holder, extra_scale)
 	_add_glow(id, holder)
@@ -1077,6 +1080,7 @@ void fragment() {
 }
 """
 static var _recolor_shader: Shader
+static var _recolor_vc: Shader
 
 
 static func is_rug(id: String) -> bool:
@@ -1087,9 +1091,22 @@ static func recolor(node: Node, color: Color) -> void:
 	if _recolor_shader == null:
 		_recolor_shader = Shader.new()
 		_recolor_shader.code = RECOLOR_SHADER
+		_recolor_vc = Shader.new()   # (the refined rugs: their pattern is in the vertex colours)
+		_recolor_vc.code = RECOLOR_SHADER.replace("texture(tex, UV).rgb", "COLOR.rgb")
 	for mi in node.find_children("*", "MeshInstance3D", true, false):
 		var m: MeshInstance3D = mi
 		if m.mesh == null:
+			continue
+		var again := m.material_override as ShaderMaterial
+		if again != null and again.shader == _recolor_vc:   # (picked a new colour)
+			again.set_shader_parameter("tint", color)
+			continue
+		var own := m.material_override as StandardMaterial3D
+		if own != null and own.vertex_color_use_as_albedo:
+			var vm := ShaderMaterial.new()
+			vm.shader = _recolor_vc
+			vm.set_shader_parameter("tint", color)
+			m.material_override = vm
 			continue
 		for si in m.mesh.get_surface_count():
 			var src = m.mesh.surface_get_material(si)

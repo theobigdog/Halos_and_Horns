@@ -300,6 +300,18 @@ func _run() -> void:
 		v.queue_free()
 	await frames(5)
 	check(quiet, "all %d animated props build and play" % PropAnims.TABLE.size())
+	# refined furniture hands its moving parts over by name (refined_furniture.gd, prop_animator._named_parts)
+	var found := {}
+	for t in ["furniture/bed_double_B", "furniture/bed_single_B", "furniture/couch_pillows", "furniture/lamp_standing",
+			"furniture/lamp_table", "furniture/pictureframe_standing_A", "furniture/pictureframe_standing_B"]:
+		var v := PropLib.make_visual(t)
+		main.add_child(v)
+		PropAnims.press(v, t, 1)
+		var p: Dictionary = v.get_node("PropAnim")._p
+		found[t] = (p.get("pillows", []).size() > 0 and p.get("blankets", []).size() > 0) if "bed" in t 				else (p.get("seat", []).size() == 2 if "couch" in t else (p.get("shade") != null and p.get("bulb") != null if "lamp" in t 				else p.has("pic")))
+		v.queue_free()
+	await frames(2)
+	check(not false in found.values(), "refined beds, the sofa bed, lamps and standing pictures find their moving parts %s" % str(found))
 	check(PropLib.label("dungeon/torch_lit") == "Torch" and not PropLib.in_palette("dungeon/torch") and PropLib.TYPES.has("dungeon/torch"),
 			"the two torches are one \"Torch\" in the palette (old maps' unlit ones still load)")
 	# Everything starts out (Ted, Nov 26), unless it was placed lit in Creative: then real and copy start lit

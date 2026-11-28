@@ -2584,6 +2584,7 @@ func _apply_round_environment() -> void:
 func start_round() -> void:
 	_reset_round_props(randi())
 	_apply_round_environment()
+	Sfx.heal_bus(true)
 	var types := PropLib.scatter_names()
 	bots_left = 0
 	if role == "angel":
@@ -2682,8 +2683,16 @@ func _update_fps(delta: float) -> void:
 	fps_label.text = "%d FPS   %dk triangles   %d draw calls" % [int(Engine.get_frames_per_second()), tris / 1000, draws]
 
 
+var _sound_check := 2.0
+
+
 func _process(delta: float) -> void:
 	_update_fps(delta)
+	_sound_check -= delta
+	if _sound_check <= 0.0:
+		_sound_check = 2.0
+		if Sfx.heal_bus():
+			print("[sound] the effects bus went bad: made fresh")
 	_tick_waiting_game()
 	if mode == "practice" and state != State.ENDED:
 		time_left -= delta
@@ -2798,6 +2807,7 @@ func online_scoreboard(rows: Array) -> void:
 func online_round_start(seed_value: int, new_role: String, pos: Vector3, phase: String, seconds: float) -> void:
 	_reset_round_props(seed_value)
 	_apply_round_environment()
+	Sfx.heal_bus(true)
 	role = new_role
 	my_health = 1.0
 	player.set_role(new_role)
